@@ -1,0 +1,6 @@
+Checking role for: msyafferizul@gmail.com
+Found 1 Profiles:
+Profile #1:
+- ID: 18140684-00ef-402d-8fbf-5130dfc2860f
+- Role: 'admin' (Type: string)
+- Organization ID: 30dcdaad-4675-4926-8941-74090dd2d19f
