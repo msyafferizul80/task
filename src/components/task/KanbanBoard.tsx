@@ -65,12 +65,13 @@ export default function KanbanBoard({ tasks, role }: KanbanBoardProps) {
 
     return (
         <div className="flex gap-4 overflow-x-auto pb-4">
-            <DndContext sensors={role === 'admin' ? sensors : []} collisionDetection={closestCorners} onDragEnd={handleDragEnd}>
+            <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={handleDragEnd}>
                 {STATUSES.map(status => (
                     <KanbanColumn
                         key={status}
                         status={status}
                         tasks={boardTasks.filter(t => t.status === status)}
+                        role={role}
                     />
                 ))}
             </DndContext>

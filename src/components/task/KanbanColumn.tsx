@@ -9,9 +9,10 @@ import SortableTaskItem from './SortableTaskItem';
 interface KanbanColumnProps {
     status: TaskStatus;
     tasks: Task[];
+    role?: string | null;
 }
 
-export default function KanbanColumn({ status, tasks }: KanbanColumnProps) {
+export default function KanbanColumn({ status, tasks, role }: KanbanColumnProps) {
     const { setNodeRef } = useDroppable({
         id: status,
     });
@@ -33,7 +34,7 @@ export default function KanbanColumn({ status, tasks }: KanbanColumnProps) {
             <div ref={setNodeRef} className="flex-1 flex flex-col gap-2">
                 <SortableContext items={tasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
                     {tasks.map(task => (
-                        <SortableTaskItem key={task.id} task={task} />
+                        <SortableTaskItem key={task.id} task={task} role={role} />
                     ))}
                 </SortableContext>
                 {tasks.length === 0 && <div className="text-sm text-gray-400 p-2 text-center italic border-2 border-dashed border-gray-300 rounded">Drop here</div>}

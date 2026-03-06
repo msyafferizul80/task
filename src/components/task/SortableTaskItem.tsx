@@ -7,9 +7,10 @@ import { Task } from '@/lib/types';
 
 interface SortableTaskItemProps {
     task: Task;
+    role?: string | null;
 }
 
-export default function SortableTaskItem({ task }: SortableTaskItemProps) {
+export default function SortableTaskItem({ task, role }: SortableTaskItemProps) {
     const {
         attributes,
         listeners,
@@ -17,7 +18,7 @@ export default function SortableTaskItem({ task }: SortableTaskItemProps) {
         transform,
         transition,
         isDragging,
-    } = useSortable({ id: task.id });
+    } = useSortable({ id: task.id, disabled: role !== 'admin' });
 
     const style = {
         transform: CSS.Transform.toString(transform),
@@ -41,7 +42,7 @@ export default function SortableTaskItem({ task }: SortableTaskItemProps) {
             style={style}
             {...attributes}
             {...listeners}
-            className={`bg-white p-3 rounded-md shadow-sm border border-gray-200 cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow ${getBorderColor()}`}
+            className={`bg-white p-3 rounded-md shadow-sm border border-gray-200 hover:shadow-md transition-shadow ${role === 'admin' ? 'cursor-grab active:cursor-grabbing' : ''} ${getBorderColor()}`}
         >
             <div className="font-medium text-sm mb-1">{task.title}</div>
 

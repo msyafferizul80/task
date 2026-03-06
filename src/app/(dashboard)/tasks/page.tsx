@@ -45,15 +45,25 @@ export default function TaskListingPage() {
 
     const fetchData = async () => {
         try {
+            const { data: { user } } = await supabase.auth.getUser();
+            const userId = user?.id || null;
+
+            let query = supabase.from('tsk_tasks').select(`
+                *,
+                assignee:lv_profiles!tsk_tasks_assignee_id_fkey (
+                    id,
+                    full_name,
+                    avatar_url
+                )
+            `).order('created_at', { ascending: false });
+
+            // If user is not admin, only fetch their tasks
+            if (role !== 'admin' && userId) {
+                query = query.eq('assignee_id', userId);
+            }
+
             const [tasksRes, profilesRes, customersRes] = await Promise.all([
-                supabase.from('tsk_tasks').select(`
-                    *,
-                    assignee:lv_profiles!tsk_tasks_assignee_id_fkey (
-                        id,
-                        full_name,
-                        avatar_url
-                    )
-                `).order('created_at', { ascending: false }),
+                query,
                 supabase.from('lv_profiles').select('id, full_name').order('full_name'),
                 supabase.from('tsk_customers').select('id, name').order('name')
             ]);
