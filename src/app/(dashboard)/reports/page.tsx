@@ -74,8 +74,15 @@ export default function WeeklyReportPage() {
                 const start = dateRange[0].startOf('day');
                 const end = dateRange[1].endOf('day');
                 tasks = tasks.filter(t => {
-                    const taskDate = dayjs(t.created_at);
-                    return taskDate.isAfter(start) && taskDate.isBefore(end);
+                    const createdDate = dayjs(t.created_at);
+                    const updatedDate = t.updated_at ? dayjs(t.updated_at) : null;
+                    const dueDate = t.end_date ? dayjs(t.end_date) : null;
+
+                    const isCreatedInRange = createdDate.isAfter(start) && createdDate.isBefore(end);
+                    const isUpdatedInRange = updatedDate && updatedDate.isAfter(start) && updatedDate.isBefore(end);
+                    const isDueInRange = dueDate && dueDate.isAfter(start) && dueDate.isBefore(end);
+
+                    return isCreatedInRange || isUpdatedInRange || isDueInRange;
                 });
             }
 
