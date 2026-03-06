@@ -76,7 +76,7 @@ export default function WeeklyReportPage() {
                 tasks = tasks.filter(t => {
                     const createdDate = dayjs(t.created_at);
                     const updatedDate = t.updated_at ? dayjs(t.updated_at) : null;
-                    const dueDate = t.end_date ? dayjs(t.end_date) : null;
+                    const dueDate = t.due_date ? dayjs(t.due_date) : null;
 
                     const isCreatedInRange = createdDate.isAfter(start) && createdDate.isBefore(end);
                     const isUpdatedInRange = updatedDate && updatedDate.isAfter(start) && updatedDate.isBefore(end);

@@ -369,6 +369,12 @@ export default function TaskListingPage() {
                         </div>
                     )}
 
+                    {selectedTask?.updated_at && (
+                        <div className="mb-4 text-sm text-gray-500">
+                            <strong>{selectedTask.status === 'DONE' ? 'Completed On:' : 'Last Updated:'}</strong> {new Date(selectedTask.updated_at).toLocaleString()}
+                        </div>
+                    )}
+
                     <Form.Item className="flex justify-end mb-0 mt-6 pt-4 border-t">
                         <Button onClick={() => {
                             setIsEditModalOpen(false);
