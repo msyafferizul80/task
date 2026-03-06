@@ -143,11 +143,13 @@ export default function EisenhowerDashboard() {
         const matchesPIC = filterPIC ? t.assignee_id === filterPIC : true;
         return (filterCustomer ? matchesCustomer : true) && matchesPIC;
     });
+    // Exclude DONE tasks from the main Priority Grid. REVIEW tasks will still show.
+    const activeFilteredTasks = filteredTasks.filter(t => t.status !== 'DONE');
 
-    const doFirstTasks = filteredTasks.filter(t => t.priority_type === 'DO_FIRST');
-    const scheduleTasks = filteredTasks.filter(t => t.priority_type === 'SCHEDULE');
-    const delegateTasks = filteredTasks.filter(t => t.priority_type === 'DELEGATE');
-    const eliminateTasks = filteredTasks.filter(t => t.priority_type === 'ELIMINATE');
+    const doFirstTasks = activeFilteredTasks.filter(t => t.priority_type === 'DO_FIRST');
+    const scheduleTasks = activeFilteredTasks.filter(t => t.priority_type === 'SCHEDULE');
+    const delegateTasks = activeFilteredTasks.filter(t => t.priority_type === 'DELEGATE');
+    const eliminateTasks = activeFilteredTasks.filter(t => t.priority_type === 'ELIMINATE');
 
     const renderTaskCard = (task: Task) => (
         <div

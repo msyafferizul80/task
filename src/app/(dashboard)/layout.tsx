@@ -10,7 +10,7 @@ export default function DashboardLayout({
         <RoleProvider>
             <div className="flex h-screen bg-gray-50 overflow-hidden">
                 <Sidebar />
-                <main className="flex-1 overflow-y-auto p-8">
+                <main className="flex-1 overflow-y-auto p-8 print:p-0 print:overflow-visible print:bg-white">
                     {children}
                 </main>
             </div>

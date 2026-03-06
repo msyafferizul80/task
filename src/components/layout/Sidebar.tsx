@@ -8,7 +8,9 @@ import {
     Users,
     UserCircle,
     LogOut,
-    CheckSquare
+    CheckSquare,
+    ListTodo,
+    FileText
 } from 'lucide-react'
 import { createClient } from '@/utils/supabase/client'
 import { useRole } from '@/components/layout/RoleProvider'
@@ -20,7 +22,9 @@ export default function Sidebar() {
     const { role } = useRole()
 
     const navItems = [
-        { name: 'Dashboard', href: '/', icon: LayoutDashboard }
+        { name: 'Dashboard', href: '/', icon: LayoutDashboard },
+        { name: 'Task Listing', href: '/tasks', icon: ListTodo },
+        { name: 'Weekly Report', href: '/reports', icon: FileText }
     ];
 
     if (role === 'admin') {
@@ -42,12 +46,9 @@ export default function Sidebar() {
     }
 
     return (
-        <aside className="hidden md:flex flex-col w-64 h-screen bg-white border-r border-gray-200 shadow-sm sticky top-0 left-0">
-            <div className="h-16 flex items-center px-6 border-b border-gray-100">
-                <div className="flex items-center gap-3 text-indigo-700 font-bold text-lg tracking-tight">
-                    <CheckSquare className="h-6 w-6" />
-                    <span>Task Planner</span>
-                </div>
+        <aside className="hidden md:flex flex-col w-64 h-screen bg-white border-r border-gray-200 shadow-sm sticky top-0 left-0 print:hidden">
+            <div className="h-20 flex items-center justify-center border-b border-gray-100 p-4">
+                <img src="/logo.png" alt="Syazna World Logo" className="max-h-12 w-auto object-contain" />
             </div>
 
             <nav className="flex-1 overflow-y-auto py-6 px-4 space-y-8">
