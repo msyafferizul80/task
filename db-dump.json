@@ -1,0 +1,126 @@
+{
+  "latestAuth": [
+    {
+      "id": "96203014-ba66-4706-ba3e-72a430f70a15",
+      "email": "syafferizul12@gmail.com"
+    },
+    {
+      "id": "8e2c0955-6773-4e2e-9065-7bea9e8ce520",
+      "email": "syafferizul1@gmail.com"
+    },
+    {
+      "id": "dd99c3af-4ac6-40f9-a2df-f13a253d1d30",
+      "email": "testuser_1773106409897@example.com"
+    },
+    {
+      "id": "ddd85c35-56fb-4cf6-995b-c0254ed3f033",
+      "email": "syafferizul@gmail.com"
+    },
+    {
+      "id": "7900956d-3976-44a0-b1a6-fbbfdea4f281",
+      "email": "sheffi80@gmail.com"
+    }
+  ],
+  "profiles": [
+    {
+      "id": "96203014-ba66-4706-ba3e-72a430f70a15",
+      "email": "syafferizul12@gmail.com",
+      "full_name": "Megat test",
+      "employee_id": null,
+      "role": "employee",
+      "department": null,
+      "is_executive": false,
+      "supervisor_id": null,
+      "avatar_url": null,
+      "created_at": "2026-03-10T01:39:55.155376+00:00",
+      "updated_at": "2026-03-10T01:39:55.155376+00:00",
+      "join_date": null,
+      "probation_end_date": null,
+      "custom_al_entitlement": 0,
+      "status": "active",
+      "organization_id": null,
+      "phone": null,
+      "manager_id": null
+    },
+    {
+      "id": "8e2c0955-6773-4e2e-9065-7bea9e8ce520",
+      "email": "syafferizul1@gmail.com",
+      "full_name": "Megat Test",
+      "employee_id": null,
+      "role": "employee",
+      "department": null,
+      "is_executive": false,
+      "supervisor_id": null,
+      "avatar_url": null,
+      "created_at": "2026-03-10T01:34:41.463618+00:00",
+      "updated_at": "2026-03-10T01:34:41.463618+00:00",
+      "join_date": null,
+      "probation_end_date": null,
+      "custom_al_entitlement": 0,
+      "status": "active",
+      "organization_id": null,
+      "phone": null,
+      "manager_id": null
+    },
+    {
+      "id": "dd99c3af-4ac6-40f9-a2df-f13a253d1d30",
+      "email": "testuser_1773106409897@example.com",
+      "full_name": "Test Auto User",
+      "employee_id": null,
+      "role": "employee",
+      "department": null,
+      "is_executive": false,
+      "supervisor_id": null,
+      "avatar_url": null,
+      "created_at": "2026-03-10T01:33:30.071453+00:00",
+      "updated_at": "2026-03-10T01:33:30.071453+00:00",
+      "join_date": null,
+      "probation_end_date": null,
+      "custom_al_entitlement": 0,
+      "status": "active",
+      "organization_id": null,
+      "phone": null,
+      "manager_id": null
+    },
+    {
+      "id": "48ba2260-6b40-4533-b438-8eeeead6f1a7",
+      "email": "majikanpedia@gmail.com",
+      "full_name": "Chong",
+      "employee_id": null,
+      "role": "manager",
+      "department": null,
+      "is_executive": false,
+      "supervisor_id": null,
+      "avatar_url": null,
+      "created_at": "2026-02-09T06:07:45.590889+00:00",
+      "updated_at": "2026-02-09T06:07:45.590889+00:00",
+      "join_date": "2025-07-01",
+      "probation_end_date": null,
+      "custom_al_entitlement": 8,
+      "status": "active",
+      "organization_id": "30dcdaad-4675-4926-8941-74090dd2d19f",
+      "phone": "",
+      "manager_id": null
+    },
+    {
+      "id": "ddd85c35-56fb-4cf6-995b-c0254ed3f033",
+      "email": "syafferizul@gmail.com",
+      "full_name": "Siti",
+      "employee_id": null,
+      "role": "employee",
+      "department": null,
+      "is_executive": false,
+      "supervisor_id": null,
+      "avatar_url": null,
+      "created_at": "2026-02-09T06:05:34.362454+00:00",
+      "updated_at": "2026-02-09T06:05:34.362454+00:00",
+      "join_date": "2025-04-01",
+      "probation_end_date": null,
+      "custom_al_entitlement": 8,
+      "status": "active",
+      "organization_id": "30dcdaad-4675-4926-8941-74090dd2d19f",
+      "phone": "",
+      "manager_id": "48ba2260-6b40-4533-b438-8eeeead6f1a7"
+    }
+  ]
+}

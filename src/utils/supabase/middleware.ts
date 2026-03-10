@@ -45,6 +45,24 @@ export async function updateSession(request: NextRequest) {
         return NextResponse.redirect(url)
     }
 
+    // Check if the user is active, if not log them out
+    if (user && !request.nextUrl.pathname.startsWith('/_next')) {
+        const { data: profile } = await supabase
+            .from('lv_profiles')
+            .select('status')
+            .eq('id', user.id)
+            .single();
+
+        if (profile?.status !== 'active') {
+            await supabase.auth.signOut();
+            const url = request.nextUrl.clone();
+            url.pathname = '/login';
+            // Optionally, add a query param like `?error=inactive` to display an error on the login page
+            url.searchParams.set('error', 'inactive');
+            return NextResponse.redirect(url);
+        }
+    }
+
     if (user && isAuthRoute) {
         // User is logged in, redirect away from login page
         const url = request.nextUrl.clone()

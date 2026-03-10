@@ -18,7 +18,7 @@ export default function SortableTaskItem({ task, role }: SortableTaskItemProps) 
         transform,
         transition,
         isDragging,
-    } = useSortable({ id: task.id, disabled: role !== 'admin' });
+    } = useSortable({ id: task.id, disabled: role !== 'admin' && role !== 'manager' });
 
     const style = {
         transform: CSS.Transform.toString(transform),

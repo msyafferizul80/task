@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import { Loader2, ArrowRight } from 'lucide-react'
@@ -12,6 +12,16 @@ export default function LoginPage() {
     const [password, setPassword] = useState('')
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
+
+    useEffect(() => {
+        // Check for error messages passed via URL
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('error') === 'inactive') {
+            setError('Your session was terminated because your account is inactive or suspended.');
+            // Clean up the URL
+            router.replace('/login');
+        }
+    }, [router]);
 
     const handleAuth = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -27,6 +37,24 @@ export default function LoginPage() {
             if (authError) throw authError
 
             if (user) {
+                // Check user's status in lv_profiles before allowing them in
+                const { data: profile, error: profileError } = await supabase
+                    .from('lv_profiles')
+                    .select('status')
+                    .eq('id', user.id)
+                    .single()
+
+                if (profileError) {
+                    await supabase.auth.signOut()
+                    throw new Error('Failed to verify user profile.')
+                }
+
+                if (profile?.status !== 'active') {
+                    // Sign them out immediately
+                    await supabase.auth.signOut()
+                    throw new Error('Your account is inactive or suspended. Please contact the administrator.')
+                }
+
                 // Refresh to trigger middleware and go to dashboard
                 router.refresh()
                 router.push('/')

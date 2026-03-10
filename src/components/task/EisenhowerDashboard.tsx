@@ -45,8 +45,8 @@ export default function EisenhowerDashboard() {
                 )
             `).order('created_at', { ascending: false });
 
-            // If user is not admin, only fetch their tasks
-            if (role !== 'admin' && userId) {
+            // If an assignee is looking at the dashboard, default to their tasks
+            if (role !== 'admin' && role !== 'manager' && userId) {
                 query = query.eq('assignee_id', userId);
             }
 
@@ -380,7 +380,7 @@ export default function EisenhowerDashboard() {
                 <Form form={editForm} layout="vertical" onFinish={handleUpdateTask}>
                     <div className="grid grid-cols-2 gap-4">
                         <Form.Item name="customer_name" label="Customer Name" className="col-span-2" rules={[{ required: true, message: 'Customer name is required' }]}>
-                            <Select placeholder="Select Customer" size="large" showSearch optionFilterProp="children" disabled={role !== 'admin'}>
+                            <Select placeholder="Select Customer" size="large" showSearch optionFilterProp="children" disabled={role !== 'admin' && role !== 'manager'}>
                                 {customers.map(c => (
                                     <Option key={c.id} value={c.name}>{c.name}</Option>
                                 ))}
@@ -388,11 +388,11 @@ export default function EisenhowerDashboard() {
                         </Form.Item>
 
                         <Form.Item name="title" label="Task Title" className="col-span-2" rules={[{ required: true, message: 'Please enter a title' }]}>
-                            <Input placeholder="Enter task title" size="large" disabled={role !== 'admin'} />
+                            <Input placeholder="Enter task title" size="large" disabled={role !== 'admin' && role !== 'manager'} />
                         </Form.Item>
 
                         <Form.Item name="assignee_id" label="PIC / Assignee" rules={[{ required: true, message: 'Assignee is required' }]}>
-                            <Select placeholder="Select Assignee" size="large" showSearch optionFilterProp="children" disabled={role !== 'admin'}>
+                            <Select placeholder="Select Assignee" size="large" showSearch optionFilterProp="children" disabled={role !== 'admin' && role !== 'manager'}>
                                 {profiles.map(p => (
                                     <Option key={p.id} value={p.id}>{p.full_name}</Option>
                                 ))}
@@ -400,7 +400,7 @@ export default function EisenhowerDashboard() {
                         </Form.Item>
 
                         <Form.Item name="priority_type" label="Eisenhower Priority" rules={[{ required: true, message: 'Please select a priority' }]}>
-                            <Select placeholder="Select Priority" size="large" disabled={role !== 'admin'}>
+                            <Select placeholder="Select Priority" size="large" disabled={role !== 'admin' && role !== 'manager'}>
                                 <Option value="DO_FIRST"><span className="text-red-600 font-medium">🔴 DO FIRST (Urgent & Important)</span></Option>
                                 <Option value="SCHEDULE"><span className="text-blue-600 font-medium">🔵 SCHEDULE (Not Urgent, Important)</span></Option>
                                 <Option value="DELEGATE"><span className="text-yellow-600 font-medium">🟡 DELEGATE (Urgent, Not Important)</span></Option>
@@ -419,7 +419,7 @@ export default function EisenhowerDashboard() {
                     </div>
 
                     <Form.Item name="description" label="Description">
-                        <Input.TextArea rows={4} placeholder="Detailed task requirements..." className="resize-none" disabled={role !== 'admin'} />
+                        <Input.TextArea rows={4} placeholder="Detailed task requirements..." className="resize-none" disabled={role !== 'admin' && role !== 'manager'} />
                     </Form.Item>
 
                     {/* Note: due_date parsing requires Dayjs which we omitted for briefness, so we keep it simple or read-only if we used string date. Skipping due_date in edit form to avoid dayjs dependency errors without full setup, or we can just render it as text */}

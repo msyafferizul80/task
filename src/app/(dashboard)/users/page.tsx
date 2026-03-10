@@ -5,12 +5,15 @@ import { Table, Button, Modal, Form, Input, message, Tag, Select } from 'antd';
 const { Option } = Select;
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { createClient } from '@/utils/supabase/client';
+import { useRole } from '@/components/layout/RoleProvider';
 
 export default function UsersPage() {
     const supabase = createClient();
+    const { role } = useRole();
     const [users, setUsers] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const [form] = Form.useForm();
     const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -37,21 +40,32 @@ export default function UsersPage() {
     }, []);
 
     const handleSave = async (values: any) => {
+        setIsSubmitting(true);
         try {
             if (editingId) {
+                // Update existing user profile
                 const { error } = await supabase
                     .from('lv_profiles')
-                    .update({ full_name: values.full_name, email: values.email, role: values.role })
+                    .update({ full_name: values.full_name, role: values.role, status: values.status })
                     .eq('id', editingId);
 
                 if (error) throw error;
                 message.success('User updated successfully');
             } else {
-                // To truly create a user, we normally use Supabase Auth Admin API
-                // For this demo (if Admin API isn't exposed), we might hit an edge function or just insert if RLS allows
-                // But generally users are created via Auth signup
-                message.error('Please use the central auth system or invite link to add new users.');
-                return;
+                // Create new user via API route
+                const res = await fetch('/api/users', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(values)
+                });
+
+                const data = await res.json();
+
+                if (!res.ok) {
+                    throw new Error(data.error || 'Failed to create user');
+                }
+
+                message.success('New user created successfully');
             }
 
             setIsModalOpen(false);
@@ -59,13 +73,23 @@ export default function UsersPage() {
             fetchUsers();
         } catch (error: any) {
             console.error('Error saving user:', error.message);
-            message.error('Failed to save user');
+            message.error(error.message || 'Failed to save user');
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
     const openEditModal = (record: any) => {
         setEditingId(record.id);
         form.setFieldsValue(record);
+        setIsModalOpen(true);
+    };
+
+    const openCreateModal = () => {
+        setEditingId(null);
+        form.resetFields();
+        // Set default values for new user
+        form.setFieldsValue({ status: 'active' });
         setIsModalOpen(true);
     };
 
@@ -92,6 +116,15 @@ export default function UsersPage() {
         }
     ];
 
+    if (role && role !== 'admin') {
+        return (
+            <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 flex flex-col items-center justify-center h-64 text-center">
+                <h2 className="text-xl font-bold text-gray-800 mb-2">Access Denied</h2>
+                <p className="text-gray-500">You do not have permission to view this page. Only administrators can manage users.</p>
+            </div>
+        );
+    }
+
     return (
         <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100">
             <div className="flex justify-between items-center mb-6">
@@ -99,9 +132,8 @@ export default function UsersPage() {
                     <h1 className="text-2xl font-bold text-gray-800">User Management</h1>
                     <p className="text-gray-500 text-sm">Manage staff & PICs (Editing Profiles)</p>
                 </div>
-                {/* Note: In a real Syazna app, Add User requires Supabase Auth Signup */}
-                <Button type="primary" disabled icon={<PlusOutlined />}>
-                    Add New User (Via Root App)
+                <Button type="primary" onClick={openCreateModal} icon={<PlusOutlined />}>
+                    Add New User
                 </Button>
             </div>
 
@@ -114,20 +146,44 @@ export default function UsersPage() {
             />
 
             <Modal
-                title="Edit User Profile"
+                title={editingId ? "Edit User Profile" : "Add New User"}
                 open={isModalOpen}
                 onCancel={() => setIsModalOpen(false)}
                 onOk={() => form.submit()}
-                okText="Save Profile"
+                confirmLoading={isSubmitting}
+                okText={editingId ? "Save Profile" : "Create User"}
             >
                 <Form form={form} layout="vertical" onFinish={handleSave}>
-                    <Form.Item name="full_name" label="Full Name" rules={[{ required: true }]}>
+                    <Form.Item name="full_name" label="Full Name" rules={[{ required: true, message: 'Please enter full name' }]}>
                         <Input />
                     </Form.Item>
+
+                    <Form.Item name="email" label="Email" rules={[
+                        { required: true, message: 'Please enter email' },
+                        { type: 'email', message: 'Please enter a valid email' }
+                    ]}>
+                        <Input disabled={!!editingId} />
+                    </Form.Item>
+
+                    {!editingId && (
+                        <Form.Item name="password" label="Password" rules={[{ required: true, message: 'Please enter a temporary password' }]}>
+                            <Input.Password />
+                        </Form.Item>
+                    )}
+
                     <Form.Item name="role" label="Role" rules={[{ required: true, message: 'Please select a role' }]}>
                         <Select placeholder="Select a role">
                             <Option value="admin">Admin</Option>
-                            <Option value="user">User</Option>
+                            <Option value="manager">Manager</Option>
+                            <Option value="employee">Employee</Option>
+                        </Select>
+                    </Form.Item>
+
+                    <Form.Item name="status" label="Status" rules={[{ required: true, message: 'Please select a status' }]}>
+                        <Select placeholder="Select a status">
+                            <Option value="active">Active</Option>
+                            <Option value="inactive">Inactive</Option>
+                            <Option value="suspended">Suspended</Option>
                         </Select>
                     </Form.Item>
                 </Form>

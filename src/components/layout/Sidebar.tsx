@@ -24,11 +24,15 @@ export default function Sidebar() {
     const navItems = [
         { name: 'Dashboard', href: '/', icon: LayoutDashboard },
         { name: 'Task Listing', href: '/tasks', icon: ListTodo },
-        { name: 'Weekly Report', href: '/reports', icon: FileText }
+        { name: 'Weekly Report', href: '/reports', icon: FileText },
+        { name: 'My Profile', href: '/profile', icon: UserCircle }
     ];
 
-    if (role === 'admin') {
+    if (role === 'admin' || role === 'manager') {
         navItems.push({ name: 'Customers', href: '/customers', icon: Users });
+    }
+
+    if (role === 'admin') {
         navItems.push({ name: 'User Management', href: '/users', icon: UserCircle });
     }
 
