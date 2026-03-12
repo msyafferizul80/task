@@ -10,7 +10,8 @@ import {
     LogOut,
     CheckSquare,
     ListTodo,
-    FileText
+    FileText,
+    BarChart2
 } from 'lucide-react'
 import { createClient } from '@/utils/supabase/client'
 import { useRole } from '@/components/layout/RoleProvider'
@@ -29,6 +30,7 @@ export default function Sidebar() {
     ];
 
     if (role === 'admin' || role === 'manager') {
+        navItems.push({ name: 'Analytics', href: '/analytics', icon: BarChart2 });
         navItems.push({ name: 'Customers', href: '/customers', icon: Users });
     }
 
