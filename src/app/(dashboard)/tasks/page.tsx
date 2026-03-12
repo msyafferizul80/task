@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Card, Select, Input, Table, Tag, Typography, Spin, message, Modal, Form, Button, DatePicker } from 'antd';
 import { createClient } from '@/utils/supabase/client';
 import { Task, Profile } from '@/lib/types';
@@ -28,22 +28,7 @@ export default function TaskListingPage() {
     const supabase = createClient();
     const { role } = useRole();
 
-    useEffect(() => {
-        fetchData();
-
-        const subscription = supabase
-            .channel('tasks-changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'tsk_tasks' }, () => {
-                fetchData();
-            })
-            .subscribe();
-
-        return () => {
-            supabase.removeChannel(subscription);
-        };
-    }, []);
-
-    const fetchData = async () => {
+    const fetchData = useCallback(async () => {
         try {
             const { data: { user } } = await supabase.auth.getUser();
             const userId = user?.id || null;
@@ -81,7 +66,22 @@ export default function TaskListingPage() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [role]);
+
+    useEffect(() => {
+        fetchData();
+
+        const subscription = supabase
+            .channel('tasklisting-realtime')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'tsk_tasks' }, () => {
+                fetchData();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(subscription);
+        };
+    }, [fetchData]);
 
     const handleUpdateTask = async (values: any) => {
         if (!selectedTask) return;

@@ -8,9 +8,10 @@ import { Task } from '@/lib/types';
 interface SortableTaskItemProps {
     task: Task;
     role?: string | null;
+    isDone?: boolean;
 }
 
-export default function SortableTaskItem({ task, role }: SortableTaskItemProps) {
+export default function SortableTaskItem({ task, role, isDone = false }: SortableTaskItemProps) {
     const {
         attributes,
         listeners,
@@ -42,9 +43,15 @@ export default function SortableTaskItem({ task, role }: SortableTaskItemProps) 
             style={style}
             {...attributes}
             {...listeners}
-            className={`bg-white p-3 rounded-md shadow-sm border border-gray-200 hover:shadow-md transition-shadow ${role === 'admin' ? 'cursor-grab active:cursor-grabbing' : ''} ${getBorderColor()}`}
+            className={`relative bg-white p-3 rounded-md shadow-sm border transition-shadow
+                ${isDone ? 'border-emerald-100 opacity-70' : 'border-gray-200 hover:shadow-md'}
+                ${role === 'admin' || role === 'manager' ? 'cursor-grab active:cursor-grabbing' : ''}
+                ${getBorderColor()}`}
         >
-            <div className="font-medium text-sm mb-1">{task.title}</div>
+            {isDone && (
+                <span className="absolute top-2 right-2 text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">✓ Siap</span>
+            )}
+            <div className={`font-medium text-sm mb-1 ${isDone ? 'line-through text-gray-400' : 'text-gray-800'}`}>{task.title}</div>
 
             <div className="flex flex-col gap-1 mt-2 text-xs mb-2">
                 {task.customer_name && (

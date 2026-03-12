@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Card, Button, Input, Modal, Form, Select, DatePicker, message, Spin, Typography } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { createClient } from '@/utils/supabase/client';
@@ -30,7 +30,7 @@ export default function EisenhowerDashboard() {
 
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
-    const fetchTasksAndProfiles = async () => {
+    const fetchTasksAndProfiles = useCallback(async () => {
         try {
             const { data: { user } } = await supabase.auth.getUser();
             const userId = user?.id || null;
@@ -69,13 +69,13 @@ export default function EisenhowerDashboard() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [role]);
 
     useEffect(() => {
         fetchTasksAndProfiles();
 
         const subscription = supabase
-            .channel('tasks-changes')
+            .channel('eisenhower-tasks-realtime')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'tsk_tasks' }, () => {
                 fetchTasksAndProfiles();
             })
@@ -84,7 +84,7 @@ export default function EisenhowerDashboard() {
         return () => {
             supabase.removeChannel(subscription);
         };
-    }, []);
+    }, [fetchTasksAndProfiles]);
 
     const handleCreateTask = async (values: any) => {
         try {
