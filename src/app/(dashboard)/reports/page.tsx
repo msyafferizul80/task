@@ -102,9 +102,6 @@ export default function WeeklyReportPage() {
         }
     };
 
-    const handleNotaChange = (id: string, newNota: string) => {
-        setReportTasks(prev => prev.map(t => t.id === id ? { ...t, reportNota: newNota } : t));
-    };
 
     // Calculate Summaries
     const completedTasks = reportTasks.filter(t => t.status === 'DONE');
@@ -192,7 +189,7 @@ export default function WeeklyReportPage() {
             {/* Control Panel (Hidden on Print) */}
             <div className="bg-white/80 p-6 rounded-2xl shadow-sm border border-slate-100 no-print">
                 <Title level={2} className="!text-indigo-900 !mb-2 mt-0">Weekly Reports</Title>
-                <Text type="secondary" className="text-base mb-6 block">Jana, edit draft (Preview Mode), dan print laporan mingguan untuk pelanggan.</Text>
+                <Text type="secondary" className="text-base mb-6 block">Jana dan print laporan mingguan untuk pelanggan.</Text>
 
                 <div className="flex flex-wrap gap-4 items-end bg-slate-50 p-4 rounded-xl border border-slate-100">
                     <div className="w-64">
@@ -324,16 +321,9 @@ export default function WeeklyReportPage() {
                                             <td className="py-4 px-4 font-semibold text-slate-800">{t.title}</td>
                                             <td className="py-4 px-4 text-slate-600 text-sm whitespace-pre-wrap">
                                                 {/* Edit mode visible on screen, raw text visible on print */}
-                                                <div className="no-print">
-                                                    <Input.TextArea
-                                                        value={t.reportNota}
-                                                        onChange={(e) => handleNotaChange(t.id, e.target.value)}
-                                                        autoSize={{ minRows: 2, maxRows: 6 }}
-                                                        placeholder="Nota completed task..."
-                                                        className="bg-yellow-50 focus:bg-white"
-                                                    />
+                                                <div className="text-slate-600 italic">
+                                                    {t.reportNota || '-'}
                                                 </div>
-                                                <div className="hidden print:block">{t.reportNota || '-'}</div>
                                             </td>
                                             <td className="py-4 px-4 text-slate-700 font-medium text-sm">{t.assignee?.full_name || '-'}</td>
                                         </tr>
@@ -367,16 +357,9 @@ export default function WeeklyReportPage() {
                                             </td>
                                             <td className="py-4 px-4 text-slate-600 text-sm whitespace-pre-wrap">
                                                 {/* Edit mode visible on screen, raw text visible on print */}
-                                                <div className="no-print">
-                                                    <Input.TextArea
-                                                        value={t.reportNota}
-                                                        onChange={(e) => handleNotaChange(t.id, e.target.value)}
-                                                        autoSize={{ minRows: 2, maxRows: 6 }}
-                                                        placeholder="Kemas kini nota ongoing task..."
-                                                        className="bg-yellow-50 focus:bg-white"
-                                                    />
+                                                <div className="text-slate-600 italic">
+                                                    {t.reportNota || '-'}
                                                 </div>
-                                                <div className="hidden print:block">{t.reportNota || '-'}</div>
                                             </td>
                                             <td className="py-4 px-4 text-slate-700">
                                                 <span className={`px-2 py-1 rounded-md text-xs font-bold print:border print:border-black ${t.status === 'REVIEW' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
