@@ -15,7 +15,7 @@ import {
     RefreshCw,
     ExternalLink,
 } from 'lucide-react';
-import { differenceInDays, formatDistanceToNow } from 'date-fns';
+import { differenceInDays, formatDistanceToNow, parseISO } from 'date-fns';
 import Link from 'next/link';
 
 const { Title, Text } = Typography;
@@ -448,6 +448,44 @@ export default function AnalyticsPage() {
         return counts;
     }, [overdueTasks]);
 
+    const customerDetailedData = useMemo(() => {
+        const stats: Record<string, { total: number; completed: number; pending: number; overdue: number; firstTaskDate: Date; tasksPerDay: number }> = {};
+        
+        tasks.forEach(t => {
+            const name = t.customer_name || 'No Customer';
+            const createdAt = new Date(t.created_at);
+            
+            if (!stats[name]) {
+                stats[name] = { total: 0, completed: 0, pending: 0, overdue: 0, firstTaskDate: createdAt, tasksPerDay: 0 };
+            }
+
+            stats[name].total += 1;
+            
+            if (t.status === 'DONE') {
+                stats[name].completed += 1;
+            } else {
+                stats[name].pending += 1;
+                if (t.due_date && new Date(t.due_date) < now) {
+                    stats[name].overdue += 1;
+                }
+            }
+
+            if (createdAt < stats[name].firstTaskDate) {
+                stats[name].firstTaskDate = createdAt;
+            }
+        });
+
+        // Calculate tasks per day
+        Object.keys(stats).forEach(name => {
+            const daysSinceFirst = Math.max(1, differenceInDays(now, stats[name].firstTaskDate));
+            stats[name].tasksPerDay = Number((stats[name].total / daysSinceFirst).toFixed(2));
+        });
+
+        return Object.entries(stats)
+            .map(([customer, data]) => ({ customer, ...data }))
+            .sort((a, b) => b.total - a.total);
+    }, [tasks, now]);
+
     // ── Bottleneck Table Columns ──────────────────────────────────────────────
 
     const bottleneckColumns = [
@@ -818,6 +856,103 @@ export default function AnalyticsPage() {
                     />
                 </Card>
             </div>
+
+            {/* ── Customer Detailed Analytics Table ── */}
+            <Card
+                className="rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 mt-2"
+                variant="borderless"
+                title={
+                    <div className="flex items-center gap-2 py-2">
+                        <Users className="w-5 h-5 text-indigo-600" />
+                        <span className="font-extrabold text-slate-800 text-lg">Customer Analytics (Maklumat Terperinci)</span>
+                        <span className="text-xs font-normal text-slate-400 bg-slate-50 border border-slate-100 px-3 py-1 rounded-full ml-2">
+                            {customerDetailedData.length} Pelanggan
+                        </span>
+                    </div>
+                }
+            >
+                <Table
+                    dataSource={customerDetailedData}
+                    rowKey="customer"
+                    pagination={{ pageSize: 10 }}
+                    scroll={{ x: 800 }}
+                    columns={[
+                        {
+                            title: 'Customer Name',
+                            dataIndex: 'customer',
+                            key: 'customer',
+                            sorter: (a: any, b: any) => a.customer.localeCompare(b.customer),
+                            render: (text: string) => <span className="font-bold text-slate-700">{text}</span>
+                        },
+                        {
+                            title: <Tooltip title="Jumlah keseluruhan task dari mula hingga kini">Total Tasks</Tooltip>,
+                            dataIndex: 'total',
+                            key: 'total',
+                            sorter: (a: any, b: any) => a.total - b.total,
+                            defaultSortOrder: 'descend',
+                            render: (val: number) => <span className="font-bold text-lg text-slate-800">{val}</span>
+                        },
+                        {
+                            title: <Tooltip title="Task yang sedang dijalankan / diusahakan">Pending Active</Tooltip>,
+                            dataIndex: 'pending',
+                            key: 'pending',
+                            sorter: (a: any, b: any) => a.pending - b.pending,
+                            render: (val: number, record: any) => (
+                                <div className="flex flex-col gap-1">
+                                    <span className="font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md w-fit">{val} task</span>
+                                    {record.overdue > 0 && <span className="text-[10px] text-red-500 font-bold bg-red-50 border border-red-100 px-1 py-0.5 rounded w-fit">⚠️ {record.overdue} OVERDUE</span>}
+                                </div>
+                            )
+                        },
+                        {
+                            title: <Tooltip title="Task yang telah siap (DONE)">Completed (DONE)</Tooltip>,
+                            dataIndex: 'completed',
+                            key: 'completed',
+                            sorter: (a: any, b: any) => a.completed - b.completed,
+                            render: (val: number, record: any) => {
+                                const percent = Math.round((val / record.total) * 100) || 0;
+                                return (
+                                    <div className="flex items-center gap-2">
+                                        <span className="font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md">{val} task</span>
+                                        <span className="text-[10px] text-slate-400 font-bold">({percent}%)</span>
+                                    </div>
+                                );
+                            }
+                        },
+                        {
+                            title: <Tooltip title="Purata task baru yang masuk sehari secara sejarah">Frequency (Task/Hari)</Tooltip>,
+                            dataIndex: 'tasksPerDay',
+                            key: 'tasksPerDay',
+                            sorter: (a: any, b: any) => a.tasksPerDay - b.tasksPerDay,
+                            render: (val: number) => {
+                                const isHigh = val > 2;
+                                return (
+                                    <span className={`font-bold ${isHigh ? 'text-rose-500' : 'text-slate-600'}`}>
+                                        {val} {isHigh && '🔥'}
+                                    </span>
+                                );
+                            }
+                        },
+                        {
+                            title: 'Action',
+                            key: 'action',
+                            render: (_: any, record: any) => (
+                                <Button
+                                    type="text"
+                                    size="small"
+                                    className="text-indigo-600 bg-indigo-50 border border-indigo-100 hover:bg-indigo-600 hover:text-white transition-all font-semibold text-xs"
+                                    onClick={() => {
+                                        const filtered = tasks.filter(t => (t.customer_name || 'No Customer') === record.customer);
+                                        openDrill(`Detailed View: ${record.customer} (${filtered.length} task)`, filtered);
+                                    }}
+                                >
+                                    Semak Task
+                                </Button>
+                            )
+                        }
+                    ]}
+                />
+            </Card>
         </div>
     );
 }

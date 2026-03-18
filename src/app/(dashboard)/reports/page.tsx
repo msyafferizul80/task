@@ -117,6 +117,31 @@ export default function WeeklyReportPage() {
         return acc;
     }, {} as Record<string, { total: number, done: number }>);
 
+    // Calculate Customer Summary specific for this report data
+    const customerSummary = reportTasks.reduce((acc, task) => {
+        const cName = task.customer_name || 'No Customer';
+        if (!acc[cName]) {
+            acc[cName] = { total: 0, completed: 0, pending: 0, overdue: 0 };
+        }
+        acc[cName].total += 1;
+        
+        if (task.status === 'DONE') {
+            acc[cName].completed += 1;
+        } else {
+            acc[cName].pending += 1;
+            if (task.due_date && dayjs(task.due_date).isBefore(dayjs())) {
+                acc[cName].overdue += 1;
+            }
+        }
+        return acc;
+    }, {} as Record<string, { total: number, completed: number, pending: number, overdue: number }>);
+    
+    // Convert to array and sort descending by total tasks
+    const customerSummaryArray = Object.entries(customerSummary)
+        .map(([name, stats]) => ({ name, ...stats }))
+        .sort((a, b) => b.total - a.total);
+
+
     const handleCopyWhatsApp = () => {
         if (!selectedCustomer) return;
         const startDate = dateRange[0] ? dateRange[0].format('DD/MM/YYYY') : 'N/A';
@@ -299,6 +324,48 @@ export default function WeeklyReportPage() {
                                 </div>
                             ))}
                         </div>
+                    </div>
+
+                    {/* Customer Task Summary */}
+                    <div className="mb-10 page-break-avoid">
+                        <h3 className="text-lg font-bold text-slate-800 mb-4 bg-slate-50 p-2 border-l-4 border-indigo-600 print:border-black">Customer Task Summary</h3>
+                        {customerSummaryArray.length === 0 ? (
+                            <p className="text-slate-500 italic">Tiada data pelanggan untuk laporan ini.</p>
+                        ) : (
+                            <table className="w-full text-left border-collapse border border-slate-200 print:border-black">
+                                <thead>
+                                    <tr className="bg-slate-100 border-y border-slate-300 print:border-black">
+                                        <th className="py-2.5 px-4 font-bold text-sm text-slate-700 border-r border-slate-200 print:border-black w-2/5">Customer Name</th>
+                                        <th className="py-2.5 px-4 font-bold text-sm text-slate-700 border-r border-slate-200 print:border-black text-center">Total Tasks</th>
+                                        <th className="py-2.5 px-4 font-bold text-sm text-slate-700 border-r border-slate-200 print:border-black text-center">Pending Active</th>
+                                        <th className="py-2.5 px-4 font-bold text-sm text-slate-700 text-center">Completed (DONE)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {customerSummaryArray.map((c, idx) => {
+                                        const percent = c.total > 0 ? Math.round((c.completed / c.total) * 100) : 0;
+                                        return (
+                                            <tr key={c.name} className="border-b border-slate-200 hover:bg-slate-50 align-middle print:border-black">
+                                                <td className="py-2 px-4 font-semibold text-slate-800 border-r border-slate-200 print:border-black">{c.name}</td>
+                                                <td className="py-2 px-4 text-center font-bold text-slate-800 border-r border-slate-200 print:border-black text-lg">{c.total}</td>
+                                                <td className="py-2 px-4 text-center border-r border-slate-200 print:border-black">
+                                                    <div className="flex flex-col items-center justify-center">
+                                                        <span className="font-semibold text-indigo-600 print:text-black">{c.pending} task</span>
+                                                        {c.overdue > 0 && (
+                                                            <span className="text-[10px] text-red-500 font-bold mt-0.5 print:text-black">⚠️ {c.overdue} OVERDUE</span>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                                <td className="py-2 px-4 text-center print:border-black">
+                                                    <span className="font-semibold text-emerald-600 print:text-black">{c.completed} task</span>
+                                                    <span className="text-[10px] text-slate-400 font-bold ml-1 print:text-black">({percent}%)</span>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        )}
                     </div>
 
                     {/* Section A: Completed Tasks */}
