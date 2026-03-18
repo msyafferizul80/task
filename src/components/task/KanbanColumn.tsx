@@ -45,7 +45,7 @@ export default function KanbanColumn({ status, tasks, role, isDoneColumn = false
     const hasMore = isDoneColumn && tasks.length > DONE_DISPLAY_LIMIT;
 
     return (
-        <div className={`flex flex-col rounded-xl border ${meta.border} w-72 min-w-72 transition-all duration-300`}>
+        <div className={`flex flex-col rounded-xl border ${meta.border} w-[85vw] min-w-[85vw] sm:w-72 sm:min-w-[288px] snap-start transition-all duration-300`}>
 
             {/* Column Header */}
             <div

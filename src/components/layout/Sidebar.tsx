@@ -27,6 +27,7 @@ export default function Sidebar() {
 
     const navItems = [
         { name: 'Dashboard', href: '/', icon: LayoutDashboard },
+        { name: 'My Tasks', href: '/mytasks', icon: CheckSquare },
         { name: 'Task Listing', href: '/tasks', icon: ListTodo },
         { name: 'Weekly Report', href: '/reports', icon: FileText },
         { name: 'My Profile', href: '/profile', icon: UserCircle }

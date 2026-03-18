@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { Card, Button, Input, Modal, Form, Select, DatePicker, message, Spin, Typography } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, ExclamationCircleFilled } from '@ant-design/icons';
 import { createClient } from '@/utils/supabase/client';
 import { Task, PriorityType } from '@/lib/types';
 import KanbanBoard from '@/components/task/KanbanBoard';
@@ -138,6 +138,32 @@ export default function EisenhowerDashboard() {
         }
     };
 
+    const handleDeleteTask = () => {
+        if (!selectedTask) return;
+        Modal.confirm({
+            title: 'Delete Task',
+            icon: <ExclamationCircleFilled className="text-red-500" />,
+            content: `Are you sure you want to delete "${selectedTask.title}"? This action cannot be undone.`,
+            okText: 'Yes, Delete',
+            okType: 'danger',
+            cancelText: 'Cancel',
+            centered: true,
+            onOk: async () => {
+                try {
+                    const { error } = await supabase.from('tsk_tasks').delete().eq('id', selectedTask.id);
+                    if (error) throw error;
+                    message.success('Task deleted successfully');
+                    setIsEditModalOpen(false);
+                    setSelectedTask(null);
+                    editForm.resetFields();
+                } catch (error: any) {
+                    console.error('Error deleting task:', error.message);
+                    message.error('Failed to delete task');
+                }
+            }
+        });
+    };
+
     const getPriorityColor = (type: PriorityType | null) => {
         switch (type) {
             case 'DO_FIRST': return 'border-rose-200 hover:border-rose-400 shadow-rose-100/50';
@@ -205,47 +231,49 @@ export default function EisenhowerDashboard() {
 
     return (
         <div className="flex flex-col gap-6 font-sans">
-            <div className="flex justify-between items-center bg-white/80 backdrop-blur-xl p-6 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100/50">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 bg-white/80 backdrop-blur-xl p-4 sm:p-6 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100/50">
                 <div>
-                    <h1 className="text-2xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-violet-600 mb-1 tracking-tight">Syazna World Priority Grid</h1>
-                    <p className="text-slate-500 font-medium text-sm">Strategic planning and task capitalization for premium clients</p>
+                    <h1 className="text-xl sm:text-2xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-violet-600 mb-1 tracking-tight">Syazna World Priority Grid</h1>
+                    <p className="text-slate-500 font-medium text-xs sm:text-sm">Strategic planning and task capitalization for premium clients</p>
                 </div>
-                <Button type="primary" icon={<PlusOutlined />} onClick={() => setIsModalOpen(true)} size="large" className="bg-gradient-to-r from-indigo-600 to-violet-600 border-0 shadow-lg shadow-indigo-200/50 hover:shadow-indigo-400/50 rounded-xl h-12 px-6 font-semibold transition-all hover:-translate-y-0.5">
+                <Button type="primary" icon={<PlusOutlined />} onClick={() => setIsModalOpen(true)} size="large" className="bg-gradient-to-r from-indigo-600 to-violet-600 border-0 shadow-lg shadow-indigo-200/50 hover:shadow-indigo-400/50 rounded-xl h-12 px-4 sm:px-6 font-semibold transition-all hover:-translate-y-0.5 w-full sm:w-auto">
                     New Strategic Task
                 </Button>
             </div>
 
             {/* Filter Bar */}
-            <div className="bg-white/60 backdrop-blur-md p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-wrap gap-4 items-center">
-                <span className="font-bold text-slate-700 uppercase tracking-widest text-[11px] ml-2 opacity-70">Filters:</span>
-                <Select
-                    placeholder="Search Client Organization..."
-                    value={filterCustomer || undefined}
-                    onChange={val => setFilterCustomer(val || '')}
-                    className="w-64"
-                    size="large"
-                    allowClear
-                    showSearch
-                    optionFilterProp="children"
-                >
-                    {customers.map(c => (
-                        <Option key={c.id} value={c.name}>{c.name}</Option>
-                    ))}
-                </Select>
-                <Select
-                    placeholder="Select Executive Assignee..."
-                    value={filterPIC || undefined}
-                    onChange={val => setFilterPIC(val)}
-                    className="w-64"
-                    size="large"
-                    allowClear
-                    showSearch
-                    optionFilterProp="children"
-                >
-                    {profiles.map(p => (
-                        <Option key={p.id} value={p.id}>{p.full_name}</Option>
-                    ))}
-                </Select>
+            <div className="bg-white/60 backdrop-blur-md p-4 rounded-2xl shadow-sm border border-slate-100">
+                <span className="font-bold text-slate-700 uppercase tracking-widest text-[11px] opacity-70 block mb-3">Filters:</span>
+                <div className="flex flex-col sm:flex-row gap-3">
+                    <Select
+                        placeholder="Search Client Organization..."
+                        value={filterCustomer || undefined}
+                        onChange={val => setFilterCustomer(val || '')}
+                        className="w-full sm:w-64"
+                        size="large"
+                        allowClear
+                        showSearch
+                        optionFilterProp="children"
+                    >
+                        {customers.map(c => (
+                            <Option key={c.id} value={c.name}>{c.name}</Option>
+                        ))}
+                    </Select>
+                    <Select
+                        placeholder="Select Executive Assignee..."
+                        value={filterPIC || undefined}
+                        onChange={val => setFilterPIC(val)}
+                        className="w-full sm:w-64"
+                        size="large"
+                        allowClear
+                        showSearch
+                        optionFilterProp="children"
+                    >
+                        {profiles.map(p => (
+                            <Option key={p.id} value={p.id}>{p.full_name}</Option>
+                        ))}
+                    </Select>
+                </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
@@ -317,9 +345,10 @@ export default function EisenhowerDashboard() {
                 onCancel={() => setIsModalOpen(false)}
                 footer={null}
                 width={600}
+                style={{ maxWidth: '95vw' }}
             >
                 <Form form={form} layout="vertical" onFinish={handleCreateTask}>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <Form.Item name="customer_name" label="Customer Name" className="col-span-2" rules={[{ required: true, message: 'Customer name is required' }]}>
                             <Select placeholder="Select Customer" size="large" showSearch optionFilterProp="children">
                                 {customers.map(c => (
@@ -376,9 +405,10 @@ export default function EisenhowerDashboard() {
                 }}
                 footer={null}
                 width={600}
+                style={{ maxWidth: '95vw' }}
             >
                 <Form form={editForm} layout="vertical" onFinish={handleUpdateTask}>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <Form.Item name="customer_name" label="Customer Name" className="col-span-2" rules={[{ required: true, message: 'Customer name is required' }]}>
                             <Select placeholder="Select Customer" size="large" showSearch optionFilterProp="children" disabled={role !== 'admin' && role !== 'manager'}>
                                 {customers.map(c => (
@@ -429,12 +459,23 @@ export default function EisenhowerDashboard() {
                         </div>
                     )}
 
-                    <Form.Item className="flex justify-end mb-0 mt-6 pt-4 border-t">
-                        <Button onClick={() => {
-                            setIsEditModalOpen(false);
-                            setSelectedTask(null);
-                        }} className="mr-3" size="large">Cancel</Button>
-                        <Button type="primary" htmlType="submit" size="large" className="bg-indigo-600 shadow-md">Update Task</Button>
+                    <Form.Item className="mb-0 mt-6 pt-4 border-t">
+                        <div className="flex items-center justify-between w-full">
+                            <div>
+                                {(role === 'admin' || role === 'manager') && selectedTask && (
+                                    <Button danger type="text" onClick={handleDeleteTask} size="large" icon={<DeleteOutlined />}>
+                                        Delete
+                                    </Button>
+                                )}
+                            </div>
+                            <div>
+                                <Button onClick={() => {
+                                    setIsEditModalOpen(false);
+                                    setSelectedTask(null);
+                                }} className="mr-3" size="large">Cancel</Button>
+                                <Button type="primary" htmlType="submit" size="large" className="bg-indigo-600 shadow-md">Update Task</Button>
+                            </div>
+                        </div>
                     </Form.Item>
                 </Form>
             </Modal>

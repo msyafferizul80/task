@@ -10,7 +10,7 @@ import { SearchOutlined, CheckCircleOutlined, SyncOutlined, ClockCircleOutlined,
 const { Title, Text } = Typography;
 const { Option } = Select;
 
-export default function TaskListingPage() {
+export default function MyTasksPage() {
     const [tasks, setTasks] = useState<Task[]>([]);
     const [customers, setCustomers] = useState<any[]>([]);
     const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -42,8 +42,8 @@ export default function TaskListingPage() {
                 )
             `).order('created_at', { ascending: false });
 
-            // If user is not admin, only fetch their tasks
-            if (role !== 'admin' && role !== 'manager' && userId) {
+            // Always only fetch their tasks regardless of role
+            if (userId) {
                 query = query.eq('assignee_id', userId);
             }
 
@@ -160,7 +160,7 @@ export default function TaskListingPage() {
         const matchesSearch = t.title.toLowerCase().includes(searchText.toLowerCase()) ||
             (t.description && t.description.toLowerCase().includes(searchText.toLowerCase()));
         const matchesCustomer = filterCustomer ? t.customer_name === filterCustomer : true;
-        const matchesStatus = filterStatus ? t.status === filterStatus : true;
+        const matchesStatus = filterStatus ? t.status === filterStatus : t.status !== 'DONE';
         const matchesPIC = filterPIC ? t.assignee_id === filterPIC : true;
 
         return matchesSearch && matchesCustomer && matchesStatus && matchesPIC;
@@ -257,8 +257,8 @@ export default function TaskListingPage() {
     return (
         <div className="flex flex-col gap-6 font-sans">
             <div className="bg-white/80 p-6 rounded-2xl shadow-sm border border-slate-100">
-                <Title level={2} className="!text-indigo-900 !mb-2 mt-0">Task Listing</Title>
-                <Text type="secondary" className="text-base">Lihat dan urus semua tugasan termasuk yang telah siap (DONE).</Text>
+                <Title level={2} className="!text-indigo-900 !mb-2 mt-0">My Tasks</Title>
+                <Text type="secondary" className="text-base">Lihat dan urus tugasan anda yang sedang aktif.</Text>
             </div>
 
             <Card bordered={false} className="shadow-sm rounded-xl border border-slate-100">

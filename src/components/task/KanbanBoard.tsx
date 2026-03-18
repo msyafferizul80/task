@@ -122,7 +122,7 @@ export default function KanbanBoard({ tasks, role }: KanbanBoardProps) {
             </div>
 
             {/* Board */}
-            <div className="flex gap-4 overflow-x-auto pb-4">
+            <div className="flex gap-4 overflow-x-auto pb-4 snap-x snap-mandatory">
                 <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={handleDragEnd}>
                     {ACTIVE_STATUSES.map(status => (
                         <KanbanColumn
