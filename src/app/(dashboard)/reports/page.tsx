@@ -93,7 +93,6 @@ export default function WeeklyReportPage() {
 
             setReportTasks(rTasks);
             setPreviewMode(true);
-            message.success('Preview report berjaya dijana.');
         } catch (err: any) {
             console.error(err);
             message.error('Gagal menjana preview.');

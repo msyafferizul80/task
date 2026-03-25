@@ -1,6 +1,6 @@
 'use client'
 
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
@@ -18,6 +18,7 @@ import {
 import { createClient } from '@/utils/supabase/client'
 import { useRole } from '@/components/layout/RoleProvider'
 import { motion, AnimatePresence } from 'framer-motion'
+import { differenceInDays } from 'date-fns'
 
 export default function Sidebar() {
     const pathname = usePathname()
@@ -25,10 +26,45 @@ export default function Sidebar() {
     const supabase = createClient()
     const { role } = useRole()
 
-    const navItems = [
+    const [bottleneckCount, setBottleneckCount] = useState(0)
+    const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false)
+    const [isLoggingOut, setIsLoggingOut] = useState(false)
+
+    // Fetch bottleneck tasks for the current user
+    useEffect(() => {
+        const fetchBottleneck = async () => {
+            try {
+                const { data: { user } } = await supabase.auth.getUser()
+                if (!user) return
+
+                const { data } = await supabase
+                    .from('tsk_tasks')
+                    .select('id, created_at, status')
+                    .eq('assignee_id', user.id)
+                    .neq('status', 'DONE')
+
+                if (!data) return
+                const now = new Date()
+                const count = data.filter(t => differenceInDays(now, new Date(t.created_at)) >= 3).length
+                setBottleneckCount(count)
+            } catch (e) {
+                // silently fail
+            }
+        }
+
+        fetchBottleneck()
+        const channel = supabase
+            .channel('sidebar-bottleneck')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'tsk_tasks' }, fetchBottleneck)
+            .subscribe()
+        return () => { supabase.removeChannel(channel) }
+    }, [])
+
+    // Nav items with optional badge
+    const navItems: { name: string; href: string; icon: React.ElementType; badge?: number }[] = [
         { name: 'Dashboard', href: '/', icon: LayoutDashboard },
-        { name: 'My Tasks', href: '/mytasks', icon: CheckSquare },
-        { name: 'Task Listing', href: '/tasks', icon: ListTodo },
+        { name: 'My Tasks', href: '/mytasks', icon: CheckSquare, badge: bottleneckCount > 0 ? bottleneckCount : undefined },
+        { name: 'Task Listing', href: '/tasks', icon: ListTodo, badge: bottleneckCount > 0 ? bottleneckCount : undefined },
         { name: 'Weekly Report', href: '/reports', icon: FileText },
         { name: 'My Profile', href: '/profile', icon: UserCircle }
     ];
@@ -48,9 +84,6 @@ export default function Sidebar() {
             items: navItems
         }
     ]
-
-    const [isMoreMenuOpen, setIsMoreMenuOpen] = React.useState(false)
-    const [isLoggingOut, setIsLoggingOut] = React.useState(false)
 
     const handleLogout = async () => {
         setIsLoggingOut(true)
@@ -93,7 +126,12 @@ export default function Sidebar() {
                                                 }`}
                                         >
                                             <Icon className={`h-5 w-5 ${isActive ? "text-indigo-600" : "text-gray-400"}`} />
-                                            {item.name}
+                                            <span className="flex-1">{item.name}</span>
+                                            {item.badge !== undefined && (
+                                                <span className="flex items-center justify-center h-5 min-w-[20px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold animate-pulse">
+                                                    {item.badge}
+                                                </span>
+                                            )}
                                         </Link>
                                     )
                                 })}
@@ -129,8 +167,13 @@ export default function Sidebar() {
                                         : 'text-gray-400 active:text-indigo-500'
                                 }`}
                             >
-                                <div className={`p-1.5 rounded-xl transition-colors ${isActive ? 'bg-indigo-50' : ''}`}>
+                                <div className={`relative p-1.5 rounded-xl transition-colors ${isActive ? 'bg-indigo-50' : ''}`}>
                                     <Icon className={`h-5 w-5 ${isActive ? 'text-indigo-600' : 'text-gray-400'}`} />
+                                    {item.badge !== undefined && (
+                                        <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-white text-[9px] font-bold">
+                                            {item.badge > 9 ? '9+' : item.badge}
+                                        </span>
+                                    )}
                                 </div>
                                 <span>{item.name}</span>
                             </Link>
