@@ -394,6 +394,7 @@ export default function WeeklyReportPage() {
                                     <tr className="bg-slate-100 border-y border-slate-300">
                                         <th className="py-3 px-4 font-bold text-sm text-slate-700 w-1/4">Task Title</th>
                                         <th className="py-3 px-4 font-bold text-sm text-slate-700 w-2/4">Description (Nota)</th>
+                                        <th className="py-3 px-4 font-bold text-sm text-slate-700">Completed Date</th>
                                         <th className="py-3 px-4 font-bold text-sm text-slate-700">PIC (Assignee)</th>
                                     </tr>
                                 </thead>
@@ -406,6 +407,11 @@ export default function WeeklyReportPage() {
                                                 <div className="text-slate-600 italic">
                                                     {t.reportNota || '-'}
                                                 </div>
+                                            </td>
+                                            <td className="py-4 px-4 text-slate-700 text-sm">
+                                                {t.updated_at
+                                                    ? dayjs(t.updated_at).format('DD/MM/YYYY')
+                                                    : '-'}
                                             </td>
                                             <td className="py-4 px-4 text-slate-700 font-medium text-sm">{t.assignee?.full_name || '-'}</td>
                                         </tr>
