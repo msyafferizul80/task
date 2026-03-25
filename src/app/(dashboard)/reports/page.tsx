@@ -204,6 +204,22 @@ export default function WeeklyReportPage() {
         }
     };
 
+    const handlePrint = () => {
+        const originalTitle = document.title;
+        const start = dateRange[0] ? dateRange[0].format('DD-MM-YYYY') : '';
+        const end = dateRange[1] ? dateRange[1].format('DD-MM-YYYY') : '';
+        const periodStr = start && end ? `${start}_${end}` : '';
+        const safeCustomerName = selectedCustomer ? selectedCustomer.replace(/[\\/:*?"<>|]/g, '') : 'Report';
+        
+        document.title = periodStr ? `${safeCustomerName}_${periodStr}` : safeCustomerName;
+        
+        window.print();
+        
+        setTimeout(() => {
+            document.title = originalTitle;
+        }, 1000);
+    };
+
     if (loading) return <div className="flex justify-center items-center h-[calc(100vh-100px)]"><Spin size="large" /></div>;
 
     const startDateStr = dateRange[0] ? dateRange[0].format('DD/MM/YYYY') : '-';
@@ -212,7 +228,7 @@ export default function WeeklyReportPage() {
     return (
         <div className="flex flex-col gap-6 font-sans">
             {/* Control Panel (Hidden on Print) */}
-            <div className="bg-white/80 p-6 rounded-2xl shadow-sm border border-slate-100 no-print">
+            <div className="bg-white/80 p-6 rounded-2xl shadow-sm border border-slate-100 print:hidden">
                 <Title level={2} className="!text-indigo-900 !mb-2 mt-0">Weekly Reports</Title>
                 <Text type="secondary" className="text-base mb-6 block">Jana dan print laporan mingguan untuk pelanggan.</Text>
 
@@ -262,7 +278,7 @@ export default function WeeklyReportPage() {
                         <Button size="large" icon={<SendOutlined />} onClick={handleSendTelegram} loading={sendingTelegram} className="border-blue-500 text-blue-500 hover:bg-blue-50">
                             Notify Boss (Telegram)
                         </Button>
-                        <Button type="primary" size="large" icon={<PrinterOutlined />} onClick={() => window.print()} className="bg-slate-800">
+                        <Button type="primary" size="large" icon={<PrinterOutlined />} onClick={handlePrint} className="bg-slate-800">
                             Print / Save PDF
                         </Button>
                     </div>
