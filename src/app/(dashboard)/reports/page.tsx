@@ -19,6 +19,7 @@ interface ReportTask extends Task {
 export default function WeeklyReportPage() {
     const [customers, setCustomers] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [currentUser, setCurrentUser] = useState<{ full_name: string; department: string } | null>(null);
 
     // Filters
     const [selectedCustomer, setSelectedCustomer] = useState<string>('');
@@ -33,18 +34,35 @@ export default function WeeklyReportPage() {
     const supabase = createClient();
 
     useEffect(() => {
-        const fetchCustomers = async () => {
+        const fetchInitialData = async () => {
             try {
-                const { data, error } = await supabase.from('tsk_customers').select('id, name').order('name');
-                if (error && error.code !== '42P01') throw error;
-                setCustomers(data || []);
+                // Fetch customers
+                const { data: customerData, error: customerError } = await supabase.from('tsk_customers').select('id, name').order('name');
+                if (customerError && customerError.code !== '42P01') throw customerError;
+                setCustomers(customerData || []);
+
+                // Fetch current logged-in user profile
+                const { data: authData } = await supabase.auth.getUser();
+                if (authData?.user) {
+                    const { data: profile } = await supabase
+                        .from('lv_profiles')
+                        .select('full_name, department')
+                        .eq('id', authData.user.id)
+                        .single();
+                    if (profile) {
+                        setCurrentUser({
+                            full_name: profile.full_name || '',
+                            department: profile.department || 'Syazna World HR Operations',
+                        });
+                    }
+                }
             } catch (err) {
                 console.error(err);
             } finally {
                 setLoading(false);
             }
         };
-        fetchCustomers();
+        fetchInitialData();
     }, []);
 
     const handleGeneratePreview = async () => {
@@ -467,8 +485,8 @@ export default function WeeklyReportPage() {
                     <div className="mt-16 pt-6 border-t border-slate-200 print:border-black flex justify-between items-center text-sm text-slate-500 page-break-avoid">
                         <div>
                             <p className="font-bold text-slate-700 print:text-black mb-1">Prepared By:</p>
-                            <p className="print:text-black">Megat Syafferizul</p>
-                            <p className="print:text-black">Syazna World HR Operations</p>
+                            <p className="print:text-black">{currentUser?.full_name || '-'}</p>
+                            <p className="print:text-black">{currentUser?.department || 'Syazna World HR Operations'}</p>
                         </div>
                         <div className="text-right">
                             <p className="mb-1 italic print:text-black">Generated via Syazna-OS Task Management</p>
