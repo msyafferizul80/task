@@ -110,7 +110,7 @@ function WorkloadBarChart({
     );
 }
 
-// ─── Total Task Bar Chart (with time filter) ────────────────────────────────
+// ─── Total Task Bar Chart — Horizontal (with time filter) ───────────────────
 
 type TimePeriod = 'week' | 'month' | 'custom';
 
@@ -138,15 +138,15 @@ function TotalTaskBarChart({
     const max = Math.max(...data.map((d) => d.count), 1);
 
     return (
-        <div className="flex flex-col gap-3">
-            {/* Filter Tabs */}
-            <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex flex-col gap-4">
+            {/* Filter Row */}
+            <div className="flex items-center gap-3 flex-wrap">
                 <div className="flex items-center gap-1 bg-slate-100 rounded-xl p-1">
                     {(['week', 'month'] as TimePeriod[]).map((p) => (
                         <button
                             key={p}
                             onClick={() => onPeriodChange(p)}
-                            className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
+                            className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                                 period === p
                                     ? 'bg-emerald-500 text-white shadow-sm'
                                     : 'text-slate-500 hover:text-slate-700'
@@ -157,7 +157,7 @@ function TotalTaskBarChart({
                     ))}
                     <button
                         onClick={() => onPeriodChange('custom')}
-                        className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1 ${
+                        className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
                             period === 'custom'
                                 ? 'bg-emerald-500 text-white shadow-sm'
                                 : 'text-slate-500 hover:text-slate-700'
@@ -174,55 +174,80 @@ function TotalTaskBarChart({
                             type="date"
                             value={customStart}
                             onChange={(e) => onCustomStartChange(e.target.value)}
-                            className="text-xs border border-slate-200 rounded-lg px-2 py-1 text-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                            className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-300"
                         />
-                        <span className="text-xs text-slate-400">—</span>
+                        <span className="text-xs text-slate-400 font-medium">hingga</span>
                         <input
                             type="date"
                             value={customEnd}
                             onChange={(e) => onCustomEndChange(e.target.value)}
-                            className="text-xs border border-slate-200 rounded-lg px-2 py-1 text-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                            className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-300"
                         />
                     </div>
                 )}
+
+                <span className="text-xs text-slate-400 ml-auto">
+                    {data.length} PIC · jumlah {data.reduce((s, d) => s + d.count, 0)} task
+                </span>
             </div>
 
-            {/* Bar Chart */}
+            {/* Horizontal Bar Chart */}
             {data.length === 0 ? (
-                <div className="flex items-center justify-center h-[200px] text-slate-400 text-sm">
+                <div className="flex items-center justify-center h-[160px] text-slate-400 text-sm">
                     Tiada data untuk tempoh ini.
                 </div>
             ) : (
-                <div className="flex items-end gap-2 h-[200px] px-2 pt-4">
-                    {data.map(({ pic, count }) => {
-                        const heightPct = (count / max) * 100;
+                <div className="flex flex-col gap-2.5">
+                    {data.map(({ pic, count }, idx) => {
+                        const widthPct = (count / max) * 100;
+                        const colors = [
+                            'from-emerald-500 to-emerald-400',
+                            'from-teal-500 to-teal-400',
+                            'from-cyan-500 to-cyan-400',
+                            'from-green-500 to-green-400',
+                        ];
+                        const gradient = colors[idx % colors.length];
                         return (
                             <div
                                 key={pic}
-                                className={`flex flex-col items-center flex-1 min-w-0 ${isAdmin ? 'cursor-pointer group' : ''}`}
+                                className={`flex items-center gap-3 group ${
+                                    isAdmin ? 'cursor-pointer' : ''
+                                }`}
                                 onClick={() => isAdmin && onBarClick?.(pic)}
-                                title={isAdmin ? `Klik untuk lihat semua task ${pic}` : undefined}
                             >
-                                <span className="text-xs font-bold text-slate-600 mb-1">{count}</span>
-                                <div className="w-full flex items-end" style={{ height: '150px' }}>
-                                    <div
-                                        className={`w-full rounded-t-lg transition-all duration-200 ${
-                                            isAdmin
-                                                ? 'bg-emerald-500 group-hover:bg-emerald-400 group-hover:shadow-lg group-hover:-translate-y-0.5'
-                                                : 'bg-emerald-500'
-                                        }`}
-                                        style={{ height: `${Math.max(heightPct, 3)}%` }}
-                                    />
-                                </div>
-                                <span
-                                    className="text-xs text-slate-500 mt-2 text-center leading-tight w-full px-1 truncate"
-                                    style={{ maxWidth: '80px' }}
-                                    title={pic}
-                                >
+                                {/* Rank badge */}
+                                <span className="w-5 text-xs font-bold text-slate-300 text-right flex-shrink-0">
+                                    {idx + 1}
+                                </span>
+
+                                {/* PIC Name — full, no truncate */}
+                                <span className="text-sm font-semibold text-slate-700 w-32 flex-shrink-0 group-hover:text-emerald-600 transition-colors">
                                     {pic}
                                 </span>
+
+                                {/* Bar */}
+                                <div className="flex-1 h-7 bg-slate-100 rounded-lg overflow-hidden">
+                                    <div
+                                        className={`h-full bg-gradient-to-r ${gradient} rounded-lg transition-all duration-500 flex items-center justify-end pr-2 ${
+                                            isAdmin ? 'group-hover:brightness-110' : ''
+                                        }`}
+                                        style={{ width: `${Math.max(widthPct, 4)}%` }}
+                                    >
+                                        {widthPct > 15 && (
+                                            <span className="text-xs font-bold text-white">
+                                                {count}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Count label (outside bar when bar is too short) */}
+                                <span className="text-xs font-bold text-slate-600 w-8 text-left flex-shrink-0">
+                                    {widthPct <= 15 ? count : ''}
+                                </span>
+
                                 {isAdmin && (
-                                    <span className="text-xs text-emerald-400 opacity-0 group-hover:opacity-100 transition-opacity mt-0.5">
+                                    <span className="text-xs text-emerald-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
                                         ↗
                                     </span>
                                 )}
@@ -879,12 +904,12 @@ export default function AnalyticsPage() {
                 />
             </div>
 
-            {/* ── Charts Row — Workload + Total Task by PIC ── */}
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            {/* ── Charts Row — Workload + Customer Distribution ── */}
+            <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
 
                 {/* Workload Bar Chart — Task Aktif */}
                 <Card
-                    className="rounded-2xl shadow-sm border border-slate-100"
+                    className="xl:col-span-3 rounded-2xl shadow-sm border border-slate-100"
                     variant="borderless"
                     title={
                         <div className="flex items-center gap-2 py-1">
@@ -911,40 +936,9 @@ export default function AnalyticsPage() {
                     )}
                 </Card>
 
-                {/* Total Task by PIC — with time filter */}
+                {/* Customer Distribution */}
                 <Card
-                    className="rounded-2xl shadow-sm border border-slate-100"
-                    variant="borderless"
-                    title={
-                        <div className="flex items-center gap-2 py-1">
-                            <BarChart2 className="w-4 h-4 text-emerald-600" />
-                            <span className="font-bold text-slate-700">Total Task per PIC</span>
-                            {isAdmin && (
-                                <span className="text-xs font-normal text-emerald-500 bg-emerald-50 px-2 py-0.5 rounded-full ml-1">
-                                    Klik bar untuk drill-down ↗
-                                </span>
-                            )}
-                        </div>
-                    }
-                >
-                    <TotalTaskBarChart
-                        data={totalTaskByPicData}
-                        onBarClick={handleTotalPicBarClick}
-                        isAdmin={isAdmin}
-                        period={totalPicPeriod}
-                        onPeriodChange={setTotalPicPeriod}
-                        customStart={totalPicCustomStart}
-                        customEnd={totalPicCustomEnd}
-                        onCustomStartChange={setTotalPicCustomStart}
-                        onCustomEndChange={setTotalPicCustomEnd}
-                    />
-                </Card>
-            </div>
-
-            {/* ── Customer Distribution Row ── */}
-            <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
-                <Card
-                    className="xl:col-span-5 rounded-2xl shadow-sm border border-slate-100"
+                    className="xl:col-span-2 rounded-2xl shadow-sm border border-slate-100"
                     variant="borderless"
                     title={
                         <div className="flex items-center gap-2 py-1">
@@ -959,7 +953,7 @@ export default function AnalyticsPage() {
                     }
                 >
                     {customerData.length === 0 ? (
-                        <div className="flex items-center justify-center h-[200px] text-slate-400">
+                        <div className="flex items-center justify-center h-[260px] text-slate-400">
                             Tiada data.
                         </div>
                     ) : (
@@ -972,6 +966,36 @@ export default function AnalyticsPage() {
                     )}
                 </Card>
             </div>
+
+            {/* ── Total Task per PIC — Full Width Horizontal Chart ── */}
+            <Card
+                className="rounded-2xl shadow-sm border border-slate-100"
+                variant="borderless"
+                title={
+                    <div className="flex items-center gap-2 py-1">
+                        <BarChart2 className="w-4 h-4 text-emerald-600" />
+                        <span className="font-bold text-slate-700">Total Task per PIC</span>
+                        <span className="text-xs font-normal text-slate-400 ml-1">— jumlah task diterima mengikut tempoh masa</span>
+                        {isAdmin && (
+                            <span className="text-xs font-normal text-emerald-500 bg-emerald-50 px-2 py-0.5 rounded-full ml-auto">
+                                Klik bar untuk drill-down ↗
+                            </span>
+                        )}
+                    </div>
+                }
+            >
+                <TotalTaskBarChart
+                    data={totalTaskByPicData}
+                    onBarClick={handleTotalPicBarClick}
+                    isAdmin={isAdmin}
+                    period={totalPicPeriod}
+                    onPeriodChange={setTotalPicPeriod}
+                    customStart={totalPicCustomStart}
+                    customEnd={totalPicCustomEnd}
+                    onCustomStartChange={setTotalPicCustomStart}
+                    onCustomEndChange={setTotalPicCustomEnd}
+                />
+            </Card>
 
             {/* ── Overdue Summary + Bottleneck Table ── */}
             <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
