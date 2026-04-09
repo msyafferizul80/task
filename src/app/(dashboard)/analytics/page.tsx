@@ -534,7 +534,7 @@ export default function AnalyticsPage() {
                         avatar_url
                     )
                 `).order('created_at', { ascending: false }),
-                supabase.from('lv_profiles').select('id, full_name, avatar_url').order('full_name'),
+                supabase.from('lv_profiles').select('id, full_name, avatar_url').eq('status', 'active').order('full_name'),
             ]);
 
             if (tasksRes.error) throw tasksRes.error;

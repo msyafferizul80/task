@@ -52,7 +52,7 @@ export default function EisenhowerDashboard() {
 
             const [tasksRes, profilesRes, customersRes] = await Promise.all([
                 query,
-                supabase.from('lv_profiles').select('id, full_name').order('full_name'),
+                supabase.from('lv_profiles').select('id, full_name').eq('status', 'active').order('full_name'),
                 supabase.from('tsk_customers').select('id, name').order('name')
             ]);
 
