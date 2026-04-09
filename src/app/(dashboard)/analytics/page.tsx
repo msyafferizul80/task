@@ -358,6 +358,24 @@ function DrillDownModal({
             ),
         },
         {
+            title: 'PIC',
+            key: 'assignee',
+            render: (_: any, record: Task) => {
+                const assignee = record.assignee as any;
+                if (!assignee) return <span className="text-gray-400 text-sm">—</span>;
+                return (
+                    <div className="flex items-center gap-2">
+                        <img
+                            src={assignee.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(assignee.full_name)}&background=6366f1&color=fff`}
+                            className="w-6 h-6 rounded-full flex-shrink-0"
+                            alt={assignee.full_name}
+                        />
+                        <span className="text-sm font-medium text-slate-700 whitespace-nowrap">{assignee.full_name}</span>
+                    </div>
+                );
+            },
+        },
+        {
             title: 'Status',
             dataIndex: 'status',
             key: 'status',
@@ -420,7 +438,7 @@ function DrillDownModal({
             open={open}
             onCancel={onClose}
             footer={null}
-            width={860}
+            width={1000}
             title={
                 <div className="flex items-center gap-3 py-1">
                     <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center">
