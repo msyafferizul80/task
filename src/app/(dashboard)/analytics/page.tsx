@@ -211,9 +211,9 @@ function TotalTaskBarChart({
                             <div
                                 key={pic}
                                 className={`flex items-center gap-3 group ${
-                                    hasFullAccess ? 'cursor-pointer' : ''
+                                    isAdmin ? 'cursor-pointer' : ''
                                 }`}
-                                onClick={() => hasFullAccess && onBarClick?.(pic)}
+                                onClick={() => isAdmin && onBarClick?.(pic)}
                             >
                                 {/* Rank badge */}
                                 <span className="w-5 text-xs font-bold text-slate-300 text-right flex-shrink-0">
@@ -229,7 +229,7 @@ function TotalTaskBarChart({
                                 <div className="flex-1 h-7 bg-slate-100 rounded-lg overflow-hidden">
                                     <div
                                         className={`h-full bg-gradient-to-r ${gradient} rounded-lg transition-all duration-500 flex items-center justify-end pr-2 ${
-                                            hasFullAccess ? 'group-hover:brightness-110' : ''
+                                            isAdmin ? 'group-hover:brightness-110' : ''
                                         }`}
                                         style={{ width: `${Math.max(widthPct, 4)}%` }}
                                     >
@@ -246,7 +246,7 @@ function TotalTaskBarChart({
                                     {widthPct <= 15 ? count : ''}
                                 </span>
 
-                                {hasFullAccess && (
+                                {isAdmin && (
                                     <span className="text-xs text-emerald-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
                                         ↗
                                     </span>
@@ -306,7 +306,7 @@ function CustomerDistributionList({
                                 <span className="text-xs text-slate-400 min-w-[3ch] text-right">
                                     {value}
                                 </span>
-                                {hasFullAccess && (
+                                {isAdmin && (
                                     <span className="text-xs text-indigo-300 font-medium">↗</span>
                                 )}
                             </div>
@@ -933,7 +933,7 @@ export default function AnalyticsPage() {
                         <div className="flex items-center gap-2 py-1">
                             <TrendingUp className="w-4 h-4 text-indigo-600" />
                             <span className="font-bold text-slate-700">Workload Chart — Task Aktif per PIC</span>
-                            {isAdmin && (
+                            {hasFullAccess && (
                                 <span className="text-xs font-normal text-indigo-400 bg-indigo-50 px-2 py-0.5 rounded-full ml-1">
                                     Klik bar untuk drill-down ↗
                                 </span>
@@ -949,7 +949,7 @@ export default function AnalyticsPage() {
                         <WorkloadBarChart
                             data={workloadData}
                             onBarClick={handleBarClick}
-                            isAdmin={isAdmin}
+                            isAdmin={hasFullAccess}
                         />
                     )}
                 </Card>
@@ -962,7 +962,7 @@ export default function AnalyticsPage() {
                         <div className="flex items-center gap-2 py-1">
                             <Users className="w-4 h-4 text-violet-600" />
                             <span className="font-bold text-slate-700">Customer Distribution</span>
-                            {isAdmin && (
+                            {hasFullAccess && (
                                 <span className="text-xs font-normal text-violet-400 bg-violet-50 px-2 py-0.5 rounded-full ml-1">
                                     Klik untuk drill-down ↗
                                 </span>
@@ -979,7 +979,7 @@ export default function AnalyticsPage() {
                             data={customerData}
                             total={tasks.length}
                             onSegmentClick={handleCustomerClick}
-                            isAdmin={isAdmin}
+                            isAdmin={hasFullAccess}
                         />
                     )}
                 </Card>
@@ -994,7 +994,7 @@ export default function AnalyticsPage() {
                         <BarChart2 className="w-4 h-4 text-emerald-600" />
                         <span className="font-bold text-slate-700">Total Task per PIC</span>
                         <span className="text-xs font-normal text-slate-400 ml-1">— jumlah task diterima mengikut tempoh masa</span>
-                        {isAdmin && (
+                        {hasFullAccess && (
                             <span className="text-xs font-normal text-emerald-500 bg-emerald-50 px-2 py-0.5 rounded-full ml-auto">
                                 Klik bar untuk drill-down ↗
                             </span>
@@ -1005,7 +1005,7 @@ export default function AnalyticsPage() {
                 <TotalTaskBarChart
                     data={totalTaskByPicData}
                     onBarClick={handleTotalPicBarClick}
-                    isAdmin={isAdmin}
+                    isAdmin={hasFullAccess}
                     period={totalPicPeriod}
                     onPeriodChange={setTotalPicPeriod}
                     customStart={totalPicCustomStart}
@@ -1037,12 +1037,12 @@ export default function AnalyticsPage() {
                         ) : (
                             <>
                                 <div
-                                    className={`bg-red-50 border border-red-100 rounded-xl p-4 text-center transition-all ${isAdmin ? 'cursor-pointer hover:bg-red-100' : ''}`}
-                                    onClick={() => isAdmin && openDrill(`⚠️ Task Overdue (${overdueTasks.length})`, overdueTasks)}
+                                    className={`bg-red-50 border border-red-100 rounded-xl p-4 text-center transition-all ${hasFullAccess ? 'cursor-pointer hover:bg-red-100' : ''}`}
+                                    onClick={() => hasFullAccess && openDrill(`⚠️ Task Overdue (${overdueTasks.length})`, overdueTasks)}
                                 >
                                     <p className="text-4xl font-black text-red-500">{overdueTasks.length}</p>
                                     <p className="text-xs text-red-400 font-semibold mt-1">JUMLAH OVERDUE</p>
-                                    {isAdmin && <p className="text-xs text-red-300 mt-0.5">Klik untuk lihat senarai ↗</p>}
+                                    {hasFullAccess && <p className="text-xs text-red-300 mt-0.5">Klik untuk lihat senarai ↗</p>}
                                 </div>
 
                                 {Object.entries(overdueByStatus).filter(([, v]) => v > 0).map(([status, count]) => (
