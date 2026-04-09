@@ -51,7 +51,10 @@ export default function SortableTaskItem({ task, role, isDone = false }: Sortabl
             {isDone && (
                 <span className="absolute top-2 right-2 text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">✓ Siap</span>
             )}
-            <div className={`font-medium text-sm mb-1 ${isDone ? 'line-through text-gray-400' : 'text-gray-800'}`}>{task.title}</div>
+            {!isDone && task.is_escalated && (
+                <span className="absolute top-2 right-2 text-[10px] font-bold text-orange-600 bg-orange-50 border border-orange-200 px-1.5 py-0.5 rounded-full shadow-sm">🚩 Escalated</span>
+            )}
+            <div className={`font-medium text-sm mb-1 ${isDone ? 'line-through text-gray-400' : 'text-gray-800'} ${!isDone && task.is_escalated ? 'pr-20' : ''}`}>{task.title}</div>
 
             <div className="flex flex-col gap-1 mt-2 text-xs mb-2">
                 {task.customer_name && (

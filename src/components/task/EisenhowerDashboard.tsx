@@ -1,12 +1,14 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { Card, Button, Input, Modal, Form, Select, DatePicker, message, Spin, Typography } from 'antd';
+import { Card, Button, Input, Modal, Form, Select, DatePicker, message, Spin, Typography, Tabs } from 'antd';
 import { PlusOutlined, DeleteOutlined, ExclamationCircleFilled } from '@ant-design/icons';
 import { createClient } from '@/utils/supabase/client';
 import { Task, PriorityType } from '@/lib/types';
 import KanbanBoard from '@/components/task/KanbanBoard';
 import { useRole } from '@/components/layout/RoleProvider';
+import EscalateModal from './EscalateModal';
+import TaskHistoryTab from './TaskHistoryTab';
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -18,7 +20,9 @@ export default function EisenhowerDashboard() {
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [isEscalateModalOpen, setIsEscalateModalOpen] = useState(false);
     const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+    const [taskChecklist, setTaskChecklist] = useState<any[]>([]);
 
     const [filterCustomer, setFilterCustomer] = useState<string>('');
     const [filterPIC, setFilterPIC] = useState<string>('');
@@ -88,54 +92,131 @@ export default function EisenhowerDashboard() {
 
     const handleCreateTask = async (values: any) => {
         try {
+            message.loading({ content: 'Creating Task & Analyzing via AI...', key: 'createTask' });
+            
             const { title, description, priority_type, due_date, customer_name, assignee_id } = values;
+            let finalTitle = title;
+            let aiChecklist: string[] = [];
 
-            const { error } = await supabase.from('tsk_tasks').insert([{
-                title,
+            // AI Integration
+            if (description && description.trim().length > 5) {
+                try {
+                    const res = await fetch('/api/ai-assistant', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ title, description })
+                    });
+                    
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data.suggested_title && data.suggested_title !== title) {
+                            finalTitle = data.suggested_title;
+                            message.info(`AI auto-formatted title to "${finalTitle}"`);
+                        }
+                        if (data.checklist_items && Array.isArray(data.checklist_items)) {
+                            aiChecklist = data.checklist_items;
+                        }
+                    }
+                } catch (aiErr) {
+                    console.error("AI Error:", aiErr);
+                }
+            }
+
+            const { data: newTaskData, error } = await supabase.from('tsk_tasks').insert([{
+                title: finalTitle,
                 description,
                 priority_type,
                 customer_name,
                 assignee_id,
                 due_date: due_date?.toISOString(),
                 status: 'BACKLOG',
-            }]);
+            }]).select('id').single();
 
             if (error) throw error;
 
-            message.success('Task created successfully!');
+            if (aiChecklist.length > 0 && newTaskData) {
+                const insertData = aiChecklist.map((item: string) => ({
+                    task_id: newTaskData.id,
+                    item_text: item,
+                    is_completed: false
+                }));
+                await supabase.from('tsk_task_checklist').insert(insertData);
+            }
+
+            message.success({ content: 'Task created successfully!', key: 'createTask', duration: 2 });
             setIsModalOpen(false);
             form.resetFields();
+            fetchTasksAndProfiles();
         } catch (error: any) {
             console.error('Error creating task:', error.message);
-            message.error('Failed to create task');
+            message.error({ content: 'Failed to create task', key: 'createTask', duration: 2 });
         }
     };
 
     const handleUpdateTask = async (values: any) => {
         if (!selectedTask) return;
         try {
-            const { title, description, priority_type, due_date, customer_name, assignee_id, status } = values;
+            message.loading({ content: 'Updating Task & Generating AI Checklist...', key: 'updateTask' });
+
+            let finalTitle = values.title;
+            const descChanged = values.description !== selectedTask.description;
+            
+            // AI Integration
+            if (descChanged && values.description && values.description.trim().length > 5) {
+                try {
+                    const res = await fetch('/api/ai-assistant', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ title: values.title, description: values.description })
+                    });
+                    
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data.suggested_title && data.suggested_title !== values.title) {
+                            finalTitle = data.suggested_title;
+                            message.info(`AI renamed task to "${finalTitle}"`);
+                        }
+                        if (data.checklist_items && Array.isArray(data.checklist_items) && data.checklist_items.length > 0) {
+                            await supabase.from('tsk_task_checklist').delete().eq('task_id', selectedTask.id);
+                            const insertData = data.checklist_items.map((item: string) => ({
+                                task_id: selectedTask.id,
+                                item_text: item,
+                                is_completed: false
+                            }));
+                            await supabase.from('tsk_task_checklist').insert(insertData);
+                        }
+                    }
+                } catch (aiErr) {
+                    console.error("AI Error:", aiErr);
+                }
+            }
 
             const { error } = await supabase.from('tsk_tasks').update({
-                title,
-                description,
-                priority_type,
-                customer_name,
-                assignee_id,
-                due_date: due_date?.toISOString(),
-                status,
+                title: finalTitle,
+                description: values.description,
+                priority_type: values.priority_type,
+                customer_name: values.customer_name,
+                assignee_id: values.assignee_id,
+                due_date: values.due_date?.toISOString(),
+                status: values.status,
             }).eq('id', selectedTask.id);
 
             if (error) throw error;
 
-            message.success('Task updated successfully!');
+            message.success({ content: 'Task updated successfully!', key: 'updateTask', duration: 2 });
             setIsEditModalOpen(false);
             setSelectedTask(null);
             editForm.resetFields();
+            fetchTasksAndProfiles();
         } catch (error: any) {
             console.error('Error updating task:', error.message);
-            message.error('Failed to update task');
+            message.error({ content: 'Failed to update task', key: 'updateTask', duration: 2 });
         }
+    };
+
+    const fetchChecklist = async (taskId: string) => {
+        const { data } = await supabase.from('tsk_task_checklist').select('*').eq('task_id', taskId).order('created_at', { ascending: true });
+        setTaskChecklist(data as any || []);
     };
 
     const handleDeleteTask = () => {
@@ -153,9 +234,16 @@ export default function EisenhowerDashboard() {
                     const { error } = await supabase.from('tsk_tasks').delete().eq('id', selectedTask.id);
                     if (error) throw error;
                     message.success('Task deleted successfully');
+                    
+                    // Immediately update local state to hide the deleted task
+                    setTasks((prevTasks) => prevTasks.filter((task) => task.id !== selectedTask.id));
+                    
                     setIsEditModalOpen(false);
                     setSelectedTask(null);
                     editForm.resetFields();
+                    
+                    // Optional: fetch background if needed, but setState is enough for instant UX
+                    fetchTasksAndProfiles();
                 } catch (error: any) {
                     console.error('Error deleting task:', error.message);
                     message.error('Failed to delete task');
@@ -193,9 +281,10 @@ export default function EisenhowerDashboard() {
     const renderTaskCard = (task: Task) => (
         <div
             key={task.id}
-            className={`p-5 bg-white rounded-2xl transition-all duration-300 cursor-pointer border hover:-translate-y-1 hover:shadow-lg group ${getPriorityColor(task.priority_type)}`}
+            className={`p-5 bg-white rounded-2xl transition-all duration-300 cursor-pointer border hover:-translate-y-1 hover:shadow-lg group ${getPriorityColor(task.priority_type)} ${task.is_escalated ? 'bg-orange-50/50 ring-2 ring-orange-500 ring-offset-2' : ''}`}
             onClick={() => {
                 setSelectedTask(task);
+                fetchChecklist(task.id);
                 editForm.setFieldsValue({
                     ...task,
                 });
@@ -204,11 +293,18 @@ export default function EisenhowerDashboard() {
         >
             <div className="flex items-start justify-between gap-2 mb-4">
                 <div className="font-semibold text-slate-800 text-[15px] group-hover:text-indigo-600 transition-colors flex-1">{task.title}</div>
-                {(task as any).is_recurring && (
-                    <span className="flex-shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200 flex items-center gap-0.5">
-                        🔄 Recurring
-                    </span>
-                )}
+                <div className="flex flex-col items-end gap-1">
+                    {task.is_escalated && (
+                        <span className="flex-shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 border border-orange-200 flex items-center gap-0.5 shadow-sm">
+                            🚩 Escalated
+                        </span>
+                    )}
+                    {(task as any).is_recurring && (
+                        <span className="flex-shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200 flex items-center gap-0.5">
+                            🔄 Recurring
+                        </span>
+                    )}
+                </div>
             </div>
             <div className="flex flex-col gap-3 text-xs">
                 {task.customer_name && (
@@ -414,78 +510,142 @@ export default function EisenhowerDashboard() {
                 width={600}
                 style={{ maxWidth: '95vw' }}
             >
-                <Form form={editForm} layout="vertical" onFinish={handleUpdateTask}>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <Form.Item name="customer_name" label="Customer Name" className="col-span-2" rules={[{ required: true, message: 'Customer name is required' }]}>
-                            <Select placeholder="Select Customer" size="large" showSearch optionFilterProp="children" disabled={role !== 'admin' && role !== 'manager'}>
-                                {customers.map(c => (
-                                    <Option key={c.id} value={c.name}>{c.name}</Option>
-                                ))}
-                            </Select>
-                        </Form.Item>
+                <Tabs defaultActiveKey="1" items={[
+                    {
+                        key: '1',
+                        label: 'Details',
+                        children: (
+                            <Form form={editForm} layout="vertical" onFinish={handleUpdateTask}>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <Form.Item name="customer_name" label="Customer Name" className="col-span-2" rules={[{ required: true, message: 'Customer name is required' }]}>
+                                        <Select placeholder="Select Customer" size="large" showSearch optionFilterProp="children" disabled={role !== 'admin' && role !== 'manager'}>
+                                            {customers.map(c => (
+                                                <Option key={c.id} value={c.name}>{c.name}</Option>
+                                            ))}
+                                        </Select>
+                                    </Form.Item>
 
-                        <Form.Item name="title" label="Task Title" className="col-span-2" rules={[{ required: true, message: 'Please enter a title' }]}>
-                            <Input placeholder="Enter task title" size="large" disabled={role !== 'admin' && role !== 'manager'} />
-                        </Form.Item>
+                                    <Form.Item name="title" label="Task Title" className="col-span-2" rules={[{ required: true, message: 'Please enter a title' }]}>
+                                        <Input placeholder="Enter task title" size="large" disabled={role !== 'admin' && role !== 'manager'} />
+                                    </Form.Item>
 
-                        <Form.Item name="assignee_id" label="PIC / Assignee" rules={[{ required: true, message: 'Assignee is required' }]}>
-                            <Select placeholder="Select Assignee" size="large" showSearch optionFilterProp="children" disabled={role !== 'admin' && role !== 'manager'}>
-                                {profiles.map(p => (
-                                    <Option key={p.id} value={p.id}>{p.full_name}</Option>
-                                ))}
-                            </Select>
-                        </Form.Item>
+                                    <Form.Item name="assignee_id" label="PIC / Assignee" rules={[{ required: true, message: 'Assignee is required' }]}>
+                                        <Select placeholder="Select Assignee" size="large" showSearch optionFilterProp="children" disabled={role !== 'admin' && role !== 'manager'}>
+                                            {profiles.map(p => (
+                                                <Option key={p.id} value={p.id}>{p.full_name}</Option>
+                                            ))}
+                                        </Select>
+                                    </Form.Item>
 
-                        <Form.Item name="priority_type" label="Eisenhower Priority" rules={[{ required: true, message: 'Please select a priority' }]}>
-                            <Select placeholder="Select Priority" size="large" disabled={role !== 'admin' && role !== 'manager'}>
-                                <Option value="DO_FIRST"><span className="text-red-600 font-medium">🔴 DO FIRST (Urgent & Important)</span></Option>
-                                <Option value="SCHEDULE"><span className="text-blue-600 font-medium">🔵 SCHEDULE (Not Urgent, Important)</span></Option>
-                                <Option value="DELEGATE"><span className="text-yellow-600 font-medium">🟡 DELEGATE (Urgent, Not Important)</span></Option>
-                                <Option value="ELIMINATE"><span className="text-gray-500 font-medium">⚫ ELIMINATE (Not Urgent, Not Important)</span></Option>
-                            </Select>
-                        </Form.Item>
+                                    <Form.Item name="priority_type" label="Eisenhower Priority" rules={[{ required: true, message: 'Please select a priority' }]}>
+                                        <Select placeholder="Select Priority" size="large" disabled={role !== 'admin' && role !== 'manager'}>
+                                            <Option value="DO_FIRST"><span className="text-red-600 font-medium">🔴 DO FIRST (Urgent & Important)</span></Option>
+                                            <Option value="SCHEDULE"><span className="text-blue-600 font-medium">🔵 SCHEDULE (Not Urgent, Important)</span></Option>
+                                            <Option value="DELEGATE"><span className="text-yellow-600 font-medium">🟡 DELEGATE (Urgent, Not Important)</span></Option>
+                                            <Option value="ELIMINATE"><span className="text-gray-500 font-medium">⚫ ELIMINATE (Not Urgent, Not Important)</span></Option>
+                                        </Select>
+                                    </Form.Item>
 
-                        <Form.Item name="status" label="Task Status" rules={[{ required: true, message: 'Please select a status' }]}>
-                            <Select placeholder="Select Status" size="large">
-                                <Option value="BACKLOG">Backlog</Option>
-                                <Option value="IN_PROGRESS">In Progress</Option>
-                                <Option value="REVIEW">Review</Option>
-                                <Option value="DONE">Done</Option>
-                            </Select>
-                        </Form.Item>
-                    </div>
+                                    <Form.Item name="status" label="Task Status" rules={[{ required: true, message: 'Please select a status' }]}>
+                                        <Select placeholder="Select Status" size="large">
+                                            <Option value="BACKLOG">Backlog</Option>
+                                            <Option value="IN_PROGRESS">In Progress</Option>
+                                            <Option value="REVIEW">Review</Option>
+                                            <Option value="DONE">Done</Option>
+                                        </Select>
+                                    </Form.Item>
+                                </div>
 
-                    <Form.Item name="description" label="Description">
-                        <Input.TextArea rows={4} placeholder="Detailed task requirements..." className="resize-none" disabled={role !== 'admin' && role !== 'manager'} />
-                    </Form.Item>
+                                <Form.Item name="description" label="Description">
+                                    <Input.TextArea rows={4} placeholder="Detailed task requirements..." className="resize-none" disabled={role !== 'admin' && role !== 'manager'} />
+                                </Form.Item>
 
-                    {/* Note: due_date parsing requires Dayjs which we omitted for briefness, so we keep it simple or read-only if we used string date. Skipping due_date in edit form to avoid dayjs dependency errors without full setup, or we can just render it as text */}
-                    {selectedTask?.due_date && (
-                        <div className="mb-4 text-sm text-gray-500">
-                            <strong>Current Due Date:</strong> {new Date(selectedTask.due_date).toLocaleString()}
-                        </div>
-                    )}
-
-                    <Form.Item className="mb-0 mt-6 pt-4 border-t">
-                        <div className="flex items-center justify-between w-full">
-                            <div>
-                                {(role === 'admin' || role === 'manager') && selectedTask && (
-                                    <Button danger type="text" onClick={handleDeleteTask} size="large" icon={<DeleteOutlined />}>
-                                        Delete
-                                    </Button>
+                                {taskChecklist.length > 0 && (
+                                    <div className="mb-4 p-3 bg-indigo-50/50 rounded-lg border border-indigo-100">
+                                        <div className="font-semibold text-indigo-900 mb-3 flex items-center gap-2">
+                                            <span>✨ AI Action Items</span>
+                                        </div>
+                                        <div className="flex flex-col gap-2">
+                                            {taskChecklist.map(checkItem => (
+                                                <div key={checkItem.id} className="flex items-start gap-3">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        className="mt-1 flex-shrink-0 w-4 h-4 cursor-pointer accent-indigo-600" 
+                                                        checked={checkItem.is_completed}
+                                                        onChange={async (e) => {
+                                                            const newStatus = e.target.checked;
+                                                            setTaskChecklist(prev => prev.map(c => c.id === checkItem.id ? { ...c, is_completed: newStatus } : c));
+                                                            await supabase.from('tsk_task_checklist').update({ is_completed: newStatus }).eq('id', checkItem.id);
+                                                        }}
+                                                    />
+                                                    <span className={`text-sm tracking-wide ${checkItem.is_completed ? 'line-through text-gray-400' : 'text-slate-700 font-medium'}`}>
+                                                        {checkItem.item_text}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
                                 )}
-                            </div>
-                            <div>
-                                <Button onClick={() => {
-                                    setIsEditModalOpen(false);
-                                    setSelectedTask(null);
-                                }} className="mr-3" size="large">Cancel</Button>
-                                <Button type="primary" htmlType="submit" size="large" className="bg-indigo-600 shadow-md">Update Task</Button>
-                            </div>
-                        </div>
-                    </Form.Item>
-                </Form>
+
+                                {selectedTask?.due_date && (
+                                    <div className="mb-4 text-sm text-gray-500">
+                                        <strong>Current Due Date:</strong> {new Date(selectedTask.due_date).toLocaleString()}
+                                    </div>
+                                )}
+
+                                <Form.Item className="mb-0 mt-6 pt-4 border-t">
+                                    <div className="flex items-center justify-between w-full">
+                                        <div>
+                                            {(role === 'admin' || role === 'manager') && selectedTask && (
+                                                <Button danger type="text" onClick={handleDeleteTask} size="large" icon={<DeleteOutlined />}>
+                                                    Delete
+                                                </Button>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <Button onClick={() => {
+                                                setIsEditModalOpen(false);
+                                                setSelectedTask(null);
+                                            }} size="large">Cancel</Button>
+
+                                            {selectedTask && (selectedTask.assignee_id === currentUserId || role === 'admin' || role === 'manager') && (
+                                                <Button 
+                                                    type="default" 
+                                                    size="large" 
+                                                    className="border-orange-500 text-orange-600 hover:bg-orange-50 bg-white"
+                                                    onClick={() => setIsEscalateModalOpen(true)}
+                                                >
+                                                    🚩 Escalate
+                                                </Button>
+                                            )}
+
+                                            <Button type="primary" htmlType="submit" size="large" className="bg-indigo-600 shadow-md">Update Task</Button>
+                                        </div>
+                                    </div>
+                                </Form.Item>
+                            </Form>
+                        )
+                    },
+                    {
+                        key: '2',
+                        label: 'History & Escalations',
+                        children: <TaskHistoryTab taskId={selectedTask?.id} />
+                    }
+                ]} />
             </Modal>
+
+            <EscalateModal 
+                isOpen={isEscalateModalOpen}
+                onClose={() => setIsEscalateModalOpen(false)}
+                task={selectedTask}
+                profiles={profiles}
+                currentUserId={currentUserId}
+                currentTaskDescription={editForm.getFieldValue('description')}
+                onSuccess={() => {
+                    fetchTasksAndProfiles();
+                    setIsEditModalOpen(false); 
+                }}
+            />
         </div>
     );
 }

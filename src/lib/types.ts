@@ -20,4 +20,25 @@ export interface Task {
     created_at: string;
     updated_at?: string;
     assignee?: Profile;
+    is_escalated?: boolean;
+}
+
+export interface EscalationLog {
+    id: string;
+    task_id: string;
+    from_user_id: string;
+    to_user_id: string;
+    reason: string;
+    task_description?: string;
+    created_at: string;
+    from_user?: Profile;
+    to_user?: Profile;
+}
+
+export interface TaskChecklist {
+    id: string;
+    task_id: string;
+    item_text: string;
+    is_completed: boolean;
+    created_at: string;
 }

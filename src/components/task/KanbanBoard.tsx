@@ -78,12 +78,17 @@ export default function KanbanBoard({ tasks, role }: KanbanBoardProps) {
         if (!activeTask || activeTask.status === newStatus) return;
 
         // Optimistic update
-        setBoardTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus } : t));
+        setBoardTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus, is_escalated: (t.is_escalated && newStatus !== 'BACKLOG' ? false : t.is_escalated) } : t));
+
+        const updateData: any = { status: newStatus, updated_at: new Date().toISOString() };
+        if (activeTask.is_escalated && newStatus !== 'BACKLOG') {
+            updateData.is_escalated = false;
+        }
 
         // Persist to Supabase
         const { error } = await supabase
             .from('tsk_tasks')
-            .update({ status: newStatus, updated_at: new Date().toISOString() })
+            .update(updateData)
             .eq('id', taskId);
 
         if (error) {
