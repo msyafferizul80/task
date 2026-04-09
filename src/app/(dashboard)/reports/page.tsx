@@ -30,6 +30,14 @@ export default function WeeklyReportPage() {
     const [isGenerating, setIsGenerating] = useState(false);
     const [previewMode, setPreviewMode] = useState(false);
     const [sendingTelegram, setSendingTelegram] = useState(false);
+    const [isMobile, setIsMobile] = useState(false);
+
+    useEffect(() => {
+        const check = () => setIsMobile(window.innerWidth < 640);
+        check();
+        window.addEventListener('resize', check);
+        return () => window.removeEventListener('resize', check);
+    }, []);
 
     const supabase = createClient();
 
@@ -249,8 +257,8 @@ export default function WeeklyReportPage() {
                 <Title level={2} className="!text-indigo-900 !mb-2 mt-0">Weekly Reports</Title>
                 <Text type="secondary" className="text-base mb-6 block">Jana dan print laporan mingguan untuk pelanggan.</Text>
 
-                <div className="flex flex-wrap gap-4 items-end bg-slate-50 p-4 rounded-xl border border-slate-100">
-                    <div className="w-64">
+                <div className="flex flex-col sm:flex-row sm:flex-wrap gap-4 sm:items-end bg-slate-50 p-4 rounded-xl border border-slate-100">
+                    <div className="w-full sm:w-64">
                         <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Pilih Customer</label>
                         <Select
                             placeholder="Semua Customer"
@@ -265,22 +273,52 @@ export default function WeeklyReportPage() {
                             ))}
                         </Select>
                     </div>
-                    <div className="flex-1 min-w-[300px]">
+                    <div className="w-full sm:flex-1 sm:min-w-[280px]">
                         <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Julat Tarikh (Reporting Period)</label>
-                        <RangePicker
-                            size="large"
-                            className="w-full"
-                            onChange={(dates) => { setDateRange(dates as any); setPreviewMode(false); }}
-                        />
+                        {isMobile ? (
+                            <div className="flex gap-2">
+                                <DatePicker
+                                    size="large"
+                                    className="flex-1"
+                                    placeholder="Start date"
+                                    value={dateRange[0]}
+                                    placement="bottomLeft"
+                                    onChange={(date) => {
+                                        setDateRange([date, dateRange[1]]);
+                                        setPreviewMode(false);
+                                    }}
+                                />
+                                <DatePicker
+                                    size="large"
+                                    className="flex-1"
+                                    placeholder="End date"
+                                    value={dateRange[1]}
+                                    placement="bottomLeft"
+                                    disabledDate={(current) =>
+                                        dateRange[0] ? current.isBefore(dateRange[0], 'day') : false
+                                    }
+                                    onChange={(date) => {
+                                        setDateRange([dateRange[0], date]);
+                                        setPreviewMode(false);
+                                    }}
+                                />
+                            </div>
+                        ) : (
+                            <RangePicker
+                                size="large"
+                                className="w-full"
+                                onChange={(dates) => { setDateRange(dates as any); setPreviewMode(false); }}
+                            />
+                        )}
                     </div>
-                    <div>
+                    <div className="w-full sm:w-auto">
                         <Button
                             type="primary"
                             size="large"
                             icon={<PlaySquareOutlined />}
                             onClick={handleGeneratePreview}
                             loading={isGenerating}
-                            className="bg-indigo-600 shadow-md"
+                            className="bg-indigo-600 shadow-md w-full sm:w-auto"
                         >
                             Jana Preview
                         </Button>
@@ -288,14 +326,14 @@ export default function WeeklyReportPage() {
                 </div>
 
                 {previewMode && (
-                    <div className="mt-4 flex gap-3 justify-end border-t pt-4">
-                        <Button size="large" icon={<CopyOutlined />} onClick={handleCopyWhatsApp} className="border-green-600 text-green-600 hover:bg-green-50">
+                    <div className="mt-4 flex flex-wrap gap-3 justify-end border-t pt-4">
+                        <Button size="large" icon={<CopyOutlined />} onClick={handleCopyWhatsApp} className="border-green-600 text-green-600 hover:bg-green-50 flex-1 sm:flex-none">
                             Copy for WhatsApp
                         </Button>
-                        <Button size="large" icon={<SendOutlined />} onClick={handleSendTelegram} loading={sendingTelegram} className="border-blue-500 text-blue-500 hover:bg-blue-50">
+                        <Button size="large" icon={<SendOutlined />} onClick={handleSendTelegram} loading={sendingTelegram} className="border-blue-500 text-blue-500 hover:bg-blue-50 flex-1 sm:flex-none">
                             Notify Boss (Telegram)
                         </Button>
-                        <Button type="primary" size="large" icon={<PrinterOutlined />} onClick={handlePrint} className="bg-slate-800">
+                        <Button type="primary" size="large" icon={<PrinterOutlined />} onClick={handlePrint} className="bg-slate-800 w-full sm:w-auto">
                             Print / Save PDF
                         </Button>
                     </div>
