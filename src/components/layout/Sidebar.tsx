@@ -13,7 +13,8 @@ import {
     FileText,
     BarChart2,
     Menu,
-    X
+    X,
+    Bot
 } from 'lucide-react'
 import { createClient } from '@/utils/supabase/client'
 import { useRole } from '@/components/layout/RoleProvider'
@@ -76,6 +77,7 @@ export default function Sidebar() {
 
     if (role === 'admin') {
         navItems.push({ name: 'User Management', href: '/users', icon: UserCircle });
+        navItems.push({ name: 'Blueprints', href: '/blueprints', icon: Bot });
     }
 
     const navGroups = [

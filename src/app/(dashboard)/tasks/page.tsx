@@ -179,7 +179,14 @@ export default function TaskListingPage() {
             key: 'title',
             render: (text: string, record: Task) => (
                 <div className="font-semibold text-indigo-900">
-                    {text}
+                    <div className="flex items-center gap-2">
+                        {text}
+                        {(record as any).is_recurring && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">
+                                🔄 Recurring
+                            </span>
+                        )}
+                    </div>
                     <div className="mt-1">{getPriorityColor(record.priority_type)}</div>
                 </div>
             )

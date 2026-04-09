@@ -202,7 +202,14 @@ export default function EisenhowerDashboard() {
                 setIsEditModalOpen(true);
             }}
         >
-            <div className="font-semibold text-slate-800 text-[15px] mb-4 group-hover:text-indigo-600 transition-colors">{task.title}</div>
+            <div className="flex items-start justify-between gap-2 mb-4">
+                <div className="font-semibold text-slate-800 text-[15px] group-hover:text-indigo-600 transition-colors flex-1">{task.title}</div>
+                {(task as any).is_recurring && (
+                    <span className="flex-shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200 flex items-center gap-0.5">
+                        🔄 Recurring
+                    </span>
+                )}
+            </div>
             <div className="flex flex-col gap-3 text-xs">
                 {task.customer_name && (
                     <div className="flex items-center gap-2 text-slate-600">
