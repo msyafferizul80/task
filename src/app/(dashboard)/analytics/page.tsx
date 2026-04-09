@@ -211,9 +211,9 @@ function TotalTaskBarChart({
                             <div
                                 key={pic}
                                 className={`flex items-center gap-3 group ${
-                                    isAdmin ? 'cursor-pointer' : ''
+                                    hasFullAccess ? 'cursor-pointer' : ''
                                 }`}
-                                onClick={() => isAdmin && onBarClick?.(pic)}
+                                onClick={() => hasFullAccess && onBarClick?.(pic)}
                             >
                                 {/* Rank badge */}
                                 <span className="w-5 text-xs font-bold text-slate-300 text-right flex-shrink-0">
@@ -229,7 +229,7 @@ function TotalTaskBarChart({
                                 <div className="flex-1 h-7 bg-slate-100 rounded-lg overflow-hidden">
                                     <div
                                         className={`h-full bg-gradient-to-r ${gradient} rounded-lg transition-all duration-500 flex items-center justify-end pr-2 ${
-                                            isAdmin ? 'group-hover:brightness-110' : ''
+                                            hasFullAccess ? 'group-hover:brightness-110' : ''
                                         }`}
                                         style={{ width: `${Math.max(widthPct, 4)}%` }}
                                     >
@@ -246,7 +246,7 @@ function TotalTaskBarChart({
                                     {widthPct <= 15 ? count : ''}
                                 </span>
 
-                                {isAdmin && (
+                                {hasFullAccess && (
                                     <span className="text-xs text-emerald-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
                                         ↗
                                     </span>
@@ -306,7 +306,7 @@ function CustomerDistributionList({
                                 <span className="text-xs text-slate-400 min-w-[3ch] text-right">
                                     {value}
                                 </span>
-                                {isAdmin && (
+                                {hasFullAccess && (
                                     <span className="text-xs text-indigo-300 font-medium">↗</span>
                                 )}
                             </div>
@@ -539,7 +539,7 @@ export default function AnalyticsPage() {
 
     const supabase = createClient();
     const { role } = useRole();
-    const isAdmin = role === 'admin';
+    const hasFullAccess = role === 'admin' || role === 'manager';
 
     const fetchData = useCallback(async () => {
         try {
@@ -870,7 +870,7 @@ export default function AnalyticsPage() {
                             <RefreshCw className="w-3.5 h-3.5" />
                             <span>Live · {lastRefreshed.toLocaleTimeString('ms-MY')}</span>
                         </div>
-                        {isAdmin && (
+                        {hasFullAccess && (
                             <div className="flex items-center gap-1.5 bg-white/15 text-white text-xs px-2.5 py-1 rounded-full">
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 inline-block" />
                                 Drill-down aktif
@@ -889,8 +889,8 @@ export default function AnalyticsPage() {
                     icon={CheckSquare}
                     color="bg-indigo-600"
                     bg="bg-indigo-50"
-                    clickable={isAdmin}
-                    onClick={() => isAdmin && openDrill(`Semua Task Aktif (${activeTasks.length})`, activeTasks)}
+                    clickable={hasFullAccess}
+                    onClick={() => hasFullAccess && openDrill(`Semua Task Aktif (${activeTasks.length})`, activeTasks)}
                 />
                 <KpiCard
                     title="Overdue Tasks"
@@ -899,8 +899,8 @@ export default function AnalyticsPage() {
                     icon={AlertTriangle}
                     color="bg-red-500"
                     bg="bg-red-50"
-                    clickable={isAdmin && overdueTasks.length > 0}
-                    onClick={() => isAdmin && openDrill(`⚠️ Task Overdue (${overdueTasks.length})`, overdueTasks)}
+                    clickable={hasFullAccess && overdueTasks.length > 0}
+                    onClick={() => hasFullAccess && openDrill(`⚠️ Task Overdue (${overdueTasks.length})`, overdueTasks)}
                 />
                 <KpiCard
                     title="Bottleneck Tasks"
@@ -909,8 +909,8 @@ export default function AnalyticsPage() {
                     icon={Clock}
                     color="bg-amber-500"
                     bg="bg-amber-50"
-                    clickable={isAdmin && bottleneckTasks.length > 0}
-                    onClick={() => isAdmin && openDrill(`🕐 Bottleneck Tasks (${bottleneckTasks.length})`, bottleneckTasks)}
+                    clickable={hasFullAccess && bottleneckTasks.length > 0}
+                    onClick={() => hasFullAccess && openDrill(`🕐 Bottleneck Tasks (${bottleneckTasks.length})`, bottleneckTasks)}
                 />
                 <KpiCard
                     title="Klien Aktif"
@@ -1048,9 +1048,9 @@ export default function AnalyticsPage() {
                                 {Object.entries(overdueByStatus).filter(([, v]) => v > 0).map(([status, count]) => (
                                     <div
                                         key={status}
-                                        className={`flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100 transition-all ${isAdmin ? 'cursor-pointer hover:bg-slate-100' : ''}`}
+                                        className={`flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100 transition-all ${hasFullAccess ? 'cursor-pointer hover:bg-slate-100' : ''}`}
                                         onClick={() => {
-                                            if (!isAdmin) return;
+                                            if (!hasFullAccess) return;
                                             const filtered = overdueTasks.filter(t => t.status === status);
                                             openDrill(`Overdue — ${STATUS_LABELS[status]} (${filtered.length})`, filtered);
                                         }}
@@ -1061,7 +1061,7 @@ export default function AnalyticsPage() {
                                         </div>
                                         <div className="flex items-center gap-1">
                                             <Badge count={count} style={{ backgroundColor: STATUS_COLORS[status] }} />
-                                            {isAdmin && <span className="text-xs text-slate-300 ml-1">↗</span>}
+                                            {hasFullAccess && <span className="text-xs text-slate-300 ml-1">↗</span>}
                                         </div>
                                     </div>
                                 ))}
