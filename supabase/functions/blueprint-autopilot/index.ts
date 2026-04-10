@@ -1,0 +1,220 @@
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "jsr:@supabase/supabase-js@2";
+
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const TELEGRAM_BOT_TOKEN = Deno.env.get("TELEGRAM_BOT_TOKEN") ?? "";
+const TELEGRAM_CHAT_ID = Deno.env.get("TELEGRAM_CHAT_ID") ?? "";
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+// ─── Telegram Helper ──────────────────────────────────────────────────────────
+async function sendTelegram(message: string) {
+  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
+  try {
+    await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: TELEGRAM_CHAT_ID,
+        text: message,
+        parse_mode: "HTML",
+      }),
+    });
+  } catch (e) {
+    console.error("Telegram send error:", e);
+  }
+}
+
+// ─── Frequency Check ─────────────────────────────────────────────────────────
+function shouldRunThisPeriod(
+  frequency: string,
+  triggerDay: number,
+  startDate: Date,
+  lastRunAt: Date | null,
+  today: Date
+): boolean {
+  const todayDay = today.getDate();
+  if (todayDay !== triggerDay) return false;
+  if (today < startDate) return false;
+
+  if (!lastRunAt) return true; // Never run before
+
+  const lastRun = new Date(lastRunAt);
+
+  if (frequency === "MONTHLY") {
+    // Check if last run was in the same year+month
+    return (
+      lastRun.getFullYear() !== today.getFullYear() ||
+      lastRun.getMonth() !== today.getMonth()
+    );
+  }
+
+  if (frequency === "QUARTERLY") {
+    const quarter = (d: Date) => Math.floor(d.getMonth() / 3);
+    return (
+      lastRun.getFullYear() !== today.getFullYear() ||
+      quarter(lastRun) !== quarter(today)
+    );
+  }
+
+  if (frequency === "YEARLY") {
+    return lastRun.getFullYear() !== today.getFullYear();
+  }
+
+  return false;
+}
+
+// ─── Main Handler ─────────────────────────────────────────────────────────────
+Deno.serve(async (req: Request) => {
+  // CORS PREFLIGHT
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
+
+  // Allow manual POST trigger with optional { dry_run: true }
+  let dryRun = false;
+  if (req.method === "POST") {
+    try {
+      const body = await req.json();
+      dryRun = body?.dry_run === true;
+    } catch (_) {}
+  }
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  const today = new Date();
+  const todayISO = today.toISOString().split("T")[0];
+
+  try {
+    // 1. Get all active schedules with their blueprint tasks
+    const { data: schedules, error: schedErr } = await supabase
+      .from("tsk_recurring_schedules")
+      .select(`
+        id,
+        frequency,
+        trigger_day,
+        start_date,
+        last_run_at,
+        customer:tsk_customers!tsk_recurring_schedules_customer_id_fkey (id, name),
+        blueprint:tsk_blueprints!tsk_recurring_schedules_blueprint_id_fkey (
+          id,
+          name,
+          tsk_blueprint_tasks (
+            id,
+            title,
+            description,
+            priority_type,
+            assignee_id,
+            relative_due_day,
+            sort_order
+          )
+        )
+      `)
+      .eq("is_active", true);
+
+    if (schedErr) throw schedErr;
+    if (!schedules || schedules.length === 0) {
+      return new Response(JSON.stringify({ message: "No active schedules.", generated: 0 }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const results: any[] = [];
+    let totalGenerated = 0;
+    const telegramLines: string[] = [];
+
+    for (const schedule of schedules) {
+      const startDate = new Date(schedule.start_date);
+      const lastRunAt = schedule.last_run_at ? new Date(schedule.last_run_at) : null;
+
+      if (!shouldRunThisPeriod(schedule.frequency, schedule.trigger_day, startDate, lastRunAt, today)) {
+        results.push({ schedule_id: schedule.id, status: "skipped", reason: "Not trigger day or already ran this period" });
+        continue;
+      }
+
+      const blueprintTasks = (schedule.blueprint as any)?.tsk_blueprint_tasks ?? [];
+      const customerName = (schedule.customer as any)?.name ?? "Unknown Customer";
+      const blueprintName = (schedule.blueprint as any)?.name ?? "Blueprint";
+
+      if (blueprintTasks.length === 0) {
+        results.push({ schedule_id: schedule.id, status: "skipped", reason: "No blueprint tasks defined" });
+        continue;
+      }
+
+      // Sort tasks by sort_order
+      blueprintTasks.sort((a: any, b: any) => a.sort_order - b.sort_order);
+
+      // Build tsk_tasks inserts
+      const triggerDate = new Date(today.getFullYear(), today.getMonth(), schedule.trigger_day);
+      const tasksToInsert = blueprintTasks.map((bt: any) => {
+        const dueDate = new Date(triggerDate);
+        dueDate.setDate(dueDate.getDate() + bt.relative_due_day);
+        return {
+          title: bt.title,
+          description: bt.description ?? null,
+          priority_type: bt.priority_type ?? "SCHEDULE",
+          assignee_id: bt.assignee_id ?? null,
+          customer_name: customerName,
+          status: "BACKLOG",
+          due_date: dueDate.toISOString(),
+          is_recurring: true,
+          blueprint_schedule_id: schedule.id,
+        };
+      });
+
+      if (!dryRun) {
+        const { error: insertErr } = await supabase.from("tsk_tasks").insert(tasksToInsert);
+        if (insertErr) {
+          results.push({ schedule_id: schedule.id, status: "error", error: insertErr.message });
+          continue;
+        }
+
+        // Update last_run_at
+        await supabase
+          .from("tsk_recurring_schedules")
+          .update({ last_run_at: new Date().toISOString() })
+          .eq("id", schedule.id);
+      }
+
+      totalGenerated += tasksToInsert.length;
+      results.push({ schedule_id: schedule.id, status: dryRun ? "dry_run" : "generated", tasks_count: tasksToInsert.length });
+
+      // Prepare Telegram message
+      const taskTitles = tasksToInsert.map((t: any) => `  • ${t.title}`).join("\n");
+      telegramLines.push(
+        `🤖 <b>AUTOPILOT ALERT</b>\n` +
+        `📋 Blueprint: <b>${blueprintName}</b>\n` +
+        `🏢 Customer: <b>${customerName}</b>\n` +
+        `📅 Tarikh Trigger: <b>${todayISO}</b>\n` +
+        `Tasks dijana (${tasksToInsert.length}):\n${taskTitles}\n` +
+        `\nSila semak <b>Task Listing</b> dan mulakan kerja sekarang!`
+      );
+    }
+
+    // Send Telegram (one message per triggered schedule)
+    if (!dryRun && telegramLines.length > 0) {
+      for (const msg of telegramLines) {
+        await sendTelegram(msg);
+      }
+    }
+
+    return new Response(
+      JSON.stringify({
+        date: todayISO,
+        dry_run: dryRun,
+        total_generated: totalGenerated,
+        results,
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  } catch (err: any) {
+    console.error("Autopilot error:", err);
+    return new Response(JSON.stringify({ error: err.message }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+});
