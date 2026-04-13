@@ -79,6 +79,35 @@ export default function UsersPage() {
         }
     };
 
+    const handleDelete = (record: any) => {
+        Modal.confirm({
+            title: 'Delete User Account',
+            content: `Are you sure you want to permanently delete ${record.full_name}? This action cannot be undone and will remove their access to the system.`,
+            okText: 'Yes, Delete',
+            okType: 'danger',
+            cancelText: 'Cancel',
+            onOk: async () => {
+                try {
+                    const res = await fetch('/api/users', {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id: record.id })
+                    });
+                    
+                    const data = await res.json();
+                    if (!res.ok) {
+                        throw new Error(data.error || 'Failed to delete user');
+                    }
+                    message.success('User deleted successfully');
+                    fetchUsers();
+                } catch (error: any) {
+                    console.error('Delete error:', error);
+                    message.error(error.message || 'Failed to delete user');
+                }
+            }
+        });
+    };
+
     const openEditModal = (record: any) => {
         setEditingId(record.id);
         form.setFieldsValue(record);
@@ -111,6 +140,9 @@ export default function UsersPage() {
             render: (_: any, record: any) => (
                 <div className="flex gap-2">
                     <Button type="text" icon={<EditOutlined />} onClick={() => openEditModal(record)} />
+                    {role === 'admin' && (
+                        <Button type="text" danger icon={<DeleteOutlined />} onClick={() => handleDelete(record)} />
+                    )}
                 </div>
             )
         }
