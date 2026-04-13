@@ -130,6 +130,7 @@ export default function EisenhowerDashboard() {
                 assignee_id,
                 due_date: due_date?.toISOString(),
                 status: 'BACKLOG',
+                created_by: currentUserId,
             }]).select('id').single();
 
             if (error) throw error;

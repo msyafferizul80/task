@@ -19,7 +19,9 @@ export interface Task {
     due_date: string | null;
     created_at: string;
     updated_at?: string;
+    created_by?: string | null;
     assignee?: Profile;
+    creator?: Profile;
     is_escalated?: boolean;
 }
 

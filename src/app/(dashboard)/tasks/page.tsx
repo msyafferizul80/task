@@ -39,6 +39,11 @@ export default function TaskListingPage() {
                     id,
                     full_name,
                     avatar_url
+                ),
+                creator:lv_profiles!tsk_tasks_created_by_fkey (
+                    id,
+                    full_name,
+                    avatar_url
                 )
             `).order('created_at', { ascending: false });
 
@@ -177,6 +182,7 @@ export default function TaskListingPage() {
             title: 'Task Title',
             dataIndex: 'title',
             key: 'title',
+            sorter: (a: Task, b: Task) => a.title.localeCompare(b.title),
             render: (text: string, record: Task) => (
                 <div className="font-semibold text-indigo-900">
                     <div className="flex items-center gap-2">
@@ -195,7 +201,8 @@ export default function TaskListingPage() {
             title: 'Nota / Description',
             dataIndex: 'description',
             key: 'description',
-            width: '35%',
+            width: '30%',
+            sorter: (a: Task, b: Task) => (a.description || '').localeCompare(b.description || ''),
             render: (text: string) => (
                 <div className="text-gray-600 whitespace-pre-wrap text-sm">
                     {text || <span className="text-gray-400 italic">Tiada nota...</span>}
@@ -206,12 +213,18 @@ export default function TaskListingPage() {
             title: 'Customer',
             dataIndex: 'customer_name',
             key: 'customer_name',
+            sorter: (a: Task, b: Task) => (a.customer_name || '').localeCompare(b.customer_name || ''),
             render: (text: string) => <Text strong className="text-slate-700">{text || '-'}</Text>
         },
         {
             title: 'PIC / Assignee',
             dataIndex: 'assignee',
             key: 'assignee',
+            sorter: (a: Task, b: Task) => {
+                const nameA = a.assignee?.full_name || '';
+                const nameB = b.assignee?.full_name || '';
+                return nameA.localeCompare(nameB);
+            },
             render: (assignee: Profile | undefined) => (
                 assignee ? (
                     <div className="flex items-center gap-2">
@@ -229,13 +242,45 @@ export default function TaskListingPage() {
             title: 'Status',
             dataIndex: 'status',
             key: 'status',
+            sorter: (a: Task, b: Task) => a.status.localeCompare(b.status),
             render: (status: string) => getStatusTag(status)
+        },
+        {
+            title: 'Created By',
+            dataIndex: 'creator',
+            key: 'creator',
+            sorter: (a: Task, b: Task) => {
+                const nameA = a.creator?.full_name || '';
+                const nameB = b.creator?.full_name || '';
+                return nameA.localeCompare(nameB);
+            },
+            render: (creator: Profile | undefined) => (
+                creator ? (
+                    <div className="flex items-center gap-2">
+                        <img
+                            src={creator.avatar_url || `https://ui-avatars.com/api/?name=${creator.full_name}&background=10b981&color=fff`}
+                            className="w-5 h-5 rounded-full"
+                            alt={creator.full_name}
+                        />
+                        <span className="text-xs font-medium text-slate-600">{creator.full_name}</span>
+                    </div>
+                ) : <span className="text-xs text-gray-400">System / Unknown</span>
+            )
+        },
+        {
+            title: 'Date Created',
+            dataIndex: 'created_at',
+            key: 'created_at',
+            width: '10%',
+            sorter: (a: Task, b: Task) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime(),
+            render: (date: string | null) => date ? new Date(date).toLocaleDateString() : '-'
         },
         {
             title: 'Due Date',
             dataIndex: 'due_date',
             key: 'due_date',
-            width: '12%',
+            width: '10%',
+            sorter: (a: Task, b: Task) => new Date(a.due_date || 0).getTime() - new Date(b.due_date || 0).getTime(),
             render: (date: string | null) => date ? new Date(date).toLocaleDateString() : '-'
         },
         {
@@ -362,20 +407,32 @@ export default function TaskListingPage() {
                                 <div className="text-xs text-slate-500">🏢 {task.customer_name}</div>
                             )}
                             {task.assignee && (
-                                <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                                <div className="flex items-center gap-1.5 text-slate-600 bg-slate-50 px-2 py-1 rounded-md">
                                     <img
                                         src={task.assignee.avatar_url || `https://ui-avatars.com/api/?name=${task.assignee.full_name}&background=6366f1&color=fff`}
-                                        className="w-5 h-5 rounded-full"
+                                        className="w-4 h-4 rounded-full"
                                         alt={task.assignee.full_name}
                                     />
-                                    {task.assignee.full_name}
+                                    PIC: {task.assignee.full_name}
                                 </div>
                             )}
-                            {task.due_date && (
-                                <div className="text-[11px] font-semibold text-rose-500 flex items-center gap-1 bg-rose-50 w-fit px-2 py-0.5 rounded-md border border-rose-100">
-                                    ⏱️ Due: {new Date(task.due_date).toLocaleDateString()}
+                            {task.creator && (
+                                <div className="flex items-center gap-1.5 text-slate-500 text-[10px] mt-1">
+                                    <span className="opacity-70">Created by:</span> {task.creator.full_name}
                                 </div>
                             )}
+                            <div className="flex flex-wrap gap-2 mt-1">
+                                {task.created_at && (
+                                    <div className="text-[11px] font-semibold text-indigo-500 flex items-center gap-1 bg-indigo-50 w-fit px-2 py-0.5 rounded-md border border-indigo-100">
+                                        📅 Created: {new Date(task.created_at).toLocaleDateString()}
+                                    </div>
+                                )}
+                                {task.due_date && (
+                                    <div className="text-[11px] font-semibold text-rose-500 flex items-center gap-1 bg-rose-50 w-fit px-2 py-0.5 rounded-md border border-rose-100">
+                                        ⏱️ Due: {new Date(task.due_date).toLocaleDateString()}
+                                    </div>
+                                )}
+                            </div>
                             {task.description && (
                                 <div className="text-xs text-gray-500 line-clamp-2">{task.description}</div>
                             )}
