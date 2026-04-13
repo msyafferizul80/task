@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { Card, Table, Tag, Typography, Spin, Badge, Tooltip, Modal, Button } from 'antd';
+import { Card, Table, Tag, Typography, Spin, Badge, Tooltip, Modal, Button, Select } from 'antd';
 import { createClient } from '@/utils/supabase/client';
 import { Task, Profile } from '@/lib/types';
 import { useRole } from '@/components/layout/RoleProvider';
@@ -522,6 +522,8 @@ export default function AnalyticsPage() {
     const [profiles, setProfiles] = useState<Profile[]>([]);
     const [loading, setLoading] = useState(true);
     const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
+    const [currentUserDepartment, setCurrentUserDepartment] = useState<string | null>(null);
+    const [filterDepartment, setFilterDepartment] = useState<string>('All');
 
     // Total task by PIC chart filters
     const [totalPicPeriod, setTotalPicPeriod] = useState<TimePeriod>('month');
@@ -543,7 +545,7 @@ export default function AnalyticsPage() {
 
     const fetchData = useCallback(async () => {
         try {
-            const [tasksRes, profilesRes] = await Promise.all([
+            const [tasksRes, profilesRes, authRes] = await Promise.all([
                 supabase.from('tsk_tasks').select(`
                     *,
                     assignee:lv_profiles!tsk_tasks_assignee_id_fkey (
@@ -552,7 +554,8 @@ export default function AnalyticsPage() {
                         avatar_url
                     )
                 `).order('created_at', { ascending: false }),
-                supabase.from('lv_profiles').select('id, full_name, avatar_url').eq('status', 'active').order('full_name'),
+                supabase.from('lv_profiles').select('id, full_name, avatar_url, department').eq('status', 'active').order('full_name'),
+                supabase.auth.getUser()
             ]);
 
             if (tasksRes.error) throw tasksRes.error;
@@ -560,6 +563,17 @@ export default function AnalyticsPage() {
 
             setTasks((tasksRes.data as Task[]) || []);
             setProfiles(profilesRes.data || []);
+            
+            const userId = authRes.data?.user?.id;
+            let myDept: string | null = null;
+            if (userId) {
+                const me = profilesRes.data?.find(p => p.id === userId);
+                if (me?.department) {
+                    myDept = me.department;
+                    setCurrentUserDepartment(me.department);
+                }
+            }
+            
             setLastRefreshed(new Date());
         } catch (err: any) {
             console.error('Analytics fetch error:', err.message);
@@ -586,16 +600,28 @@ export default function AnalyticsPage() {
     // ── Derived Data ─────────────────────────────────────────────────────────
 
     const now = new Date();
+    
+    // Auto-set the initial filter strictly if not admin
+    useEffect(() => {
+        if (!hasFullAccess && currentUserDepartment) {
+            setFilterDepartment(currentUserDepartment);
+        }
+    }, [hasFullAccess, currentUserDepartment]);
 
-    const activeTasks = useMemo(() => tasks.filter(t => t.status !== 'DONE'), [tasks]);
+    const baseTasks = useMemo(() => {
+        if (filterDepartment === 'All') return tasks;
+        return tasks.filter(t => t.department === filterDepartment);
+    }, [tasks, filterDepartment]);
+
+    const activeTasks = useMemo(() => baseTasks.filter(t => t.status !== 'DONE'), [baseTasks]);
     const overdueTasks = useMemo(() => activeTasks.filter(t => t.due_date && new Date(t.due_date) < now), [activeTasks]);
     const bottleneckTasks = useMemo(() =>
         activeTasks.filter(t => differenceInDays(now, new Date(t.created_at)) >= 3),
         [activeTasks]);
 
     const uniqueCustomers = useMemo(() =>
-        new Set(tasks.map(t => t.customer_name).filter(Boolean)).size,
-        [tasks]);
+        new Set(baseTasks.map(t => t.customer_name).filter(Boolean)).size,
+        [baseTasks]);
 
     const workloadData = useMemo(() => {
         const counts: Record<string, number> = {};
@@ -624,7 +650,7 @@ export default function AnalyticsPage() {
         }
 
         const counts: Record<string, number> = {};
-        tasks.forEach(t => {
+        baseTasks.forEach(t => {
             const created = new Date(t.created_at);
             if (created >= startDate && created <= endDate) {
                 const name = (t.assignee as any)?.full_name || 'Unassigned';
@@ -634,18 +660,18 @@ export default function AnalyticsPage() {
         return Object.entries(counts)
             .map(([pic, count]) => ({ pic, count }))
             .sort((a, b) => b.count - a.count);
-    }, [tasks, totalPicPeriod, totalPicCustomStart, totalPicCustomEnd]);
+    }, [baseTasks, totalPicPeriod, totalPicCustomStart, totalPicCustomEnd]);
 
     const customerData = useMemo(() => {
         const counts: Record<string, number> = {};
-        tasks.forEach(t => {
+        baseTasks.forEach(t => {
             const name = t.customer_name || 'No Customer';
             counts[name] = (counts[name] || 0) + 1;
         });
         return Object.entries(counts)
             .map(([customer, value]) => ({ customer, value }))
             .sort((a, b) => b.value - a.value);
-    }, [tasks]);
+    }, [baseTasks]);
 
     const overdueByStatus = useMemo(() => {
         const counts: Record<string, number> = { BACKLOG: 0, IN_PROGRESS: 0, REVIEW: 0 };
@@ -658,7 +684,7 @@ export default function AnalyticsPage() {
     const customerDetailedData = useMemo(() => {
         const stats: Record<string, { total: number; completed: number; pending: number; overdue: number; firstTaskDate: Date; tasksPerDay: number }> = {};
         
-        tasks.forEach(t => {
+        baseTasks.forEach(t => {
             const name = t.customer_name || 'No Customer';
             const createdAt = new Date(t.created_at);
             
@@ -870,12 +896,30 @@ export default function AnalyticsPage() {
                             <RefreshCw className="w-3.5 h-3.5" />
                             <span>Live · {lastRefreshed.toLocaleTimeString('ms-MY')}</span>
                         </div>
+                        <div className="flex items-center gap-2 mt-1">
+                            <span className="text-xs text-indigo-200 uppercase font-semibold">Jabatan:</span>
+                            <Select
+                                value={filterDepartment}
+                                onChange={setFilterDepartment}
+                                size="small"
+                                disabled={!hasFullAccess}
+                                className="w-[140px] text-slate-800"
+                                options={[
+                                    { value: 'All', label: 'Seluruh Organisasi' },
+                                    { value: 'Outsourcing', label: 'Outsourcing' },
+                                    { value: 'Sales', label: 'Sales' },
+                                    { value: 'Marketing', label: 'Marketing' },
+                                    { value: 'Recruitment', label: 'Recruitment' },
+                                ]}
+                            />
+                        </div>
                         {hasFullAccess && (
-                            <div className="flex items-center gap-1.5 bg-white/15 text-white text-xs px-2.5 py-1 rounded-full">
+                            <div className="flex items-center gap-1.5 bg-white/15 text-white text-xs px-2.5 py-1 mt-1 rounded-full">
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 inline-block" />
                                 Drill-down aktif
                             </div>
                         )}
+                    </div>
                     </div>
                 </div>
             </div>

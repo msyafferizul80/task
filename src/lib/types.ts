@@ -20,6 +20,8 @@ export interface Task {
     created_at: string;
     updated_at?: string;
     created_by?: string | null;
+    department?: string;
+    is_internal?: boolean;
     assignee?: Profile;
     creator?: Profile;
     is_escalated?: boolean;

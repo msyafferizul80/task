@@ -94,7 +94,7 @@ export default function EisenhowerDashboard() {
         try {
             message.loading({ content: 'Creating Task & Analyzing via AI...', key: 'createTask' });
             
-            const { title, description, priority_type, due_date, customer_name, assignee_id } = values;
+            const { title, description, priority_type, due_date, customer_name, assignee_id, department } = values;
             let finalTitle = title;
             let aiChecklist: string[] = [];
 
@@ -131,6 +131,8 @@ export default function EisenhowerDashboard() {
                 due_date: due_date?.toISOString(),
                 status: 'BACKLOG',
                 created_by: currentUserId,
+                is_internal: customer_name === 'SYAZNA WORLD (INTERNAL)',
+                department: department || 'Outsourcing',
             }]).select('id').single();
 
             if (error) throw error;
@@ -200,6 +202,8 @@ export default function EisenhowerDashboard() {
                 assignee_id: values.assignee_id,
                 due_date: values.due_date?.toISOString(),
                 status: values.status,
+                is_internal: values.customer_name === 'SYAZNA WORLD (INTERNAL)',
+                department: values.department || 'Outsourcing',
             }).eq('id', selectedTask.id);
 
             if (error) throw error;
@@ -453,11 +457,28 @@ export default function EisenhowerDashboard() {
             >
                 <Form form={form} layout="vertical" onFinish={handleCreateTask}>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <Form.Item name="customer_name" label="Customer Name" className="col-span-2" rules={[{ required: true, message: 'Customer name is required' }]}>
+                        <Form.Item name="customer_name" label="Customer Name" className="col-span-2 sm:col-span-1" rules={[{ required: true, message: 'Customer name is required' }]}>
                             <Select placeholder="Select Customer" size="large" showSearch optionFilterProp="children">
                                 {customers.map(c => (
                                     <Option key={c.id} value={c.name}>{c.name}</Option>
                                 ))}
+                            </Select>
+                        </Form.Item>
+
+                        <Form.Item name="department" label="Jabatan (Department)" className="col-span-2 sm:col-span-1" rules={[{ required: true, message: 'Please select a department' }]} initialValue="Outsourcing">
+                            <Select 
+                                placeholder="Select Department" 
+                                size="large"
+                                onChange={(val) => {
+                                    if (val !== 'Outsourcing') {
+                                        form.setFieldsValue({ customer_name: 'SYAZNA WORLD (INTERNAL)' });
+                                    }
+                                }}
+                            >
+                                <Option value="Outsourcing">Outsourcing</Option>
+                                <Option value="Sales">Sales</Option>
+                                <Option value="Marketing">Marketing</Option>
+                                <Option value="Recruitment">Recruitment</Option>
                             </Select>
                         </Form.Item>
 
@@ -518,11 +539,29 @@ export default function EisenhowerDashboard() {
                         children: (
                             <Form form={editForm} layout="vertical" onFinish={handleUpdateTask}>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    <Form.Item name="customer_name" label="Customer Name" className="col-span-2" rules={[{ required: true, message: 'Customer name is required' }]}>
+                                    <Form.Item name="customer_name" label="Customer Name" className="col-span-2 sm:col-span-1" rules={[{ required: true, message: 'Customer name is required' }]}>
                                         <Select placeholder="Select Customer" size="large" showSearch optionFilterProp="children" disabled={role !== 'admin' && role !== 'manager'}>
                                             {customers.map(c => (
                                                 <Option key={c.id} value={c.name}>{c.name}</Option>
                                             ))}
+                                        </Select>
+                                    </Form.Item>
+
+                                    <Form.Item name="department" label="Jabatan (Department)" className="col-span-2 sm:col-span-1" rules={[{ required: true, message: 'Please select a department' }]}>
+                                        <Select 
+                                            placeholder="Select Department" 
+                                            size="large" 
+                                            disabled={role !== 'admin' && role !== 'manager'}
+                                            onChange={(val) => {
+                                                if (val !== 'Outsourcing') {
+                                                    editForm.setFieldsValue({ customer_name: 'SYAZNA WORLD (INTERNAL)' });
+                                                }
+                                            }}
+                                        >
+                                            <Option value="Outsourcing">Outsourcing</Option>
+                                            <Option value="Sales">Sales</Option>
+                                            <Option value="Marketing">Marketing</Option>
+                                            <Option value="Recruitment">Recruitment</Option>
                                         </Select>
                                     </Form.Item>
 

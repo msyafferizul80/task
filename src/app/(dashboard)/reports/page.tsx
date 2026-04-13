@@ -83,7 +83,10 @@ export default function WeeklyReportPage() {
             let query = supabase.from('tsk_tasks').select(`
                 *,
                 assignee:lv_profiles!tsk_tasks_assignee_id_fkey ( id, full_name )
-            `).eq('customer_name', selectedCustomer).order('created_at', { ascending: false });
+            `)
+            .eq('customer_name', selectedCustomer)
+            .eq('is_internal', false)
+            .order('created_at', { ascending: false });
 
             if (dateRange[0] && dateRange[1]) {
                 // Approximate filtering, assuming creating or due inside the range 

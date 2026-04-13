@@ -31,14 +31,28 @@ Deno.serve(async (req) => {
                 }
             }
 
-            const message = `✅ *Task Completed!*\n\n*Customer:* ${record.customer_name || '-'}\n*Task:* ${record.title || '-'}\n*PIC:* ${assigneeName}`;
+            // Department-based Telegram Routing
+            let targetChatId = chatId;
+            if (record.department) {
+                const { data: deptData } = await supabase
+                    .from('tsk_department_settings')
+                    .select('telegram_group_id')
+                    .eq('department_name', record.department)
+                    .single();
+                
+                if (deptData?.telegram_group_id) {
+                    targetChatId = deptData.telegram_group_id;
+                }
+            }
+
+            const message = `✅ *Task Completed!*\n\n*Department:* ${record.department || 'Outsourcing'}\n*Customer:* ${record.customer_name || '-'}\n*Task:* ${record.title || '-'}\n*PIC:* ${assigneeName}`;
 
             const tgUrl = `https://api.telegram.org/bot${botToken}/sendMessage`;
             const res = await fetch(tgUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    chat_id: chatId,
+                    chat_id: targetChatId,
                     text: message,
                     parse_mode: 'Markdown'
                 })
