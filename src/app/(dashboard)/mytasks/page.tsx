@@ -24,6 +24,7 @@ export default function MyTasksPage() {
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [selectedTask, setSelectedTask] = useState<Task | null>(null);
     const [editForm] = Form.useForm();
+    const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
     const supabase = createClient();
     const { role } = useRole();
@@ -32,6 +33,7 @@ export default function MyTasksPage() {
         try {
             const { data: { user } } = await supabase.auth.getUser();
             const userId = user?.id || null;
+            setCurrentUserId(userId);
 
             let query = supabase.from('tsk_tasks').select(`
                 *,
@@ -460,7 +462,7 @@ export default function MyTasksPage() {
                     <Form.Item className="mb-0 mt-6 pt-4 border-t">
                         <div className="flex items-center justify-between w-full">
                             <div>
-                                {(role === 'admin' || role === 'manager') && selectedTask && (
+                                {((role === 'admin' || role === 'manager') || (selectedTask && (selectedTask.status !== 'DONE' || selectedTask.assignee_id === currentUserId))) && selectedTask && (
                                     <Button danger type="text" onClick={handleDeleteTask} size="large" icon={<DeleteOutlined />}>
                                         Delete
                                     </Button>

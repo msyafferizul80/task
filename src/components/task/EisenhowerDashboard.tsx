@@ -636,7 +636,7 @@ export default function EisenhowerDashboard() {
                                 <Form.Item className="mb-0 mt-6 pt-4 border-t">
                                     <div className="flex items-center justify-between w-full">
                                         <div>
-                                            {(role === 'admin' || role === 'manager') && selectedTask && (
+                                            {((role === 'admin' || role === 'manager') || (selectedTask && (selectedTask.status !== 'DONE' || selectedTask.assignee_id === currentUserId))) && selectedTask && (
                                                 <Button danger type="text" onClick={handleDeleteTask} size="large" icon={<DeleteOutlined />}>
                                                     Delete
                                                 </Button>
