@@ -275,10 +275,10 @@ export default function BlueprintsPage() {
 
     // ──────────────────────────────────────────────────────────────────────────
 
-    if (role !== 'admin') {
+    if (role !== 'admin' && role !== 'manager') {
         return (
             <div className="flex justify-center items-center h-[60vh]">
-                <Text type="secondary">Akses ditolak. Halaman ini hanya untuk Admin.</Text>
+                <Text type="secondary">Akses ditolak. Halaman ini hanya untuk Admin dan Manager.</Text>
             </div>
         );
     }

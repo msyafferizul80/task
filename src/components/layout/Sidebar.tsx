@@ -73,11 +73,11 @@ export default function Sidebar() {
     if (role === 'admin' || role === 'manager') {
         navItems.push({ name: 'Analytics', href: '/analytics', icon: BarChart2 });
         navItems.push({ name: 'Customers', href: '/customers', icon: Users });
+        navItems.push({ name: 'Blueprints', href: '/blueprints', icon: Bot });
     }
 
     if (role === 'admin') {
         navItems.push({ name: 'User Management', href: '/users', icon: UserCircle });
-        navItems.push({ name: 'Blueprints', href: '/blueprints', icon: Bot });
     }
 
     const navGroups = [
