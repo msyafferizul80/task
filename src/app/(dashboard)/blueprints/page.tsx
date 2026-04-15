@@ -4,7 +4,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import {
     Card, Button, Table, Modal, Form, Input, Select,
     InputNumber, Tag, Spin, message, Popconfirm, Switch,
-    Tooltip, Typography, Space, Badge, Divider, DatePicker
+    Tooltip, Typography, Space, Divider, DatePicker, TimePicker
 } from 'antd';
 import {
     PlusOutlined, DeleteOutlined, EditOutlined, RobotOutlined,
@@ -26,10 +26,24 @@ const PRIORITY_OPTIONS = [
 ];
 
 const FREQUENCY_OPTIONS = [
-    { value: 'MONTHLY', label: '📅 Monthly', desc: 'Setiap bulan' },
+    { value: 'DAILY',     label: '📆 Daily',     desc: 'Setiap hari' },
+    { value: 'WEEKLY',    label: '📅 Weekly',    desc: 'Setiap minggu' },
+    { value: 'MONTHLY',   label: '📅 Monthly',   desc: 'Setiap bulan' },
     { value: 'QUARTERLY', label: '📆 Quarterly', desc: 'Setiap 3 bulan' },
-    { value: 'YEARLY', label: '📋 Yearly', desc: 'Setiap tahun' },
+    { value: 'YEARLY',    label: '📋 Yearly',    desc: 'Setiap tahun' },
 ];
+
+const DAY_OF_WEEK_OPTIONS = [
+    { value: 1, label: 'Isnin (Monday)' },
+    { value: 2, label: 'Selasa (Tuesday)' },
+    { value: 3, label: 'Rabu (Wednesday)' },
+    { value: 4, label: 'Khamis (Thursday)' },
+    { value: 5, label: 'Jumaat (Friday)' },
+    { value: 6, label: 'Sabtu (Saturday)' },
+    { value: 0, label: 'Ahad (Sunday)' },
+];
+
+const DAY_OF_WEEK_NAMES = ['Ahad', 'Isnin', 'Selasa', 'Rabu', 'Khamis', 'Jumaat', 'Sabtu'];
 
 export default function BlueprintsPage() {
     const supabase = createClient();
@@ -58,6 +72,9 @@ export default function BlueprintsPage() {
     const [schedModalOpen, setSchedModalOpen] = useState(false);
     const [schedForm] = Form.useForm();
 
+    // Watch frequency to conditionally render trigger_day field
+    const schedFrequency = Form.useWatch('frequency', schedForm);
+
     // Running state
     const [running, setRunning] = useState(false);
 
@@ -68,7 +85,7 @@ export default function BlueprintsPage() {
                 supabase.from('tsk_customers').select('id, name').order('name'),
                 supabase.from('lv_profiles').select('id, full_name, avatar_url').eq('status', 'active').order('full_name'),
                 supabase.from('tsk_recurring_schedules').select(`
-                    id, frequency, trigger_day, start_date, is_active, last_run_at,
+                    id, frequency, trigger_day, trigger_time, start_date, is_active, last_run_at,
                     customer:tsk_customers!tsk_recurring_schedules_customer_id_fkey(id, name),
                     blueprint:tsk_blueprints!tsk_recurring_schedules_blueprint_id_fkey(id, name)
                 `).order('created_at', { ascending: false }),
@@ -182,10 +199,14 @@ export default function BlueprintsPage() {
 
     const handleSaveSchedule = async (values: any) => {
         try {
-            const { start_date, ...rest } = values;
-            const payload = {
+            const { start_date, trigger_time, frequency, trigger_day, ...rest } = values;
+            const payload: any = {
                 ...rest,
+                frequency,
                 start_date: start_date?.format('YYYY-MM-DD'),
+                trigger_time: trigger_time ? trigger_time.format('HH:mm') : null,
+                // DAILY has no meaningful trigger_day; store 0
+                trigger_day: frequency === 'DAILY' ? 0 : trigger_day,
             };
             const { error } = await supabase.from('tsk_recurring_schedules').insert(payload);
             if (error) throw error;
@@ -227,7 +248,7 @@ export default function BlueprintsPage() {
                     message.success(`✅ ${result.total_generated} task berjaya dijana & Telegram notification dihantar!`);
                     fetchData();
                 } else {
-                    message.info('Tiada task yang perlu dijana hari ini (trigger day belum tiba atau sudah run).');
+                    message.info('Tiada task yang perlu dijana hari ini (trigger day/time belum tiba atau sudah run).');
                 }
             }
         } catch (e: any) {
@@ -235,6 +256,21 @@ export default function BlueprintsPage() {
         } finally {
             setRunning(false);
         }
+    };
+
+    // ── Trigger Display Helper ────────────────────────────────────────────────
+
+    const renderTriggerLabel = (r: any) => {
+        const timeStr = r.trigger_time ? ` • ${r.trigger_time} MYT` : '';
+        if (r.frequency === 'DAILY') {
+            return <span className="text-sm">Setiap hari{timeStr}</span>;
+        }
+        if (r.frequency === 'WEEKLY') {
+            const dayName = DAY_OF_WEEK_NAMES[r.trigger_day ?? 1] ?? '-';
+            return <span className="text-sm">Setiap <strong>{dayName}</strong>{timeStr}</span>;
+        }
+        const period = r.frequency === 'MONTHLY' ? 'bulan' : r.frequency === 'QUARTERLY' ? 'quarter' : 'tahun';
+        return <span className="text-sm">Hari <strong>{r.trigger_day}</strong> setiap {period}{timeStr}</span>;
     };
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -295,12 +331,15 @@ export default function BlueprintsPage() {
             title: 'Frequency', dataIndex: 'frequency', key: 'frequency',
             render: (f: string) => {
                 const opt = FREQUENCY_OPTIONS.find(o => o.value === f);
-                return <Tag color="blue">{opt?.label ?? f}</Tag>;
+                const colorMap: Record<string, string> = {
+                    DAILY: 'green', WEEKLY: 'cyan', MONTHLY: 'blue', QUARTERLY: 'purple', YEARLY: 'magenta'
+                };
+                return <Tag color={colorMap[f] ?? 'blue'}>{opt?.label ?? f}</Tag>;
             },
         },
         {
             title: 'Trigger', key: 'trigger',
-            render: (r: any) => <span className="text-sm">Hari <strong>{r.trigger_day}</strong> setiap {r.frequency === 'MONTHLY' ? 'bulan' : r.frequency === 'QUARTERLY' ? 'quarter' : 'tahun'}</span>,
+            render: renderTriggerLabel,
         },
         {
             title: 'Status', key: 'status',
@@ -560,7 +599,7 @@ export default function BlueprintsPage() {
                 open={schedModalOpen}
                 onCancel={() => { setSchedModalOpen(false); schedForm.resetFields(); }}
                 footer={null}
-                width={540}
+                width={560}
             >
                 <div className="mb-4 p-3 bg-emerald-50 rounded-xl text-sm text-emerald-700 border border-emerald-100">
                     Sistem akan <strong>auto-generate tasks</strong> ke dalam Task Listing mengikut frequency yang ditetapkan.
@@ -580,8 +619,10 @@ export default function BlueprintsPage() {
                             ))}
                         </Select>
                     </Form.Item>
+
+                    {/* Frequency + Time — always shown */}
                     <div className="grid grid-cols-2 gap-4">
-                        <Form.Item name="frequency" label="Frequency" rules={[{ required: true }]}>
+                        <Form.Item name="frequency" label="Frequency" rules={[{ required: true, message: 'Pilih frequency' }]}>
                             <Select size="large" placeholder="Pilih frequency">
                                 {FREQUENCY_OPTIONS.map(f => (
                                     <Option key={f.value} value={f.value}>
@@ -591,13 +632,51 @@ export default function BlueprintsPage() {
                                 ))}
                             </Select>
                         </Form.Item>
-                        <Form.Item name="trigger_day" label="Trigger (Hari ke-)" rules={[{ required: true }]}>
-                            <InputNumber min={1} max={28} size="large" className="w-full" addonAfter="hb" />
+                        <Form.Item
+                            name="trigger_time"
+                            label="Masa Auto-Generate (MYT)"
+                            rules={[{ required: true, message: 'Pilih masa' }]}
+                        >
+                            <TimePicker
+                                format="HH:mm"
+                                size="large"
+                                className="w-full"
+                                minuteStep={15}
+                                placeholder="cth: 08:00"
+                            />
                         </Form.Item>
                     </div>
+
+                    {/* Trigger day — hidden for DAILY, day-of-week for WEEKLY, day-of-month for others */}
+                    {schedFrequency && schedFrequency !== 'DAILY' && (
+                        <Form.Item
+                            name="trigger_day"
+                            label={schedFrequency === 'WEEKLY' ? 'Hari dalam Minggu' : 'Trigger (Hari ke-)'}
+                            rules={[{ required: true, message: 'Wajib diisi' }]}
+                        >
+                            {schedFrequency === 'WEEKLY' ? (
+                                <Select size="large" placeholder="Pilih hari">
+                                    {DAY_OF_WEEK_OPTIONS.map(d => (
+                                        <Option key={d.value} value={d.value}>{d.label}</Option>
+                                    ))}
+                                </Select>
+                            ) : (
+                                <InputNumber
+                                    min={1}
+                                    max={28}
+                                    size="large"
+                                    className="w-full"
+                                    addonAfter="hb"
+                                    placeholder="cth: 1"
+                                />
+                            )}
+                        </Form.Item>
+                    )}
+
                     <Form.Item name="start_date" label="Tarikh Mula" rules={[{ required: true }]}>
                         <DatePicker size="large" className="w-full" placeholder="Pilih tarikh mula" />
                     </Form.Item>
+
                     <div className="flex justify-end gap-2 mt-2">
                         <Button onClick={() => { setSchedModalOpen(false); schedForm.resetFields(); }}>Batal</Button>
                         <Button type="primary" htmlType="submit" className="bg-emerald-600 border-emerald-600">Aktifkan Schedule</Button>

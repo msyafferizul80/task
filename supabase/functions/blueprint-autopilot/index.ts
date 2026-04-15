@@ -33,20 +33,50 @@ async function sendTelegram(message: string) {
 function shouldRunThisPeriod(
   frequency: string,
   triggerDay: number,
+  triggerTime: string | null,
   startDate: Date,
   lastRunAt: Date | null,
   today: Date
 ): boolean {
+  if (today < startDate) return false;
+
+  // If trigger_time is set, only run after that time (MYT)
+  if (triggerTime) {
+    const [triggerHour, triggerMin] = triggerTime.split(":").map(Number);
+    const nowHour = today.getHours();
+    const nowMin = today.getMinutes();
+    if (nowHour < triggerHour || (nowHour === triggerHour && nowMin < triggerMin)) {
+      return false; // Not reached trigger time yet
+    }
+  }
+
+  if (frequency === "DAILY") {
+    if (!lastRunAt) return true;
+    const todayDate = today.toISOString().split("T")[0];
+    // lastRunAt stored in UTC, convert to MYT for comparison
+    const lastRunMYT = new Date(new Date(lastRunAt).getTime() + 8 * 60 * 60 * 1000);
+    const lastRunDate = lastRunMYT.toISOString().split("T")[0];
+    return lastRunDate !== todayDate;
+  }
+
+  if (frequency === "WEEKLY") {
+    // triggerDay: 0=Sunday, 1=Monday, ..., 6=Saturday (JS getDay() convention)
+    const todayDayOfWeek = today.getDay();
+    if (todayDayOfWeek !== triggerDay) return false;
+    if (!lastRunAt) return true;
+    const daysSinceLastRun = (today.getTime() - new Date(lastRunAt).getTime()) / (1000 * 60 * 60 * 24);
+    return daysSinceLastRun >= 6;
+  }
+
+  // MONTHLY, QUARTERLY, YEARLY — trigger on specific day of month
   const todayDay = today.getDate();
   if (todayDay !== triggerDay) return false;
-  if (today < startDate) return false;
 
   if (!lastRunAt) return true; // Never run before
 
   const lastRun = new Date(lastRunAt);
 
   if (frequency === "MONTHLY") {
-    // Check if last run was in the same year+month
     return (
       lastRun.getFullYear() !== today.getFullYear() ||
       lastRun.getMonth() !== today.getMonth()
@@ -85,7 +115,10 @@ Deno.serve(async (req: Request) => {
   }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-  const today = new Date();
+
+  // Use MYT (UTC+8) — Malaysia does not observe DST
+  const nowUTC = new Date();
+  const today = new Date(nowUTC.getTime() + 8 * 60 * 60 * 1000);
   const todayISO = today.toISOString().split("T")[0];
 
   try {
@@ -96,6 +129,7 @@ Deno.serve(async (req: Request) => {
         id,
         frequency,
         trigger_day,
+        trigger_time,
         start_date,
         last_run_at,
         customer:tsk_customers!tsk_recurring_schedules_customer_id_fkey (id, name),
@@ -130,8 +164,8 @@ Deno.serve(async (req: Request) => {
       const startDate = new Date(schedule.start_date);
       const lastRunAt = schedule.last_run_at ? new Date(schedule.last_run_at) : null;
 
-      if (!shouldRunThisPeriod(schedule.frequency, schedule.trigger_day, startDate, lastRunAt, today)) {
-        results.push({ schedule_id: schedule.id, status: "skipped", reason: "Not trigger day or already ran this period" });
+      if (!shouldRunThisPeriod(schedule.frequency, schedule.trigger_day, schedule.trigger_time ?? null, startDate, lastRunAt, today)) {
+        results.push({ schedule_id: schedule.id, status: "skipped", reason: "Not trigger day/time or already ran this period" });
         continue;
       }
 
