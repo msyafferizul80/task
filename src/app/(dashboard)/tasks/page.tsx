@@ -9,6 +9,7 @@ import { SearchOutlined, CheckCircleOutlined, SyncOutlined, ClockCircleOutlined,
 
 const { Title, Text } = Typography;
 const { Option } = Select;
+const { RangePicker } = DatePicker;
 
 export default function TaskListingPage() {
     const [tasks, setTasks] = useState<Task[]>([]);
@@ -20,6 +21,8 @@ export default function TaskListingPage() {
     const [filterStatus, setFilterStatus] = useState<string>('');
     const [filterPIC, setFilterPIC] = useState<string>('');
     const [searchText, setSearchText] = useState<string>('');
+    const [filterDateRange, setFilterDateRange] = useState<[any, any]>([null, null]);
+    const [filterDateField, setFilterDateField] = useState<string>('created_at');
 
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -170,7 +173,20 @@ export default function TaskListingPage() {
         const matchesStatus = filterStatus ? t.status === filterStatus : true;
         const matchesPIC = filterPIC ? t.assignee_id === filterPIC : true;
 
-        return matchesSearch && matchesCustomer && matchesStatus && matchesPIC;
+        let matchesDate = true;
+        if (filterDateRange[0] && filterDateRange[1]) {
+            const fieldValue = (t as any)[filterDateField];
+            if (fieldValue) {
+                const d = new Date(fieldValue);
+                const start = filterDateRange[0].startOf('day').toDate();
+                const end = filterDateRange[1].endOf('day').toDate();
+                matchesDate = d >= start && d <= end;
+            } else {
+                matchesDate = false;
+            }
+        }
+
+        return matchesSearch && matchesCustomer && matchesStatus && matchesPIC && matchesDate;
     });
 
     const sortedTasks = [...filteredTasks].sort((a, b) => {
@@ -376,6 +392,46 @@ export default function TaskListingPage() {
                             ))}
                         </Select>
                     </div>
+                    {/* Date Range Filter */}
+                    <div>
+                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Tapis Mengikut Tarikh</label>
+                        <Select
+                            value={filterDateField}
+                            onChange={val => setFilterDateField(val)}
+                            size="large"
+                            className="w-full"
+                        >
+                            <Option value="created_at">Date Created</Option>
+                            <Option value="due_date">Due Date</Option>
+                        </Select>
+                    </div>
+                    <div>
+                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Julat Tarikh</label>
+                        <RangePicker
+                            size="large"
+                            className="w-full"
+                            value={filterDateRange as any}
+                            onChange={dates => setFilterDateRange(dates ? [dates[0], dates[1]] : [null, null])}
+                            allowClear
+                            format="DD/MM/YYYY"
+                            placeholder={['Mula', 'Akhir']}
+                        />
+                    </div>
+                </div>
+
+                {/* Record Count Badge */}
+                <div className="flex items-center gap-2 mb-4">
+                    <span className="text-sm font-semibold text-slate-600">
+                        Menunjukkan
+                    </span>
+                    <span className="inline-flex items-center px-3 py-0.5 rounded-full text-sm font-bold bg-indigo-100 text-indigo-700">
+                        {sortedTasks.length} rekod
+                    </span>
+                    {sortedTasks.length !== tasks.length && (
+                        <span className="text-xs text-slate-400">
+                            daripada {tasks.length} jumlah
+                        </span>
+                    )}
                 </div>
 
                 {/* Mobile Card View — hidden on md+ */}
