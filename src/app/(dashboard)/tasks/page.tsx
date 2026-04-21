@@ -6,6 +6,7 @@ import { createClient } from '@/utils/supabase/client';
 import { Task, Profile } from '@/lib/types';
 import { useRole } from '@/components/layout/RoleProvider';
 import { SearchOutlined, CheckCircleOutlined, SyncOutlined, ClockCircleOutlined, ExclamationCircleOutlined, EditOutlined, DeleteOutlined, ExclamationCircleFilled } from '@ant-design/icons';
+import EscalateModal from '@/components/task/EscalateModal';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -28,6 +29,7 @@ export default function TaskListingPage() {
     const [selectedTask, setSelectedTask] = useState<Task | null>(null);
     const [editForm] = Form.useForm();
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+    const [isEscalateModalOpen, setIsEscalateModalOpen] = useState(false);
 
     const supabase = createClient();
     const { role } = useRole();
@@ -593,12 +595,40 @@ export default function TaskListingPage() {
                                     setIsEditModalOpen(false);
                                     setSelectedTask(null);
                                 }} className="mr-3" size="large">Cancel</Button>
+
+                                {selectedTask && (role === 'admin' || role === 'manager' || selectedTask.assignee_id === currentUserId) && (
+                                    <Button
+                                        type="default"
+                                        size="large"
+                                        className="border-orange-500 text-orange-600 hover:bg-orange-50 bg-white mr-3"
+                                        onClick={() => setIsEscalateModalOpen(true)}
+                                    >
+                                        🚩 Escalate
+                                    </Button>
+                                )}
+
                                 <Button type="primary" htmlType="submit" size="large" className="bg-indigo-600 shadow-md">Update Task</Button>
                             </div>
                         </div>
                     </Form.Item>
                 </Form>
             </Modal>
+
+            {selectedTask && (
+                <EscalateModal
+                    isOpen={isEscalateModalOpen}
+                    onClose={() => setIsEscalateModalOpen(false)}
+                    task={selectedTask}
+                    profiles={profiles}
+                    currentUserId={currentUserId || ''}
+                    currentTaskDescription={selectedTask.description || ''}
+                    onSuccess={() => {
+                        setIsEscalateModalOpen(false);
+                        setIsEditModalOpen(false);
+                        setSelectedTask(null);
+                    }}
+                />
+            )}
         </div>
     );
 }
