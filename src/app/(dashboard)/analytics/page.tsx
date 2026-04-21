@@ -1109,16 +1109,49 @@ export default function AnalyticsPage() {
                                     </div>
                                 ))}
 
-                                <div className="mt-1">
-                                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Task Terlibat</p>
-                                    <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
-                                        {overdueTasks.map(t => (
-                                            <Tooltip key={t.id} title={(t.assignee as any)?.full_name || 'Unassigned'}>
-                                                <div className="text-xs text-slate-600 bg-red-50 border border-red-100 rounded-lg px-2 py-1.5 truncate cursor-default">
-                                                    ⚠️ {t.title}
+                                <div className="mt-4">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Task Terlibat</p>
+                                        <span className="text-[10px] font-bold text-red-400 bg-red-50 px-1.5 py-0.5 rounded-full">
+                                            {overdueTasks.length} task
+                                        </span>
+                                    </div>
+                                    <div className="flex flex-col gap-2 max-h-[320px] overflow-y-auto pr-1">
+                                        {overdueTasks.map(t => {
+                                            const daysLate = t.due_date ? differenceInDays(now, new Date(t.due_date)) : 0;
+                                            return (
+                                                <div 
+                                                    key={t.id} 
+                                                    className="group flex flex-col gap-1.5 p-2.5 bg-white border border-red-100 rounded-xl hover:border-red-300 hover:shadow-md transition-all cursor-pointer"
+                                                    onClick={() => openDrill(`Detail Task: ${t.title}`, [t])}
+                                                >
+                                                    <div className="flex items-start gap-2">
+                                                        <AlertTriangle className="w-3.5 h-3.5 text-red-500 mt-0.5 flex-shrink-0" />
+                                                        <span className="text-[12px] leading-snug font-bold text-slate-700 break-words line-clamp-2">
+                                                            {t.title}
+                                                        </span>
+                                                    </div>
+                                                    
+                                                    <div className="flex items-center justify-between mt-1 pt-1.5 border-t border-red-50">
+                                                        <div className="flex items-center gap-1.5">
+                                                            <img
+                                                                src={(t.assignee as any)?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent((t.assignee as any)?.full_name || 'U')}&background=f1f5f9&color=64748b`}
+                                                                className="w-4 h-4 rounded-full border border-slate-100"
+                                                                alt="PIC"
+                                                            />
+                                                            <span className="text-[10px] text-slate-500 font-medium truncate max-w-[80px]">
+                                                                {(t.assignee as any)?.full_name || 'Unassigned'}
+                                                            </span>
+                                                        </div>
+                                                        {t.due_date && (
+                                                            <span className="text-[10px] font-black text-red-500 bg-red-50 px-1.5 py-0.5 rounded-md">
+                                                                {daysLate}d late
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </div>
-                                            </Tooltip>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             </>
