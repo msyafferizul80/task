@@ -10,6 +10,9 @@ import { useRole } from '@/components/layout/RoleProvider';
 import EscalateModal from './EscalateModal';
 import TaskHistoryTab from './TaskHistoryTab';
 
+import dayjs from 'dayjs';  
+
+
 const { Title } = Typography;
 const { Option } = Select;
 
@@ -508,8 +511,8 @@ export default function EisenhowerDashboard() {
                         <Input.TextArea rows={4} placeholder="Detailed task requirements..." className="resize-none" />
                     </Form.Item>
 
-                    <Form.Item name="due_date" label="Due Date">
-                        <DatePicker className="w-full" size="large" showTime />
+                    <Form.Item name="due_date" label="Due Date" rules={[{ required: true, message: 'Please select a due date' }]}>
+                        <DatePicker className="w-full" size="large" showTime disabledDate={(current) => current && current < dayjs().startOf('day')} />   
                     </Form.Item>
 
                     <Form.Item className="flex justify-end mb-0 mt-6 pt-4 border-t">
