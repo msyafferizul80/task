@@ -9,7 +9,8 @@ import { AlertTriangle, X } from 'lucide-react';
 import { Task } from '@/lib/types';
 
 export default function BottleneckAlertBanner() {
-    const HOUR_MS = 60 * 60 * 1000;
+    const MINUTES  = 30;                        // set the popup interval in minutes here
+    const HOUR_MS = MINUTES  * 60 * 1000;
     const POPUP_LAST_SHOWN_KEY = 'bottleneck-popup-last-shown-at';
 
     const [count, setCount] = useState(0);
