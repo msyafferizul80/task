@@ -907,6 +907,7 @@ export default function AnalyticsPage() {
                                 options={[
                                     { value: 'All', label: 'Seluruh Organisasi' },
                                     { value: 'Outsourcing', label: 'Outsourcing' },
+                                    { value: 'IT', label: 'IT' },
                                     { value: 'Sales', label: 'Sales' },
                                     { value: 'Marketing', label: 'Marketing' },
                                     { value: 'Recruitment', label: 'Recruitment' },
