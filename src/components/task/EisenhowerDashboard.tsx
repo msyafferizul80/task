@@ -460,7 +460,7 @@ export default function EisenhowerDashboard() {
             >
                 <Form form={form} layout="vertical" onFinish={handleCreateTask}>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <Form.Item name="customer_name" label="Customer Name" className="col-span-2 sm:col-span-1" rules={[{ required: true, message: 'Customer name is required' }]} initialValue="SYAZNA WORLD (INTERNAL)">
+                        <Form.Item name="customer_name" label="Customer Name" className="col-span-2 sm:col-span-1" rules={[{ required: true, message: 'Customer name is required' }]}>
                             <Select placeholder="Select Customer" size="large" showSearch optionFilterProp="children">
                                 {customers.map(c => (
                                     <Option key={c.id} value={c.name}>{c.name}</Option>
@@ -475,6 +475,8 @@ export default function EisenhowerDashboard() {
                                 onChange={(val) => {
                                     if (val !== 'Outsourcing') {
                                         form.setFieldsValue({ customer_name: 'SYAZNA WORLD (INTERNAL)' });
+                                    } else {
+                                        form.setFieldsValue({ customer_name: undefined });
                                     }
                                 }}
                             >
@@ -559,6 +561,8 @@ export default function EisenhowerDashboard() {
                                             onChange={(val) => {
                                                 if (val !== 'Outsourcing') {
                                                     editForm.setFieldsValue({ customer_name: 'SYAZNA WORLD (INTERNAL)' });
+                                                } else {
+                                                    editForm.setFieldsValue({ customer_name: undefined });
                                                 }
                                             }}
                                         >
