@@ -91,7 +91,7 @@ export default function MyTasksPage() {
         if (!selectedTask) return;
         try {
             const isPrivileged = role === 'admin' || role === 'manager';
-            const { title, description, priority_type, due_date, customer_name, assignee_id, status } = values;
+            const { title, description, priority_type, due_date, customer_name, department, assignee_id, status } = values;
 
             const nextTitle =
                 typeof title === 'string'
@@ -102,6 +102,17 @@ export default function MyTasksPage() {
                 typeof description === 'string'
                     ? (description === '' && selectedTask.description ? selectedTask.description : description)
                     : selectedTask.description;
+
+            const { error } = await supabase.from('tsk_tasks').update({
+                title,
+                description,
+                priority_type,
+                customer_name,
+                department,
+                assignee_id,
+                due_date: due_date?.toISOString(),
+                status,
+            }).eq('id', selectedTask.id);
 
             const updatePayload = isPrivileged
                 ? {
@@ -118,11 +129,6 @@ export default function MyTasksPage() {
                     description: nextDescription,
                     status,
                 };
-
-            const { error } = await supabase
-                .from('tsk_tasks')
-                .update(updatePayload)
-                .eq('id', selectedTask.id);
 
             if (error) throw error;
 
@@ -459,11 +465,32 @@ export default function MyTasksPage() {
                     onFinish={handleUpdateTask}
                 >
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <Form.Item name="customer_name" label="Customer Name" className="col-span-2" rules={[{ required: true, message: 'Customer name is required' }]}>
+                        <Form.Item name="customer_name" label="Customer Name" className="col-span-2 sm:col-span-1" rules={[{ required: true, message: 'Customer name is required' }]}>
                             <Select placeholder="Select Customer" size="large" showSearch optionFilterProp="children" disabled={role !== 'admin' && role !== 'manager'}>
                                 {customers.map(c => (
                                     <Option key={c.id} value={c.name}>{c.name}</Option>
                                 ))}
+                            </Select>
+                        </Form.Item>
+
+                        <Form.Item name="department" label="Jabatan (Department)" className="col-span-2 sm:col-span-1" rules={[{ required: true, message: 'Please select a department' }]}>
+                            <Select 
+                                placeholder="Select Department" 
+                                size="large" 
+                                disabled={role !== 'admin' && role !== 'manager'}
+                                onChange={(val) => {
+                                    if (val !== 'Outsourcing') {
+                                        editForm.setFieldsValue({ customer_name: 'SYAZNA WORLD (INTERNAL)' });
+                                    } else {
+                                        editForm.setFieldsValue({ customer_name: undefined });
+                                    }
+                                }}
+                            >
+                                <Option value="Outsourcing">Outsourcing</Option>
+                                <Option value="IT">IT</Option>
+                                <Option value="Sales">Sales</Option>
+                                <Option value="Marketing">Marketing</Option>
+                                <Option value="Recruitment">Recruitment</Option>
                             </Select>
                         </Form.Item>
 

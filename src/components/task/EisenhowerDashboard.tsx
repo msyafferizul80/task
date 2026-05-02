@@ -475,10 +475,13 @@ export default function EisenhowerDashboard() {
                                 onChange={(val) => {
                                     if (val !== 'Outsourcing') {
                                         form.setFieldsValue({ customer_name: 'SYAZNA WORLD (INTERNAL)' });
+                                    } else {
+                                        form.setFieldsValue({ customer_name: undefined });
                                     }
                                 }}
                             >
                                 <Option value="Outsourcing">Outsourcing</Option>
+                                <Option value="IT">IT</Option>
                                 <Option value="Sales">Sales</Option>
                                 <Option value="Marketing">Marketing</Option>
                                 <Option value="Recruitment">Recruitment</Option>
@@ -558,10 +561,13 @@ export default function EisenhowerDashboard() {
                                             onChange={(val) => {
                                                 if (val !== 'Outsourcing') {
                                                     editForm.setFieldsValue({ customer_name: 'SYAZNA WORLD (INTERNAL)' });
+                                                } else {
+                                                    editForm.setFieldsValue({ customer_name: undefined });
                                                 }
                                             }}
                                         >
                                             <Option value="Outsourcing">Outsourcing</Option>
+                                            <Option value="IT">IT</Option>
                                             <Option value="Sales">Sales</Option>
                                             <Option value="Marketing">Marketing</Option>
                                             <Option value="Recruitment">Recruitment</Option>
