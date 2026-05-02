@@ -90,19 +90,53 @@ export default function MyTasksPage() {
     const handleUpdateTask = async (values: any) => {
         if (!selectedTask) return;
         try {
+            const isPrivileged = role === 'admin' || role === 'manager';
             const { title, description, priority_type, due_date, customer_name, assignee_id, status } = values;
 
-            const { error } = await supabase.from('tsk_tasks').update({
-                title,
-                description,
-                priority_type,
-                customer_name,
-                assignee_id,
-                due_date: due_date?.toISOString(),
-                status,
-            }).eq('id', selectedTask.id);
+            const nextTitle =
+                typeof title === 'string'
+                    ? (title.trim() === '' ? selectedTask.title : title)
+                    : selectedTask.title;
+
+            const nextDescription =
+                typeof description === 'string'
+                    ? (description === '' && selectedTask.description ? selectedTask.description : description)
+                    : selectedTask.description;
+
+            const updatePayload = isPrivileged
+                ? {
+                    title: nextTitle,
+                    description: nextDescription,
+                    priority_type,
+                    customer_name,
+                    assignee_id,
+                    due_date: due_date?.toISOString(),
+                    status,
+                }
+                : {
+                    title: nextTitle,
+                    description: nextDescription,
+                    status,
+                };
+
+            const { error } = await supabase
+                .from('tsk_tasks')
+                .update(updatePayload)
+                .eq('id', selectedTask.id);
 
             if (error) throw error;
+
+            setTasks(prev =>
+                prev.map(t => {
+                    if (t.id !== selectedTask.id) return t;
+                    return {
+                        ...t,
+                        ...(updatePayload as any),
+                        description: nextDescription,
+                        updated_at: new Date().toISOString(),
+                    };
+                })
+            );
 
             message.success('Task updated successfully!');
             setIsEditModalOpen(false);
@@ -113,6 +147,17 @@ export default function MyTasksPage() {
             message.error('Failed to update task');
         }
     };
+
+    // Synchronize form fields whenever selectedTask changes or the modal opens.
+    // This ensures the form reflects the latest data even if the same task is edited repeatedly.
+    useEffect(() => {
+        if (isEditModalOpen && selectedTask) {
+            editForm.setFieldsValue({
+                ...selectedTask,
+                description: selectedTask.description ?? '',
+            });
+        }
+    }, [selectedTask, isEditModalOpen, editForm]);
 
     const handleDeleteTask = () => {
         if (!selectedTask) return;
@@ -245,10 +290,8 @@ export default function MyTasksPage() {
                     icon={<EditOutlined />}
                     className="text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50"
                     onClick={() => {
-                        setSelectedTask(record);
-                        editForm.setFieldsValue({
-                            ...record,
-                        });
+                        const latest = tasks.find(t => t.id === record.id) || record;
+                        setSelectedTask(latest);
                         setIsEditModalOpen(true);
                     }}
                 />
@@ -345,8 +388,8 @@ export default function MyTasksPage() {
                                     icon={<EditOutlined />}
                                     className="text-indigo-500 shrink-0"
                                     onClick={() => {
-                                        setSelectedTask(task);
-                                        editForm.setFieldsValue({ ...task });
+                                        const latest = tasks.find(t => t.id === task.id) || task;
+                                        setSelectedTask(latest);
                                         setIsEditModalOpen(true);
                                     }}
                                 />
@@ -395,6 +438,7 @@ export default function MyTasksPage() {
             <Modal
                 title={<div className="font-bold text-lg mb-4 text-indigo-900 border-b pb-2">Edit Task Details</div>}
                 open={isEditModalOpen}
+                destroyOnClose
                 onCancel={() => {
                     setIsEditModalOpen(false);
                     setSelectedTask(null);
@@ -404,7 +448,16 @@ export default function MyTasksPage() {
                 width={600}
                 style={{ maxWidth: '95vw' }}
             >
-                <Form form={editForm} layout="vertical" onFinish={handleUpdateTask}>
+                <Form
+                    key={selectedTask?.id || 'no-task'}
+                    form={editForm}
+                    layout="vertical"
+                    initialValues={{
+                        ...selectedTask,
+                        description: selectedTask?.description ?? '',
+                    }}
+                    onFinish={handleUpdateTask}
+                >
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <Form.Item name="customer_name" label="Customer Name" className="col-span-2" rules={[{ required: true, message: 'Customer name is required' }]}>
                             <Select placeholder="Select Customer" size="large" showSearch optionFilterProp="children" disabled={role !== 'admin' && role !== 'manager'}>
@@ -415,7 +468,7 @@ export default function MyTasksPage() {
                         </Form.Item>
 
                         <Form.Item name="title" label="Task Title" className="col-span-2" rules={[{ required: true, message: 'Please enter a title' }]}>
-                            <Input placeholder="Enter task title" size="large" disabled={role !== 'admin' && role !== 'manager'} />
+                            <Input placeholder="Enter task title" size="large" />
                         </Form.Item>
 
                         <Form.Item name="assignee_id" label="PIC / Assignee" rules={[{ required: true, message: 'Assignee is required' }]}>
@@ -446,7 +499,7 @@ export default function MyTasksPage() {
                     </div>
 
                     <Form.Item name="description" label="Description">
-                        <Input.TextArea rows={4} placeholder="Detailed task requirements..." className="resize-none" disabled={role !== 'admin' && role !== 'manager'} />
+                        <Input.TextArea rows={4} placeholder="Detailed task requirements..." className="resize-none" />
                     </Form.Item>
 
                     {selectedTask?.due_date && (
