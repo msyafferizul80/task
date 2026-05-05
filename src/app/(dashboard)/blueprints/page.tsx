@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
+import dayjs from 'dayjs';
 import {
     Card, Button, Table, Modal, Form, Input, Select,
     InputNumber, Tag, Spin, message, Popconfirm, Switch,
@@ -55,6 +56,8 @@ export default function BlueprintsPage() {
     const [schedules, setSchedules] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
+    const [filterSchedCustomer, setFilterSchedCustomer] = useState<string | undefined>(undefined);
+
     // Blueprint modal states
     const [bpModalOpen, setBpModalOpen] = useState(false);
     const [editingBlueprint, setEditingBlueprint] = useState<any>(null);
@@ -71,6 +74,7 @@ export default function BlueprintsPage() {
     // Schedule modal states
     const [schedModalOpen, setSchedModalOpen] = useState(false);
     const [schedForm] = Form.useForm();
+    const [editingSchedule, setEditingSchedule] = useState<any>(null);
 
     // Watch frequency to conditionally render trigger_day field
     const schedFrequency = Form.useWatch('frequency', schedForm);
@@ -149,7 +153,7 @@ export default function BlueprintsPage() {
         setSelectedBlueprint(bp);
         const { data } = await supabase
             .from('tsk_blueprint_tasks')
-            .select(`id, title, description, priority_type, assignee_id, relative_due_day, sort_order,
+            .select(`id, title, description, priority_type, assignee_id, relative_due_day, sort_order, department,
                 assignee:lv_profiles!tsk_blueprint_tasks_assignee_id_fkey(id, full_name)`)
             .eq('blueprint_id', bp.id)
             .order('sort_order');
@@ -197,6 +201,19 @@ export default function BlueprintsPage() {
 
     // ── Schedules ─────────────────────────────────────────────────────────────
 
+    const openEditSchedule = (r: any) => {
+        setEditingSchedule(r);
+        schedForm.setFieldsValue({
+            blueprint_id: r.blueprint?.id,
+            customer_id: r.customer?.id,
+            frequency: r.frequency,
+            trigger_day: r.trigger_day,
+            trigger_time: r.trigger_time ? dayjs(r.trigger_time, 'HH:mm') : null,
+            start_date: r.start_date ? dayjs(r.start_date) : null,
+        });
+        setSchedModalOpen(true);
+    };
+
     const handleSaveSchedule = async (values: any) => {
         try {
             const { start_date, trigger_time, frequency, trigger_day, ...rest } = values;
@@ -208,10 +225,19 @@ export default function BlueprintsPage() {
                 // DAILY has no meaningful trigger_day; store 0
                 trigger_day: frequency === 'DAILY' ? 0 : trigger_day,
             };
-            const { error } = await supabase.from('tsk_recurring_schedules').insert(payload);
-            if (error) throw error;
-            message.success('Schedule dicipta! Autopilot akan aktif mengikut frequency.');
+
+            if (editingSchedule) {
+                const { error } = await supabase.from('tsk_recurring_schedules').update(payload).eq('id', editingSchedule.id);
+                if (error) throw error;
+                message.success('Schedule dikemaskini!');
+            } else {
+                const { error } = await supabase.from('tsk_recurring_schedules').insert(payload);
+                if (error) throw error;
+                message.success('Schedule dicipta! Autopilot akan aktif mengikut frequency.');
+            }
+
             setSchedModalOpen(false);
+            setEditingSchedule(null);
             schedForm.resetFields();
             fetchData();
         } catch (e: any) {
@@ -230,6 +256,10 @@ export default function BlueprintsPage() {
         if (error) message.error(error.message);
         else { message.success('Schedule dipadam.'); fetchData(); }
     };
+
+    const filteredSchedules = schedules.filter(s =>
+        filterSchedCustomer ? s.customer?.id === filterSchedCustomer : true
+    );
 
     // ── Manual Run (Dry Run / Real) ───────────────────────────────────────────
 
@@ -265,7 +295,7 @@ export default function BlueprintsPage() {
         if (r.frequency === 'DAILY') {
             return <span className="text-sm">Setiap hari{timeStr}</span>;
         }
-        if (r.frequency === 'WEEKLY') {
+        if (r.frequency === 'WEEKLY') { 
             const dayName = DAY_OF_WEEK_NAMES[r.trigger_day ?? 1] ?? '-';
             return <span className="text-sm">Setiap <strong>{dayName}</strong>{timeStr}</span>;
         }
@@ -360,11 +390,14 @@ export default function BlueprintsPage() {
                 : <span className="text-xs text-slate-400 italic">Belum pernah run</span>,
         },
         {
-            title: 'Action', key: 'action', width: 80,
+            title: 'Action', key: 'action', width: 100,
             render: (r: any) => (
-                <Popconfirm title="Padam schedule ini?" onConfirm={() => handleDeleteSchedule(r.id)} okText="Ya" cancelText="Batal">
-                    <Button size="small" danger icon={<DeleteOutlined />} />
-                </Popconfirm>
+                <Space>
+                    <Button size="small" icon={<EditOutlined />} onClick={() => openEditSchedule(r)} />
+                    <Popconfirm title="Padam schedule ini?" onConfirm={() => handleDeleteSchedule(r.id)} okText="Ya" cancelText="Batal">
+                        <Button size="small" danger icon={<DeleteOutlined />} />
+                    </Popconfirm>
+                </Space>
             ),
         },
     ];
@@ -449,13 +482,28 @@ export default function BlueprintsPage() {
                 className="shadow-sm rounded-xl border border-slate-100"
                 title={<span className="text-indigo-900 font-bold text-base">⚡ Active Schedules (Blueprint → Customer)</span>}
                 extra={
-                    <Button type="primary" icon={<PlayCircleOutlined />} onClick={() => setSchedModalOpen(true)} className="bg-emerald-600 border-emerald-600">
-                        Apply Blueprint ke Customer
-                    </Button>
+                    <Space wrap>
+                        <Select
+                            placeholder="Filter by Customer"
+                            allowClear
+                            style={{ width: 220 }}
+                            onChange={setFilterSchedCustomer}
+                            value={filterSchedCustomer}
+                            showSearch
+                            optionFilterProp="children"
+                        >
+                            {customers.map(c => (
+                                <Option key={c.id} value={c.id}>{c.name}</Option>
+                            ))}
+                        </Select>
+                        <Button type="primary" icon={<PlayCircleOutlined />} onClick={() => setSchedModalOpen(true)} className="bg-emerald-600 border-emerald-600">
+                            Apply Blueprint ke Customer
+                        </Button>
+                    </Space>
                 }
             >
                 <Table
-                    dataSource={schedules}
+                    dataSource={filteredSchedules}
                     columns={schedColumns}
                     rowKey="id"
                     pagination={false}
@@ -524,6 +572,9 @@ export default function BlueprintsPage() {
                                                 {task.priority_type}
                                             </Tag>
                                             <span className="text-xs text-slate-500">⏱️ Hari ke-{task.relative_due_day}</span>
+                                            {task.department && (
+                                                <Tag color="cyan" className="text-xs">{task.department}</Tag>
+                                            )}
                                             {task.assignee && (
                                                 <span className="text-xs text-slate-600 flex items-center gap-1">
                                                     <img
@@ -564,6 +615,15 @@ export default function BlueprintsPage() {
                     <Form.Item name="description" label="Nota/Penerangan">
                         <Input.TextArea rows={2} placeholder="Arahan terperinci untuk PIC..." />
                     </Form.Item>
+                    <Form.Item name="department" label="Jabatan (Department)" rules={[{ required: true, message: 'Sila pilih jabatan' }]}>
+                        <Select size="large" placeholder="Pilih Jabatan">
+                            <Option value="Outsourcing">Outsourcing</Option>
+                            <Option value="IT">IT</Option>
+                            <Option value="Sales">Sales</Option>
+                            <Option value="Marketing">Marketing</Option>
+                            <Option value="Recruitment">Recruitment</Option>
+                        </Select>
+                    </Form.Item>
                     <div className="grid grid-cols-2 gap-4">
                         <Form.Item name="priority_type" label="Eisenhower Priority" rules={[{ required: true }]}>
                             <Select size="large">
@@ -595,9 +655,9 @@ export default function BlueprintsPage() {
 
             {/* ── Modal: Apply Blueprint to Customer ── */}
             <Modal
-                title={<div className="font-bold text-lg text-emerald-800">⚡ Apply Blueprint ke Customer</div>}
+                title={<div className="font-bold text-lg text-emerald-800">{editingSchedule ? '⚡ Edit Schedule' : '⚡ Apply Blueprint ke Customer'}</div>}
                 open={schedModalOpen}
-                onCancel={() => { setSchedModalOpen(false); schedForm.resetFields(); }}
+                onCancel={() => { setSchedModalOpen(false); setEditingSchedule(null); schedForm.resetFields(); }}
                 footer={null}
                 width={560}
             >
@@ -678,7 +738,7 @@ export default function BlueprintsPage() {
                     </Form.Item>
 
                     <div className="flex justify-end gap-2 mt-2">
-                        <Button onClick={() => { setSchedModalOpen(false); schedForm.resetFields(); }}>Batal</Button>
+                        <Button onClick={() => { setSchedModalOpen(false); setEditingSchedule(null); schedForm.resetFields(); }}>Batal</Button>
                         <Button type="primary" htmlType="submit" className="bg-emerald-600 border-emerald-600">Aktifkan Schedule</Button>
                     </div>
                 </Form>
