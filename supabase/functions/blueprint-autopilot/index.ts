@@ -4,7 +4,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const TELEGRAM_BOT_TOKEN = Deno.env.get("TELEGRAM_BOT_TOKEN") ?? "";
-const TELEGRAM_CHAT_ID = Deno.env.get("TELEGRAM_CHAT_ID") ?? "";
+const TELEGRAM_CHAT_ID = Deno.env.get("TELEGRAM_CHAT_ID") ?? ""; // fallback default group
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -12,14 +12,15 @@ const corsHeaders = {
 };
 
 // ─── Telegram Helper ──────────────────────────────────────────────────────────
-async function sendTelegram(message: string) {
-  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
+// Hantar ke chat_id tertentu
+async function sendTelegramToChat(message: string, chatId: string) {
+  if (!TELEGRAM_BOT_TOKEN || !chatId) return;
   try {
     await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        chat_id: TELEGRAM_CHAT_ID,
+        chat_id: chatId,
         text: message,
         parse_mode: "HTML",
       }),
@@ -122,6 +123,19 @@ Deno.serve(async (req: Request) => {
   const todayISO = today.toISOString().split("T")[0];
 
   try {
+    // 0. Load department → telegram_group_id mapping
+    const { data: deptSettings } = await supabase
+      .from("tsk_department_settings")
+      .select("department_name, telegram_group_id");
+
+    const deptGroupMap: Record<string, string> = {};
+    for (const row of (deptSettings ?? [])) {
+      if (row.department_name && row.telegram_group_id) {
+        deptGroupMap[row.department_name] = row.telegram_group_id;
+      }
+    }
+    console.log("Department group map:", JSON.stringify(deptGroupMap));
+
     // 1. Get all active schedules with their blueprint tasks
     const { data: schedules, error: schedErr } = await supabase
       .from("tsk_recurring_schedules")
@@ -143,7 +157,8 @@ Deno.serve(async (req: Request) => {
             priority_type,
             assignee_id,
             relative_due_day,
-            sort_order
+            sort_order,
+            department
           )
         )
       `)
@@ -158,7 +173,6 @@ Deno.serve(async (req: Request) => {
 
     const results: any[] = [];
     let totalGenerated = 0;
-    const telegramLines: string[] = [];
 
     for (const schedule of schedules) {
       const startDate = new Date(schedule.start_date);
@@ -181,8 +195,14 @@ Deno.serve(async (req: Request) => {
       // Sort tasks by sort_order
       blueprintTasks.sort((a: any, b: any) => a.sort_order - b.sort_order);
 
-      // Build tsk_tasks inserts
-      const triggerDate = new Date(today.getFullYear(), today.getMonth(), schedule.trigger_day);
+      const triggerYear = today.getUTCFullYear();
+      const triggerMonth = today.getUTCMonth();
+      const triggerDay = (schedule.frequency === 'DAILY' || schedule.frequency === 'WEEKLY')
+        ? today.getUTCDate()
+        : schedule.trigger_day;
+
+      const triggerDate = new Date(Date.UTC(triggerYear, triggerMonth, triggerDay, 10, 0, 0));
+
       const tasksToInsert = blueprintTasks.map((bt: any) => {
         const dueDate = new Date(triggerDate);
         dueDate.setDate(dueDate.getDate() + bt.relative_due_day);
@@ -191,6 +211,7 @@ Deno.serve(async (req: Request) => {
           description: bt.description ?? null,
           priority_type: bt.priority_type ?? "SCHEDULE",
           assignee_id: bt.assignee_id ?? null,
+          department: bt.department ?? null,
           customer_name: customerName,
           status: "BACKLOG",
           due_date: dueDate.toISOString(),
@@ -216,22 +237,29 @@ Deno.serve(async (req: Request) => {
       totalGenerated += tasksToInsert.length;
       results.push({ schedule_id: schedule.id, status: dryRun ? "dry_run" : "generated", tasks_count: tasksToInsert.length });
 
-      // Prepare Telegram message
-      const taskTitles = tasksToInsert.map((t: any) => `  • ${t.title}`).join("\n");
-      telegramLines.push(
-        `🤖 <b>AUTOPILOT ALERT</b>\n` +
-        `📋 Blueprint: <b>${blueprintName}</b>\n` +
-        `🏢 Customer: <b>${customerName}</b>\n` +
-        `📅 Tarikh Trigger: <b>${todayISO}</b>\n` +
-        `Tasks dijana (${tasksToInsert.length}):\n${taskTitles}\n` +
-        `\nSila semak <b>Task Listing</b> dan mulakan kerja sekarang!`
-      );
-    }
+      // ─── Determine department for Telegram routing ────────────────────────────
+      // Ambil department dari task pertama dalam blueprint (semua tasks satu blueprint = satu dept)
+      const firstTaskDept: string | null = blueprintTasks[0]?.department ?? null;
+      const targetChatId = firstTaskDept
+        ? (deptGroupMap[firstTaskDept] ?? TELEGRAM_CHAT_ID)
+        : TELEGRAM_CHAT_ID;
 
-    // Send Telegram (one message per triggered schedule)
-    if (!dryRun && telegramLines.length > 0) {
-      for (const msg of telegramLines) {
-        await sendTelegram(msg);
+      console.log(`Blueprint "${blueprintName}" → dept: ${firstTaskDept} → chat_id: ${targetChatId}`);
+
+      // ─── Build & Send Telegram message ────────────────────────────────────────
+      if (!dryRun) {
+        const freqLabel = schedule.frequency === 'DAILY' ? 'Harian' : schedule.frequency === 'WEEKLY' ? 'Mingguan' : schedule.frequency;
+        const taskTitles = tasksToInsert.map((t: any) => `  • ${t.title}`).join("\n");
+        const message =
+          `🤖 <b>AUTOPILOT ALERT</b>\n` +
+          `📋 Blueprint: <b>${blueprintName}</b>\n` +
+          `🏢 Customer: <b>${customerName}</b>\n` +
+          `🔁 Frequency: <b>${freqLabel}</b>\n` +
+          `📅 Tarikh Trigger: <b>${todayISO}</b>\n` +
+          `Tasks dijana (${tasksToInsert.length}):\n${taskTitles}\n` +
+          `\nSila semak <b>Task Listing</b> dan mulakan kerja sekarang!`;
+
+        await sendTelegramToChat(message, targetChatId);
       }
     }
 
