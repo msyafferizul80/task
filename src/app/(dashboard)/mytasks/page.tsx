@@ -11,7 +11,7 @@ import EscalateModal from '@/components/task/EscalateModal';
 const { Title, Text } = Typography;
 const { Option } = Select;
 
-const NUMBER_OF_DATE_FOR_DUE_DATE_WARNING = 20;
+const NUMBER_OF_DATE_FOR_DUE_DATE_WARNING = 3;
 const THREE_DAYS_MS = NUMBER_OF_DATE_FOR_DUE_DATE_WARNING * 24 * 60 * 60 * 1000;
 
 
