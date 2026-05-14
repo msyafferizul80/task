@@ -593,7 +593,7 @@ export default function MyTasksPage() {
             <Modal
                 title={<div className="font-bold text-lg mb-4 text-indigo-900 border-b pb-2">Edit Task Details</div>}
                 open={isEditModalOpen}
-                destroyOnClose
+                destroyOnHidden
                 onCancel={() => {
                     setIsEditModalOpen(false);
                     setSelectedTask(null);
@@ -684,7 +684,7 @@ export default function MyTasksPage() {
                             <strong>Create Date:</strong> {new Date(selectedTask.created_at).toLocaleString()} (
                             {(selectedTask.created_by && selectedTask.created_by === currentUserId) || selectedTask.creator?.id === currentUserId
                                 ? 'You'
-                                : (selectedTask.creator?.full_name || 'Unknown')}
+                                : (selectedTask.creator?.full_name || 'Auto-generated')}
                             )
                         </div>
                     )}
