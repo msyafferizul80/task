@@ -25,6 +25,7 @@ const { Title, Text } = Typography;
 
 const STATUS_LABELS: Record<string, string> = {
     BACKLOG: 'Backlog',
+    CLIENT_HOLD: 'Client Hold',
     IN_PROGRESS: 'In Progress',
     REVIEW: 'Review',
     DONE: 'Done',
@@ -32,6 +33,7 @@ const STATUS_LABELS: Record<string, string> = {
 
 const STATUS_COLORS: Record<string, string> = {
     BACKLOG: '#6b7280',
+    CLIENT_HOLD: '#d946ef',
     IN_PROGRESS: '#3b82f6',
     REVIEW: '#f59e0b',
     DONE: '#10b981',
@@ -674,7 +676,7 @@ export default function AnalyticsPage() {
     }, [baseTasks]);
 
     const overdueByStatus = useMemo(() => {
-        const counts: Record<string, number> = { BACKLOG: 0, IN_PROGRESS: 0, REVIEW: 0 };
+        const counts: Record<string, number> = { BACKLOG: 0, CLIENT_HOLD: 0, IN_PROGRESS: 0, REVIEW: 0 };
         overdueTasks.forEach(t => {
             if (counts[t.status] !== undefined) counts[t.status]++;
         });

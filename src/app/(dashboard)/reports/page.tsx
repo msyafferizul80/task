@@ -133,7 +133,7 @@ export default function WeeklyReportPage() {
 
     // Calculate Summaries
     const completedTasks = reportTasks.filter(t => t.status === 'DONE');
-    const ongoingTasks = reportTasks.filter(t => t.status === 'IN_PROGRESS' || t.status === 'REVIEW' || t.status === 'BACKLOG');
+    const ongoingTasks = reportTasks.filter(t => t.status === 'IN_PROGRESS' || t.status === 'REVIEW' || t.status === 'CLIENT_HOLD' || t.status === 'BACKLOG');
     const totalHandled = reportTasks.length;
 
     // Calculate PIC Performance
@@ -509,7 +509,15 @@ export default function WeeklyReportPage() {
                                                 </div>
                                             </td>
                                             <td className="py-4 px-4 text-slate-700">
-                                                <span className={`px-2 py-1 rounded-md text-xs font-bold print:border print:border-black ${t.status === 'REVIEW' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
+                                                <span className={`px-2 py-1 rounded-md text-xs font-bold print:border print:border-black ${
+                                                    t.status === 'REVIEW'
+                                                        ? 'bg-orange-100 text-orange-700'
+                                                        : t.status === 'CLIENT_HOLD'
+                                                            ? 'bg-fuchsia-100 text-fuchsia-700'
+                                                            : t.status === 'BACKLOG'
+                                                                ? 'bg-gray-100 text-gray-700'
+                                                                : 'bg-blue-100 text-blue-700'
+                                                }`}>
                                                     {t.status}
                                                 </span>
                                             </td>

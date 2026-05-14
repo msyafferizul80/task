@@ -9,6 +9,9 @@ import { AlertTriangle, X } from 'lucide-react';
 import { Task } from '@/lib/types';
 
 export default function BottleneckAlertBanner() {
+    const SHOW_BANNER = true; // Set to true to enable
+    const ALLOW_DISMISS = true; // Set to true to show close button
+    
     const MINUTES  = 30;                        // set the popup interval in minutes here
     const HOUR_MS = MINUTES  * 60 * 1000;
     const POPUP_LAST_SHOWN_KEY = 'bottleneck-popup-last-shown-at';
@@ -105,7 +108,7 @@ export default function BottleneckAlertBanner() {
         setDismissed(true);
     };
 
-    const shouldShowBanner = !dismissed && count > 0;
+    const shouldShowBanner = SHOW_BANNER && !dismissed && count > 0;
 
     const tasksForDisplay = useMemo(() => {
         return [...bottleneckTasks].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
@@ -123,33 +126,38 @@ export default function BottleneckAlertBanner() {
                     <AlertTriangle className="h-4 w-4 text-amber-600 flex-shrink-0" />
 
                     <p className="text-sm font-semibold text-amber-800 flex-1">
-                        ⚠️ Awak ada{' '}
+                        You have{' '}
+                        {/* Awak ada{' '} */}
                         <span className="font-black text-amber-900 underline decoration-dotted">
                             {count} task bottleneck
                         </span>{' '}
-                        yang belum siap lebih dari 3 hari.
+                        that are not done for more than 3 days.
+                        {/* yang belum siap lebih dari 3 hari. */}
                     </p>
 
                     <Link
                         href="/mytasks"
                         className="flex-shrink-0 text-xs font-bold text-white bg-amber-500 hover:bg-amber-600 transition-colors px-3 py-1.5 rounded-lg shadow-sm"
                     >
-                        Lihat Sekarang →
+                        Go to My Tasks →
+                        {/* Lihat Sekarang → */}
                     </Link>
 
-                    <button
-                        onClick={handleDismiss}
-                        className="flex-shrink-0 p-1 rounded-full text-amber-500 hover:text-amber-700 hover:bg-amber-100 transition-colors"
-                        aria-label="Tutup notifikasi"
-                    >
-                        <X className="h-4 w-4" />
-                    </button>
+                    {ALLOW_DISMISS && (
+                        <button
+                            onClick={handleDismiss}
+                            className="flex-shrink-0 p-1 rounded-full text-amber-500 hover:text-amber-700 hover:bg-amber-100 transition-colors"
+                            aria-label="Tutup notifikasi"
+                        >
+                            <X className="h-4 w-4" />
+                        </button>
+                    )}
                 </div>
             )}
 
             <Modal
                 title="Task Bottleneck Reminder"
-                open={isPopupOpen}
+                open={SHOW_BANNER && isPopupOpen}
                 onCancel={() => setIsPopupOpen(false)}
                 footer={[
                     <Link key="mytasks" href="/mytasks">

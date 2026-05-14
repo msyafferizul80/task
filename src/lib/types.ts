@@ -1,5 +1,5 @@
 export type PriorityType = 'DO_FIRST' | 'SCHEDULE' | 'DELEGATE' | 'ELIMINATE';
-export type TaskStatus = 'BACKLOG' | 'IN_PROGRESS' | 'REVIEW' | 'DONE';
+export type TaskStatus = 'BACKLOG' | 'CLIENT_HOLD' | 'IN_PROGRESS' | 'REVIEW' | 'DONE';
 
 export interface Profile {
     id: string;

@@ -1,15 +1,19 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { Card, Select, Input, Table, Tag, Typography, Spin, message, Modal, Form, Button, DatePicker } from 'antd';
+import { Card, Select, Input, Table, Tag, Typography, Spin, message, Modal, Form, Button, DatePicker, Tooltip } from 'antd';
 import { createClient } from '@/utils/supabase/client';
 import { Task, Profile } from '@/lib/types';
 import { useRole } from '@/components/layout/RoleProvider';
-import { SearchOutlined, CheckCircleOutlined, SyncOutlined, ClockCircleOutlined, ExclamationCircleOutlined, EditOutlined, DeleteOutlined, ExclamationCircleFilled } from '@ant-design/icons';
+import { SearchOutlined, CheckCircleOutlined, SyncOutlined, ClockCircleOutlined, ExclamationCircleOutlined, EditOutlined, DeleteOutlined, ExclamationCircleFilled, FireOutlined, PauseCircleOutlined } from '@ant-design/icons';
 import EscalateModal from '@/components/task/EscalateModal';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
+
+const NUMBER_OF_DATE_FOR_DUE_DATE_WARNING = 20;
+const THREE_DAYS_MS = NUMBER_OF_DATE_FOR_DUE_DATE_WARNING * 24 * 60 * 60 * 1000;
+
 
 export default function MyTasksPage() {
     const [tasks, setTasks] = useState<Task[]>([]);
@@ -27,6 +31,7 @@ export default function MyTasksPage() {
     const [editForm] = Form.useForm();
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
     const [isEscalateModalOpen, setIsEscalateModalOpen] = useState(false);
+    const [pendingUpdateValues, setPendingUpdateValues] = useState<any>(null);
 
     const supabase = createClient();
     const { role } = useRole();
@@ -43,6 +48,10 @@ export default function MyTasksPage() {
                     id,
                     full_name,
                     avatar_url
+                ),
+                creator:lv_profiles!tsk_tasks_created_by_fkey (
+                    id,
+                    full_name
                 )
             `).order('created_at', { ascending: false });
 
@@ -87,7 +96,7 @@ export default function MyTasksPage() {
         };
     }, [fetchData]);
 
-    const handleUpdateTask = async (values: any) => {
+    const doUpdateTask = async (values: any) => {
         if (!selectedTask) return;
         try {
             const isPrivileged = role === 'admin' || role === 'manager';
@@ -154,6 +163,20 @@ export default function MyTasksPage() {
         }
     };
 
+    const handleUpdateTask = async (values: any) => {
+        if (!selectedTask) return;
+        
+        // Check if status is changing to REVIEW
+        if (values.status === 'REVIEW' && selectedTask.status !== 'REVIEW') {
+            setPendingUpdateValues(values);
+            setIsEscalateModalOpen(true);
+            return;
+        }
+
+        // Otherwise, proceed with normal update
+        await doUpdateTask(values);
+    };
+
     // Synchronize form fields whenever selectedTask changes or the modal opens.
     // This ensures the form reflects the latest data even if the same task is edited repeatedly.
     useEffect(() => {
@@ -197,6 +220,7 @@ export default function MyTasksPage() {
             case 'IN_PROGRESS': return <Tag icon={<SyncOutlined spin />} color="processing">In Progress</Tag>;
             case 'REVIEW': return <Tag icon={<ExclamationCircleOutlined />} color="warning">Review</Tag>;
             case 'BACKLOG': return <Tag icon={<ClockCircleOutlined />} color="default">Backlog</Tag>;
+            case 'CLIENT_HOLD': return <Tag icon={<PauseCircleOutlined />} color="magenta">Client Hold</Tag>;
             default: return <Tag>{status}</Tag>;
         }
     };
@@ -209,6 +233,21 @@ export default function MyTasksPage() {
             case 'ELIMINATE': return <Tag color="default">Eliminate</Tag>;
             default: return null;
         }
+    };
+
+    const getTaskIndicators = (task: Task) => {
+        if (task.status === 'DONE') {
+            return { isBottleneck: false, isDueSoon: false };
+        }
+
+        const now = Date.now();
+        const createdAt = task.created_at ? new Date(task.created_at).getTime() : null;
+        const dueAt = task.due_date ? new Date(task.due_date).getTime() : null;
+
+        const isBottleneck = createdAt !== null ? (now - createdAt) > THREE_DAYS_MS : false;
+        const isDueSoon = dueAt !== null ? (dueAt - now) <= THREE_DAYS_MS : false;
+
+        return { isBottleneck, isDueSoon };
     };
 
     const filteredTasks = tasks.filter(t => {
@@ -243,7 +282,7 @@ export default function MyTasksPage() {
             title: 'Nota / Description',
             dataIndex: 'description',
             key: 'description',
-            width: '35%',
+            width: '45%',
             render: (text: string) => (
                 <div className="text-gray-600 whitespace-pre-wrap text-sm">
                     {text || <span className="text-gray-400 italic">Tiada nota...</span>}
@@ -277,19 +316,64 @@ export default function MyTasksPage() {
             title: 'Status',
             dataIndex: 'status',
             key: 'status',
+            width: 1,
+            onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
             render: (status: string) => getStatusTag(status)
         },
         {
             title: 'Due Date',
             dataIndex: 'due_date',
             key: 'due_date',
-            width: '12%',
-            render: (date: string | null) => date ? new Date(date).toLocaleDateString() : '-'
+            width: 1,
+            onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
+            render: (date: string | null, record: Task) => {
+                const { isBottleneck, isDueSoon } = getTaskIndicators(record);
+                const dateText = date ? new Date(date).toLocaleDateString() : '-';
+                const duePillClass = record.status === 'DONE'
+                    ? 'text-slate-800 bg-white border-slate-200'
+                    : (isDueSoon ? 'text-rose-500 bg-rose-50 border-rose-100' : 'text-slate-800 bg-white border-slate-200');
+
+                return (
+                    <div className="inline-block">
+                        <div
+                            className={`text-[11px] font-semibold flex items-center gap-1 w-fit px-2 py-0.5 rounded-md border whitespace-nowrap tabular-nums ${duePillClass}`}
+                            aria-label={`Due date: ${dateText}`}
+                        >
+                            ⏱️ Due: {dateText}
+                        </div>
+                        {(isBottleneck || isDueSoon) && (
+                            <div className="mt-1 flex flex-col gap-1">
+                                {isBottleneck && (
+                                    <Tooltip title={`Bottleneck: task ini lebih ${NUMBER_OF_DATE_FOR_DUE_DATE_WARNING} hari sejak dicipta`}>
+                                        <div
+                                            aria-label={`Bottleneck: task ini lebih ${NUMBER_OF_DATE_FOR_DUE_DATE_WARNING} hari sejak dicipta`}
+                                            className="w-full inline-flex items-center justify-center px-2 py-1 rounded-md bg-gradient-to-r from-amber-100 to-orange-100 text-orange-800 border border-orange-200 shadow-sm animate-pulse"
+                                        >
+                                            <FireOutlined className="text-base" />
+                                        </div>
+                                    </Tooltip>
+                                )}
+                                {isDueSoon && (
+                                    <Tooltip title={`Due date dekat: ${NUMBER_OF_DATE_FOR_DUE_DATE_WARNING} hari lagi sebelum due date`}>
+                                        <div
+                                            aria-label={`Due date dekat: ${NUMBER_OF_DATE_FOR_DUE_DATE_WARNING} hari lagi sebelum due date`}
+                                            className="w-full inline-flex items-center justify-center px-2 py-1 rounded-md bg-gradient-to-r from-rose-100 to-pink-100 text-rose-800 border border-rose-200 shadow-sm animate-pulse"
+                                        >
+                                            <ClockCircleOutlined className="text-base" />
+                                        </div>
+                                    </Tooltip>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                );
+            }
         },
         {
             title: 'Action',
             key: 'action',
-            width: '8%',
+            width: 1,
+            onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
             render: (_: any, record: Task) => (
                 <Button
                     type="text"
@@ -338,6 +422,7 @@ export default function MyTasksPage() {
                             className="w-full"
                         >
                             <Option value="BACKLOG">Backlog</Option>
+                            <Option value="CLIENT_HOLD">Client Hold</Option>
                             <Option value="IN_PROGRESS">In Progress</Option>
                             <Option value="REVIEW">Review</Option>
                             <Option value="DONE">Done</Option>
@@ -381,10 +466,18 @@ export default function MyTasksPage() {
                 <div className="md:hidden flex flex-col gap-3 mb-4">
                     {sortedTasks.length === 0 ? (
                         <div className="text-center text-gray-400 py-10 italic">Tiada tugasan dijumpai.</div>
-                    ) : sortedTasks.map(task => (
+                    ) : sortedTasks.map(task => {
+                        const { isBottleneck, isDueSoon } = getTaskIndicators(task);
+                        let cardClass = 'bg-white border border-slate-100 rounded-xl p-4 shadow-sm flex flex-col gap-2';
+                        if (isDueSoon) {
+                            cardClass = 'bg-gradient-to-r from-rose-50 to-pink-50 border border-rose-200 rounded-xl p-4 shadow-sm flex flex-col gap-2';
+                        } else if (isBottleneck) {
+                            cardClass = 'bg-gradient-to-r from-amber-50 to-orange-50 border border-orange-200 rounded-xl p-4 shadow-sm flex flex-col gap-2';
+                        }
+                        return (
                         <div
                             key={task.id}
-                            className="bg-white border border-slate-100 rounded-xl p-4 shadow-sm flex flex-col gap-2"
+                            className={cardClass}
                         >
                             <div className="flex justify-between items-start gap-2">
                                 <div className="font-semibold text-indigo-900 flex-1 text-sm">{task.title}</div>
@@ -418,15 +511,61 @@ export default function MyTasksPage() {
                                 </div>
                             )}
                             {task.due_date && (
-                                <div className="text-[11px] font-semibold text-rose-500 flex items-center gap-1 bg-rose-50 w-fit px-2 py-0.5 rounded-md border border-rose-100">
-                                    ⏱️ Due: {new Date(task.due_date).toLocaleDateString()}
+                                <div className="flex flex-col gap-1">
+                                    {(() => {
+                                        const { isDueSoon } = getTaskIndicators(task);
+                                        const dateText = new Date(task.due_date as string).toLocaleDateString();
+                                        const duePillClass = task.status === 'DONE'
+                                            ? 'text-slate-800 bg-white border-slate-200'
+                                            : (isDueSoon ? 'text-rose-500 bg-rose-50 border-rose-100' : 'text-slate-800 bg-white border-slate-200');
+                                        return (
+                                            <div
+                                                className={`text-[11px] font-semibold flex items-center gap-1 w-fit px-2 py-0.5 rounded-md border whitespace-nowrap tabular-nums ${duePillClass}`}
+                                                aria-label={`Due date: ${dateText}`}
+                                            >
+                                                ⏱️ Due: {dateText}
+                                            </div>
+                                        );
+                                    })()}
+                                    {(() => {
+                                        const { isBottleneck, isDueSoon } = getTaskIndicators(task);
+                                        if (!isBottleneck && !isDueSoon) return null;
+                                        return (
+                                            <div className="inline-block">
+                                                <div className="flex flex-col gap-1">
+                                                {isBottleneck && (
+                                                    <Tooltip title={`Bottleneck: task ini lebih ${NUMBER_OF_DATE_FOR_DUE_DATE_WARNING} hari sejak dicipta`}>
+                                                        <div
+                                                            aria-label={`Bottleneck: task ini lebih ${NUMBER_OF_DATE_FOR_DUE_DATE_WARNING} hari sejak dicipta`}
+                                                            className="w-full inline-flex items-center justify-center px-2 py-1.5 rounded-md bg-gradient-to-r from-amber-100 to-orange-100 text-orange-800 border border-orange-200 shadow-sm animate-pulse"
+                                                        >
+                                                            <FireOutlined className="text-base" />
+                                                        </div>
+                                                    </Tooltip>
+                                                )}
+                                                {isDueSoon && (
+                                                    <Tooltip title={`Due date dekat: ${NUMBER_OF_DATE_FOR_DUE_DATE_WARNING} hari lagi sebelum due date`}>
+                                                        <div
+                                                            aria-label={`Due date dekat: ${NUMBER_OF_DATE_FOR_DUE_DATE_WARNING} hari lagi sebelum due date`}
+                                                            className="w-full inline-flex items-center justify-center px-2 py-1.5 rounded-md bg-gradient-to-r from-rose-100 to-pink-100 text-rose-800 border border-rose-200 shadow-sm animate-pulse"
+                                                        >
+                                                            <ClockCircleOutlined className="text-base" />
+                                                        </div>
+                                                    </Tooltip>
+                                                )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
                                 </div>
                             )}
                             {task.description && (
                                 <div className="text-xs text-gray-500 line-clamp-2">{task.description}</div>
                             )}
                         </div>
-                    ))}
+                    );
+                    })}
+                
                 </div>
 
                 {/* Desktop Table View — hidden on mobile */}
@@ -437,6 +576,16 @@ export default function MyTasksPage() {
                     rowKey="id"
                     pagination={{ pageSize: 15 }}
                     className="border border-slate-100 rounded-lg overflow-hidden"
+                    rowClassName={(record: Task) => {
+                        const { isBottleneck, isDueSoon } = getTaskIndicators(record);
+                        if (isDueSoon) {
+                            return 'bg-gradient-to-r from-rose-50 to-pink-50';
+                        }
+                        if (isBottleneck) {
+                            return 'bg-gradient-to-r from-amber-50 to-orange-50';
+                        }
+                        return '';
+                    }}
                 />
                 </div>
             </Card>
@@ -518,6 +667,7 @@ export default function MyTasksPage() {
                         <Form.Item name="status" label="Task Status" rules={[{ required: true, message: 'Please select a status' }]}>
                             <Select placeholder="Select Status" size="large">
                                 <Option value="BACKLOG">Backlog</Option>
+                                <Option value="CLIENT_HOLD">Client Hold</Option>
                                 <Option value="IN_PROGRESS">In Progress</Option>
                                 <Option value="REVIEW">Review</Option>
                                 <Option value="DONE">Done</Option>
@@ -528,6 +678,16 @@ export default function MyTasksPage() {
                     <Form.Item name="description" label="Description">
                         <Input.TextArea rows={4} placeholder="Detailed task requirements..." className="resize-none" />
                     </Form.Item>
+
+                    {selectedTask?.created_at && (
+                        <div className="mb-4 text-sm text-gray-500">
+                            <strong>Create Date:</strong> {new Date(selectedTask.created_at).toLocaleString()} (
+                            {(selectedTask.created_by && selectedTask.created_by === currentUserId) || selectedTask.creator?.id === currentUserId
+                                ? 'You'
+                                : (selectedTask.creator?.full_name || 'Unknown')}
+                            )
+                        </div>
+                    )}
 
                     {selectedTask?.due_date && (
                         <div className="mb-4 text-sm text-gray-500">
@@ -577,15 +737,20 @@ export default function MyTasksPage() {
             {selectedTask && (
                 <EscalateModal
                     isOpen={isEscalateModalOpen}
-                    onClose={() => setIsEscalateModalOpen(false)}
+                    onClose={() => {
+                        setIsEscalateModalOpen(false);
+                        setPendingUpdateValues(null);
+                    }}
                     task={selectedTask}
                     profiles={profiles}
                     currentUserId={currentUserId || ''}
-                    currentTaskDescription={selectedTask.description || ''}
-                    onSuccess={() => {
+                    currentTaskDescription={pendingUpdateValues?.description || selectedTask.description || ''}
+                    nextStatus={pendingUpdateValues?.status === 'REVIEW' ? 'REVIEW' : 'BACKLOG'}
+                    onSuccess={async () => {
                         setIsEscalateModalOpen(false);
                         setIsEditModalOpen(false);
                         setSelectedTask(null);
+                        setPendingUpdateValues(null);
                     }}
                 />
             )}

@@ -5,7 +5,7 @@ import { Card, Select, Input, Table, Tag, Typography, Spin, message, Modal, Form
 import { createClient } from '@/utils/supabase/client';
 import { Task, Profile } from '@/lib/types';
 import { useRole } from '@/components/layout/RoleProvider';
-import { SearchOutlined, CheckCircleOutlined, SyncOutlined, ClockCircleOutlined, ExclamationCircleOutlined, EditOutlined, DeleteOutlined, ExclamationCircleFilled } from '@ant-design/icons';
+import { SearchOutlined, CheckCircleOutlined, SyncOutlined, ClockCircleOutlined, ExclamationCircleOutlined, EditOutlined, DeleteOutlined, ExclamationCircleFilled, PauseCircleOutlined } from '@ant-design/icons';
 import EscalateModal from '@/components/task/EscalateModal';
 
 const { Title, Text } = Typography;
@@ -30,6 +30,7 @@ export default function TaskListingPage() {
     const [editForm] = Form.useForm();
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
     const [isEscalateModalOpen, setIsEscalateModalOpen] = useState(false);
+    const [pendingUpdateValues, setPendingUpdateValues] = useState<any>(null);
 
     const supabase = createClient();
     const { role } = useRole();
@@ -95,7 +96,7 @@ export default function TaskListingPage() {
         };
     }, [fetchData]);
 
-    const handleUpdateTask = async (values: any) => {
+    const doUpdateTask = async (values: any) => {
         if (!selectedTask) return;
         try {
             const { title, description, priority_type, due_date, customer_name, department, assignee_id, status } = values;
@@ -121,6 +122,20 @@ export default function TaskListingPage() {
             console.error('Error updating task:', error.message);
             message.error('Failed to update task');
         }
+    };
+
+    const handleUpdateTask = async (values: any) => {
+        if (!selectedTask) return;
+        
+        // Check if status is changing to REVIEW
+        if (values.status === 'REVIEW' && selectedTask.status !== 'REVIEW') {
+            setPendingUpdateValues(values);
+            setIsEscalateModalOpen(true);
+            return;
+        }
+
+        // Otherwise, proceed with normal update
+        await doUpdateTask(values);
     };
 
     const handleDeleteTask = () => {
@@ -155,6 +170,7 @@ export default function TaskListingPage() {
             case 'IN_PROGRESS': return <Tag icon={<SyncOutlined spin />} color="processing">In Progress</Tag>;
             case 'REVIEW': return <Tag icon={<ExclamationCircleOutlined />} color="warning">Review</Tag>;
             case 'BACKLOG': return <Tag icon={<ClockCircleOutlined />} color="default">Backlog</Tag>;
+            case 'CLIENT_HOLD': return <Tag icon={<PauseCircleOutlined />} color="magenta">Client Hold</Tag>;
             default: return <Tag>{status}</Tag>;
         }
     };
@@ -358,6 +374,7 @@ export default function TaskListingPage() {
                             className="w-full"
                         >
                             <Option value="BACKLOG">Backlog</Option>
+                            <Option value="CLIENT_HOLD">Client Hold</Option>
                             <Option value="IN_PROGRESS">In Progress</Option>
                             <Option value="REVIEW">Review</Option>
                             <Option value="DONE">Done</Option>
@@ -580,6 +597,7 @@ export default function TaskListingPage() {
                         <Form.Item name="status" label="Task Status" rules={[{ required: true, message: 'Please select a status' }]}>
                             <Select placeholder="Select Status" size="large">
                                 <Option value="BACKLOG">Backlog</Option>
+                                <Option value="CLIENT_HOLD">Client Hold</Option>
                                 <Option value="IN_PROGRESS">In Progress</Option>
                                 <Option value="REVIEW">Review</Option>
                                 <Option value="DONE">Done</Option>
@@ -639,15 +657,20 @@ export default function TaskListingPage() {
             {selectedTask && (
                 <EscalateModal
                     isOpen={isEscalateModalOpen}
-                    onClose={() => setIsEscalateModalOpen(false)}
+                    onClose={() => {
+                        setIsEscalateModalOpen(false);
+                        setPendingUpdateValues(null);
+                    }}
                     task={selectedTask}
                     profiles={profiles}
                     currentUserId={currentUserId || ''}
-                    currentTaskDescription={selectedTask.description || ''}
-                    onSuccess={() => {
+                    currentTaskDescription={pendingUpdateValues?.description || selectedTask.description || ''}
+                    nextStatus={pendingUpdateValues?.status === 'REVIEW' ? 'REVIEW' : 'BACKLOG'}
+                    onSuccess={async () => {
                         setIsEscalateModalOpen(false);
                         setIsEditModalOpen(false);
                         setSelectedTask(null);
+                        setPendingUpdateValues(null);
                     }}
                 />
             )}

@@ -34,7 +34,7 @@ Deno.serve(async (req) => {
     const { data: ongoingTasks, error: err2 } = await supabase
         .from('tsk_tasks')
         .select('customer_name')
-        .in('status', ['IN_PROGRESS', 'REVIEW']);
+        .in('status', ['IN_PROGRESS', 'REVIEW', 'CLIENT_HOLD']);
 
     if (err1 || err2) {
         console.error('Error fetching data', err1, err2);
