@@ -1,23 +1,26 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { DndContext, closestCorners, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, horizontalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { createClient } from '@/utils/supabase/client';
-import { Task, TaskStatus } from '@/lib/types';
+import { Profile, Task, TaskStatus } from '@/lib/types';
 import KanbanColumn from './KanbanColumn';
 import { message } from 'antd';
+import EscalateModal from './EscalateModal';
 
-const ACTIVE_STATUSES: TaskStatus[] = ['BACKLOG', 'IN_PROGRESS', 'REVIEW'];
+const ACTIVE_STATUSES: TaskStatus[] = ['BACKLOG', 'CLIENT_HOLD', 'IN_PROGRESS', 'REVIEW'];
 
 interface KanbanBoardProps {
     tasks: Task[];
     role: string | null;
+    profiles: Profile[];
+    currentUserId: string | null;
 }
 
 const DONE_HIDDEN_KEY = 'kanban_done_hidden';
 
-export default function KanbanBoard({ tasks, role }: KanbanBoardProps) {
+export default function KanbanBoard({ tasks, role, profiles, currentUserId }: KanbanBoardProps) {
     const supabase = createClient();
     const [boardTasks, setBoardTasks] = useState<Task[]>(tasks);
     const [showDone, setShowDone] = useState<boolean>(() => {
@@ -60,6 +63,50 @@ export default function KanbanBoard({ tasks, role }: KanbanBoardProps) {
         return (now - updatedAt) > FORTY_EIGHT_HOURS_MS;
     }).length;
 
+    const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+    const [reviewTask, setReviewTask] = useState<Task | null>(null);
+    const reviewPrevStatusRef = useRef<TaskStatus | null>(null);
+    const reviewSucceededRef = useRef(false);
+
+    const closeReviewModal = () => {
+        const prevStatus = reviewPrevStatusRef.current;
+        const taskId = reviewTask?.id;
+        const shouldRollback = !reviewSucceededRef.current && prevStatus && taskId;
+
+        if (shouldRollback) {
+            setBoardTasks(prev => prev.map(t => (t.id === taskId ? { ...t, status: prevStatus } : t)));
+        }
+
+        reviewSucceededRef.current = false;
+        reviewPrevStatusRef.current = null;
+        setReviewTask(null);
+        setIsReviewModalOpen(false);
+    };
+
+    const handleReviewSuccess = async () => {
+        if (!reviewTask) return;
+        reviewSucceededRef.current = true;
+
+        const { data, error } = await supabase
+            .from('tsk_tasks')
+            .select(`
+                *,
+                assignee:lv_profiles!tsk_tasks_assignee_id_fkey (
+                    id,
+                    full_name,
+                    avatar_url
+                )
+            `)
+            .eq('id', reviewTask.id)
+            .single();
+
+        if (!error && data) {
+            setBoardTasks(prev => prev.map(t => (t.id === reviewTask.id ? (data as Task) : t)));
+        }
+
+        closeReviewModal();
+    };
+
     const handleDragEnd = async (event: DragEndEvent) => {
         const { active, over } = event;
         if (!over) return;
@@ -67,7 +114,7 @@ export default function KanbanBoard({ tasks, role }: KanbanBoardProps) {
         const taskId = active.id as string;
         const overId = over.id as string;
 
-        const allStatuses: TaskStatus[] = ['BACKLOG', 'IN_PROGRESS', 'REVIEW', 'DONE'];
+        const allStatuses: TaskStatus[] = ['BACKLOG', 'CLIENT_HOLD', 'IN_PROGRESS', 'REVIEW', 'DONE'];
         const newStatus = allStatuses.includes(overId as TaskStatus)
             ? overId as TaskStatus
             : boardTasks.find(t => t.id === overId)?.status;
@@ -76,6 +123,15 @@ export default function KanbanBoard({ tasks, role }: KanbanBoardProps) {
 
         const activeTask = boardTasks.find(t => t.id === taskId);
         if (!activeTask || activeTask.status === newStatus) return;
+
+        if (newStatus === 'REVIEW') {
+            reviewSucceededRef.current = false;
+            reviewPrevStatusRef.current = activeTask.status;
+            setReviewTask({ ...activeTask, status: 'REVIEW' });
+            setIsReviewModalOpen(true);
+            setBoardTasks(prev => prev.map(t => (t.id === taskId ? { ...t, status: 'REVIEW' } : t)));
+            return;
+        }
 
         // Optimistic update
         setBoardTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus, is_escalated: (t.is_escalated && newStatus !== 'BACKLOG' ? false : t.is_escalated) } : t));
@@ -92,7 +148,7 @@ export default function KanbanBoard({ tasks, role }: KanbanBoardProps) {
             .eq('id', taskId);
 
         if (error) {
-            message.error('Failed to move task');
+            message.error(error.message || 'Failed to move task');
             setBoardTasks(tasks);
         }
     };
@@ -150,6 +206,17 @@ export default function KanbanBoard({ tasks, role }: KanbanBoardProps) {
                     )}
                 </DndContext>
             </div>
+
+            <EscalateModal
+                isOpen={isReviewModalOpen}
+                onClose={closeReviewModal}
+                task={reviewTask}
+                profiles={profiles}
+                currentUserId={currentUserId}
+                currentTaskDescription={reviewTask?.description}
+                nextStatus="REVIEW"
+                onSuccess={handleReviewSuccess}
+            />
         </div>
     );
 }

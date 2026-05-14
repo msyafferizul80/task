@@ -26,6 +26,7 @@ export default function EisenhowerDashboard() {
     const [isEscalateModalOpen, setIsEscalateModalOpen] = useState(false);
     const [selectedTask, setSelectedTask] = useState<Task | null>(null);
     const [taskChecklist, setTaskChecklist] = useState<any[]>([]);
+    const [pendingUpdateValues, setPendingUpdateValues] = useState<any>(null);
 
     const [filterCustomer, setFilterCustomer] = useState<string>('');
     const [filterPIC, setFilterPIC] = useState<string>('');
@@ -159,7 +160,7 @@ export default function EisenhowerDashboard() {
         }
     };
 
-    const handleUpdateTask = async (values: any) => {
+    const doUpdateTask = async (values: any) => {
         if (!selectedTask) return;
         try {
             message.loading({ content: 'Updating Task & Generating AI Checklist...', key: 'updateTask' });
@@ -220,6 +221,20 @@ export default function EisenhowerDashboard() {
             console.error('Error updating task:', error.message);
             message.error({ content: 'Failed to update task', key: 'updateTask', duration: 2 });
         }
+    };
+
+    const handleUpdateTask = async (values: any) => {
+        if (!selectedTask) return;
+        
+        // Check if status is changing to REVIEW
+        if (values.status === 'REVIEW' && selectedTask.status !== 'REVIEW') {
+            setPendingUpdateValues(values);
+            setIsEscalateModalOpen(true);
+            return;
+        }
+
+        // Otherwise, proceed with normal update
+        await doUpdateTask(values);
     };
 
     const fetchChecklist = async (taskId: string) => {
@@ -447,7 +462,7 @@ export default function EisenhowerDashboard() {
 
             <Title level={3} className="px-1">Kanban Board (Workload View)</Title>
             <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
-                <KanbanBoard tasks={filteredTasks} role={role} />
+                <KanbanBoard tasks={filteredTasks} role={role} profiles={profiles} currentUserId={currentUserId} />
             </div>
 
             <Modal
@@ -598,6 +613,7 @@ export default function EisenhowerDashboard() {
                                     <Form.Item name="status" label="Task Status" rules={[{ required: true, message: 'Please select a status' }]}>
                                         <Select placeholder="Select Status" size="large">
                                             <Option value="BACKLOG">Backlog</Option>
+                                            <Option value="CLIENT_HOLD">Client Hold</Option>
                                             <Option value="IN_PROGRESS">In Progress</Option>
                                             <Option value="REVIEW">Review</Option>
                                             <Option value="DONE">Done</Option>
@@ -685,14 +701,19 @@ export default function EisenhowerDashboard() {
 
             <EscalateModal 
                 isOpen={isEscalateModalOpen}
-                onClose={() => setIsEscalateModalOpen(false)}
+                onClose={() => {
+                    setIsEscalateModalOpen(false);
+                    setPendingUpdateValues(null);
+                }}
                 task={selectedTask}
                 profiles={profiles}
                 currentUserId={currentUserId}
-                currentTaskDescription={editForm.getFieldValue('description')}
+                currentTaskDescription={pendingUpdateValues?.description || editForm.getFieldValue('description')}
+                nextStatus={pendingUpdateValues?.status === 'REVIEW' ? 'REVIEW' : 'BACKLOG'}
                 onSuccess={() => {
                     fetchTasksAndProfiles();
                     setIsEditModalOpen(false); 
+                    setPendingUpdateValues(null);
                 }}
             />
         </div>

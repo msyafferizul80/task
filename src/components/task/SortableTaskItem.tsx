@@ -25,6 +25,7 @@ export default function SortableTaskItem({ task, role, isDone = false }: Sortabl
         transform: CSS.Transform.toString(transform),
         transition,
         opacity: isDragging ? 0.5 : 1,
+        zIndex: isDragging ? 1000 : undefined as any,
     };
 
     const getBorderColor = () => {
@@ -45,6 +46,7 @@ export default function SortableTaskItem({ task, role, isDone = false }: Sortabl
             {...listeners}
             className={`relative bg-white p-3 rounded-md shadow-sm border transition-shadow
                 ${isDone ? 'border-emerald-100 opacity-70' : 'border-gray-200 hover:shadow-md'}
+                ${isDragging ? 'shadow-lg' : ''}
                 ${role === 'admin' || role === 'manager' ? 'cursor-grab active:cursor-grabbing' : ''}
                 ${getBorderColor()}`}
         >

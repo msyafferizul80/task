@@ -158,7 +158,7 @@ export default function EscalateModal({ isOpen, onClose, task, profiles, current
                 onClose();
             }}
             footer={null}
-            destroyOnClose
+            destroyOnHidden
         >
             {nextStatus === 'REVIEW' ? (
                 <div className="mb-6 text-sm text-slate-500 bg-orange-50 p-3 rounded-lg border border-orange-100">

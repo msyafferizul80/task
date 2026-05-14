@@ -27,6 +27,8 @@ export default function KanbanColumn({ status, tasks, role, isDoneColumn = false
         switch (status) {
             case 'BACKLOG':
                 return { title: 'Backlog', color: 'text-gray-700', dot: 'bg-gray-400', header: 'bg-gray-100', border: 'border-gray-200' };
+            case 'CLIENT_HOLD':
+                return { title: 'Client Hold', color: 'text-fuchsia-700', dot: 'bg-fuchsia-500', header: 'bg-fuchsia-50', border: 'border-fuchsia-200' };
             case 'IN_PROGRESS':
                 return { title: 'In Progress', color: 'text-blue-700', dot: 'bg-blue-500', header: 'bg-blue-50', border: 'border-blue-200' };
             case 'REVIEW':
