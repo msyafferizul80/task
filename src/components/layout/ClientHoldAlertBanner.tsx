@@ -86,7 +86,7 @@ export default function ClientHoldAlertBanner() {
                         <span className="font-black text-fuchsia-900 underline decoration-dotted">
                             {count} task on Client Hold. 
                         </span>
-                        {` // add deadline if applicable`}
+                        {`     `}
                     </p>
 
                     <Link
