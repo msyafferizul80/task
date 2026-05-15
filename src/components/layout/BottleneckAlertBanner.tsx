@@ -10,7 +10,7 @@ import { Task } from '@/lib/types';
 
 export default function BottleneckAlertBanner() {
     const SHOW_BANNER = true; // Set to true to enable
-    const ALLOW_DISMISS = true; // Set to true to show close button
+    const ALLOW_DISMISS = false; // Set to true to show close button
     
     const MINUTES  = 30;                        // set the popup interval in minutes here
     const HOUR_MS = MINUTES  * 60 * 1000;
@@ -78,7 +78,7 @@ export default function BottleneckAlertBanner() {
                     .from('tsk_tasks')
                     .select('id, title, description, created_at, status, due_date, customer_name')
                     .eq('assignee_id', user.id)
-                    .neq('status', 'DONE');
+                    .not('status', 'in', '("DONE","CLIENT_HOLD")');
 
                 if (!data) return;
                 const now = new Date();
@@ -111,7 +111,14 @@ export default function BottleneckAlertBanner() {
     const shouldShowBanner = SHOW_BANNER && !dismissed && count > 0;
 
     const tasksForDisplay = useMemo(() => {
-        return [...bottleneckTasks].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+        return [...bottleneckTasks].sort((a, b) => {
+            if (!a.due_date && !b.due_date) {
+                return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+            }
+            if (!a.due_date) return 1;
+            if (!b.due_date) return -1;
+            return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
+        });
     }, [bottleneckTasks]);
 
     return (
@@ -177,19 +184,31 @@ export default function BottleneckAlertBanner() {
                     locale={{ emptyText: 'No bottleneck tasks found.' }}
                     renderItem={(t) => {
                         const ageDays = differenceInDays(new Date(), new Date(t.created_at));
+                        const dueDays = t.due_date ? differenceInDays(new Date(t.due_date), new Date()) : null;
                         return (
                             <List.Item>
                                 <div className="w-full">
                                     <div className="flex items-start justify-between gap-3">
                                         <Typography.Text strong>{t.title}</Typography.Text>
-                                        <Typography.Text type="secondary">{ageDays}d</Typography.Text>
+                                        <div className="flex flex-col items-end gap-1">
+                                            <span className="text-xs font-semibold text-amber-600 whitespace-nowrap">
+                                                Bottleneck: {ageDays}d
+                                            </span>
+                                            {dueDays !== null && (
+                                                <span className={`text-xs font-semibold ${dueDays <= 3 ? 'text-rose-600' : 'text-slate-600'} whitespace-nowrap`}>
+                                                    Due Date in: {dueDays}d
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
                                     {t.customer_name && (
-                                        <Typography.Text type="secondary">{t.customer_name}</Typography.Text>
+                                        <Typography.Text type="secondary" className="text-sm">
+                                            {t.customer_name}
+                                        </Typography.Text>
                                     )}
                                     {t.description && (
                                         <div className="mt-1">
-                                            <Typography.Text>{t.description}</Typography.Text>
+                                            <Typography.Text className="text-sm">{t.description}</Typography.Text>
                                         </div>
                                     )}
                                 </div>

@@ -9,9 +9,13 @@ interface SortableTaskItemProps {
     task: Task;
     role?: string | null;
     isDone?: boolean;
+    currentUserId?: string | null;
 }
 
-export default function SortableTaskItem({ task, role, isDone = false }: SortableTaskItemProps) {
+export default function SortableTaskItem({ task, role, isDone = false, currentUserId }: SortableTaskItemProps) {
+    const isAdminOrManager = role === 'admin' || role === 'manager';
+    const canDrag = isAdminOrManager || task.assignee_id === currentUserId;
+    
     const {
         attributes,
         listeners,
@@ -19,7 +23,7 @@ export default function SortableTaskItem({ task, role, isDone = false }: Sortabl
         transform,
         transition,
         isDragging,
-    } = useSortable({ id: task.id, disabled: role !== 'admin' && role !== 'manager' });
+    } = useSortable({ id: task.id, disabled: !canDrag });
 
     const style = {
         transform: CSS.Transform.toString(transform),
@@ -47,7 +51,7 @@ export default function SortableTaskItem({ task, role, isDone = false }: Sortabl
             className={`relative bg-white p-3 rounded-md shadow-sm border transition-shadow
                 ${isDone ? 'border-emerald-100 opacity-70' : 'border-gray-200 hover:shadow-md'}
                 ${isDragging ? 'shadow-lg' : ''}
-                ${role === 'admin' || role === 'manager' ? 'cursor-grab active:cursor-grabbing' : ''}
+                ${canDrag ? 'cursor-grab active:cursor-grabbing' : ''}
                 ${getBorderColor()}`}
         >
             {isDone && (

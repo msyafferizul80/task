@@ -43,6 +43,9 @@ export default function EisenhowerDashboard() {
             const { data: { user } } = await supabase.auth.getUser();
             const userId = user?.id || null;
             setCurrentUserId(userId);
+            if (userId) {
+                setFilterPIC(userId);
+            }
 
             let query = supabase.from('tsk_tasks').select(`
                 *,
@@ -370,7 +373,7 @@ export default function EisenhowerDashboard() {
             {/* Filter Bar */}
             <div className="bg-white/60 backdrop-blur-md p-4 rounded-2xl shadow-sm border border-slate-100">
                 <span className="font-bold text-slate-700 uppercase tracking-widest text-[11px] opacity-70 block mb-3">Filters:</span>
-                <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex flex-col sm:flex-row gap-3 items-center">
                     <Select
                         placeholder="Search Client Organization..."
                         value={filterCustomer || undefined}
@@ -399,7 +402,24 @@ export default function EisenhowerDashboard() {
                             <Option key={p.id} value={p.id}>{p.full_name}</Option>
                         ))}
                     </Select>
+                    {(role === 'admin' || role === 'manager') && (
+                        <Button
+                            onClick={() => {
+                                setFilterCustomer('');
+                                setFilterPIC('');
+                            }}
+                            className="ml-auto"
+                            size="large"
+                        >
+                            Reset Filter
+                        </Button>
+                    )}
                 </div>
+            </div>
+
+            <Title level={3} className="px-1">Kanban Board (Workload View)</Title>
+            <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
+                <KanbanBoard tasks={filteredTasks} role={role} profiles={profiles} currentUserId={currentUserId} />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
@@ -458,11 +478,6 @@ export default function EisenhowerDashboard() {
                         }
                     </div>
                 </div>
-            </div>
-
-            <Title level={3} className="px-1">Kanban Board (Workload View)</Title>
-            <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
-                <KanbanBoard tasks={filteredTasks} role={role} profiles={profiles} currentUserId={currentUserId} />
             </div>
 
             <Modal

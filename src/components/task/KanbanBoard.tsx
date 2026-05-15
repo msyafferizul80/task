@@ -22,6 +22,9 @@ const DONE_HIDDEN_KEY = 'kanban_done_hidden';
 
 export default function KanbanBoard({ tasks, role, profiles, currentUserId }: KanbanBoardProps) {
     const supabase = createClient();
+    const isAdminOrManager = role === 'admin' || role === 'manager';
+    const [isDragging, setIsDragging] = useState(false);
+    const [isExpanded, setIsExpanded] = useState(false);
     const [boardTasks, setBoardTasks] = useState<Task[]>(tasks);
     const [showDone, setShowDone] = useState<boolean>(() => {
         if (typeof window !== 'undefined') {
@@ -107,7 +110,12 @@ export default function KanbanBoard({ tasks, role, profiles, currentUserId }: Ka
         closeReviewModal();
     };
 
+    const handleDragStart = () => {
+        setIsDragging(true);
+    };
+
     const handleDragEnd = async (event: DragEndEvent) => {
+        setIsDragging(false);
         const { active, over } = event;
         if (!over) return;
 
@@ -123,6 +131,13 @@ export default function KanbanBoard({ tasks, role, profiles, currentUserId }: Ka
 
         const activeTask = boardTasks.find(t => t.id === taskId);
         if (!activeTask || activeTask.status === newStatus) return;
+
+        // Only allow admins/managers or the task's assignee to move the task
+        const canMoveTask = isAdminOrManager || activeTask.assignee_id === currentUserId;
+        if (!canMoveTask) {
+            message.error('You can only move tasks assigned to you');
+            return;
+        }
 
         if (newStatus === 'REVIEW') {
             reviewSucceededRef.current = false;
@@ -166,31 +181,54 @@ export default function KanbanBoard({ tasks, role, profiles, currentUserId }: Ka
                         </span>
                     )}
                 </div>
-                <button
-                    onClick={() => setShowDone(v => !v)}
-                    className={`flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full border transition-all duration-200
-                        ${showDone
-                            ? 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'
-                            : 'bg-gray-100 border-gray-200 text-gray-500 hover:bg-gray-200'
-                        }`}
-                >
-                    {showDone ? (
-                        <><span>✅</span> Sembunyikan Selesai ({totalDone})</>
-                    ) : (
-                        <><span>👁️</span> Tunjuk Selesai ({totalDone})</>
-                    )}
-                </button>
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => setIsExpanded(v => !v)}
+                        className={`flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full border transition-all duration-200
+                            ${isExpanded
+                                ? 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100'
+                                : 'bg-gray-100 border-gray-200 text-gray-500 hover:bg-gray-200'
+                            }`}
+                    >
+                        {isExpanded ? (
+                            <><span>📉</span> Collapse</>
+                        ) : (
+                            <><span>📈</span> Expand</>
+                        )}
+                    </button>
+                    <button
+                        onClick={() => setShowDone(v => !v)}
+                        className={`flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full border transition-all duration-200
+                            ${showDone
+                                ? 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'
+                                : 'bg-gray-100 border-gray-200 text-gray-500 hover:bg-gray-200'
+                            }`}
+                    >
+                        {showDone ? (
+                            <><span>✅</span> Sembunyikan Selesai ({totalDone})</>
+                        ) : (
+                            <><span>👁️</span> Tunjuk Selesai ({totalDone})</>
+                        )}
+                    </button>
+                </div>
             </div>
 
             {/* Board */}
-            <div className="flex gap-4 overflow-x-auto pb-4 snap-x snap-mandatory">
-                <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={handleDragEnd}>
+            <div className={`flex gap-4 pb-4 snap-x snap-mandatory ${isExpanded ? 'max-h-[800px]' : 'max-h-[500px]'} ${isDragging ? 'overflow-x-hidden' : 'overflow-x-auto'}`}>
+                <DndContext 
+                    sensors={sensors} 
+                    collisionDetection={closestCorners} 
+                    onDragStart={handleDragStart}
+                    onDragEnd={handleDragEnd}
+                >
                     {ACTIVE_STATUSES.map(status => (
                         <KanbanColumn
                             key={status}
                             status={status}
                             tasks={boardTasks.filter(t => t.status === status)}
                             role={role}
+                            isBoardExpanded={isExpanded}
+                            currentUserId={currentUserId}
                         />
                     ))}
 
@@ -202,6 +240,8 @@ export default function KanbanBoard({ tasks, role, profiles, currentUserId }: Ka
                             tasks={visibleDoneTasks}
                             role={role}
                             isDoneColumn
+                            isBoardExpanded={isExpanded}
+                            currentUserId={currentUserId}
                         />
                     )}
                 </DndContext>

@@ -14,14 +14,17 @@ interface KanbanColumnProps {
     tasks: Task[];
     role?: string | null;
     isDoneColumn?: boolean;
+    isBoardExpanded?: boolean;
+    currentUserId?: string | null;
 }
 
-export default function KanbanColumn({ status, tasks, role, isDoneColumn = false }: KanbanColumnProps) {
+export default function KanbanColumn({ status, tasks, role, isDoneColumn = false, isBoardExpanded = false, currentUserId }: KanbanColumnProps) {
+    const isAdminOrManager = role === 'admin' || role === 'manager';
     const { setNodeRef } = useDroppable({ id: status });
     const router = useRouter();
 
     // Done column is collapsed by default
-    const [isExpanded, setIsExpanded] = useState(!isDoneColumn);
+    const [columnExpanded, setColumnExpanded] = useState(!isDoneColumn);
 
     const getColumnMeta = () => {
         switch (status) {
@@ -52,7 +55,7 @@ export default function KanbanColumn({ status, tasks, role, isDoneColumn = false
             {/* Column Header */}
             <div
                 className={`flex items-center gap-2 px-4 py-3 rounded-t-xl ${meta.header} ${isDoneColumn ? 'cursor-pointer select-none' : ''}`}
-                onClick={isDoneColumn ? () => setIsExpanded(v => !v) : undefined}
+                onClick={isDoneColumn ? () => setColumnExpanded(v => !v) : undefined}
             >
                 <div className={`w-2 h-2 rounded-full ${meta.dot} flex-shrink-0`} />
                 <span className={`font-semibold text-sm ${meta.color} flex-1`}>{meta.title}</span>
@@ -60,7 +63,7 @@ export default function KanbanColumn({ status, tasks, role, isDoneColumn = false
                     {tasks.length}
                 </span>
                 {isDoneColumn && (
-                    <span className={`text-xs ${meta.color} transition-transform duration-300 ml-1 ${isExpanded ? 'rotate-0' : '-rotate-90'}`}>
+                    <span className={`text-xs ${meta.color} transition-transform duration-300 ml-1 ${columnExpanded ? 'rotate-0' : '-rotate-90'}`}>
                         ▼
                     </span>
                 )}
@@ -68,14 +71,22 @@ export default function KanbanColumn({ status, tasks, role, isDoneColumn = false
 
             {/* Column Body — collapsbile for Done */}
             <div
-                className={`overflow-hidden transition-all duration-300 ease-in-out ${isExpanded ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}`}
+                className={`overflow-hidden transition-all duration-300 ease-in-out ${columnExpanded ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}`}
             >
-                <div ref={setNodeRef} className={`flex flex-col gap-2 p-3 min-h-[120px] bg-white rounded-b-xl`}>
-                    <SortableContext items={displayedTasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
-                        {displayedTasks.map(task => (
-                            <SortableTaskItem key={task.id} task={task} role={role} isDone={isDoneColumn} />
-                        ))}
-                    </SortableContext>
+                <div ref={setNodeRef} className={`flex flex-col gap-2 p-3 min-h-[120px] ${isBoardExpanded ? 'max-h-[700px]' : 'max-h-[400px]'} overflow-y-auto bg-white rounded-b-xl`}>
+                    {isAdminOrManager ? (
+                        <SortableContext items={displayedTasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
+                            {displayedTasks.map(task => (
+                                <SortableTaskItem key={task.id} task={task} role={role} isDone={isDoneColumn} currentUserId={currentUserId} />
+                            ))}
+                        </SortableContext>
+                    ) : (
+                        <>
+                            {displayedTasks.map(task => (
+                                <SortableTaskItem key={task.id} task={task} role={role} isDone={isDoneColumn} currentUserId={currentUserId} />
+                            ))}
+                        </>
+                    )}
 
                     {tasks.length === 0 && (
                         <div className="text-sm text-gray-400 p-4 text-center italic border-2 border-dashed border-gray-200 rounded-lg flex-1">
@@ -96,15 +107,15 @@ export default function KanbanColumn({ status, tasks, role, isDoneColumn = false
             </div>
 
             {/* Collapsed hint for Done */}
-            {isDoneColumn && !isExpanded && tasks.length > 0 && (
+            {isDoneColumn && !columnExpanded && tasks.length > 0 && (
                 <div
                     className="px-4 py-2 text-xs text-emerald-600 bg-white rounded-b-xl cursor-pointer hover:bg-emerald-50 transition-colors text-center border-t border-emerald-100"
-                    onClick={() => setIsExpanded(true)}
+                    onClick={() => setColumnExpanded(true)}
                 >
                     Klik untuk lihat {tasks.length} task siap ▼
                 </div>
             )}
-            {isDoneColumn && !isExpanded && tasks.length === 0 && (
+            {isDoneColumn && !columnExpanded && tasks.length === 0 && (
                 <div className="px-4 py-2 text-xs text-gray-400 bg-white rounded-b-xl text-center border-t border-gray-100">
                     Tiada task siap dalam 48 jam
                 </div>

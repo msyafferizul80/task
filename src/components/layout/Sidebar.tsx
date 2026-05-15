@@ -14,7 +14,8 @@ import {
     BarChart2,
     Menu,
     X,
-    Bot
+    Bot,
+    PauseCircle
 } from 'lucide-react'
 import { createClient } from '@/utils/supabase/client'
 import { useRole } from '@/components/layout/RoleProvider'
@@ -28,12 +29,13 @@ export default function Sidebar() {
     const { role } = useRole()
 
     const [bottleneckCount, setBottleneckCount] = useState(0)
+    const [clientHoldCount, setClientHoldCount] = useState(0)
     const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false)
     const [isLoggingOut, setIsLoggingOut] = useState(false)
 
-    // Fetch bottleneck tasks for the current user
+    // Fetch bottleneck and client hold tasks for the current user
     useEffect(() => {
-        const fetchBottleneck = async () => {
+        const fetchCounts = async () => {
             try {
                 const { data: { user } } = await supabase.auth.getUser()
                 if (!user) return
@@ -46,26 +48,29 @@ export default function Sidebar() {
 
                 if (!data) return
                 const now = new Date()
-                const count = data.filter(t => differenceInDays(now, new Date(t.created_at)) >= 3).length
-                setBottleneckCount(count)
+                const bottleneckCountVal = data.filter(t => differenceInDays(now, new Date(t.created_at)) >= 3).length
+                const clientHoldCountVal = data.filter(t => t.status === 'CLIENT_HOLD').length
+                setBottleneckCount(bottleneckCountVal)
+                setClientHoldCount(clientHoldCountVal)
             } catch (e) {
                 // silently fail
             }
         }
 
-        fetchBottleneck()
+        fetchCounts()
         const channel = supabase
-            .channel('sidebar-bottleneck')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'tsk_tasks' }, fetchBottleneck)
+            .channel('sidebar-counts')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'tsk_tasks' }, fetchCounts)
             .subscribe()
         return () => { supabase.removeChannel(channel) }
     }, [])
 
     // Nav items with optional badge
-    const navItems: { name: string; href: string; icon: React.ElementType; badge?: number }[] = [
+    const navItems: { name: string; href: string; icon: React.ElementType; badge?: number; badgeColor?: string }[] = [
         { name: 'Dashboard', href: '/', icon: LayoutDashboard },
-        { name: 'My Tasks', href: '/mytasks', icon: CheckSquare, badge: bottleneckCount > 0 ? bottleneckCount : undefined },
-        { name: 'Task Listing', href: '/tasks', icon: ListTodo, badge: bottleneckCount > 0 ? bottleneckCount : undefined },
+        { name: 'My Tasks', href: '/mytasks', icon: CheckSquare, badge: bottleneckCount > 0 ? bottleneckCount : undefined, badgeColor: 'amber' },
+        { name: 'Client Hold Tasks', href: '/client-hold-tasks', icon: PauseCircle, badge: clientHoldCount > 0 ? clientHoldCount : undefined, badgeColor: 'fuchsia' },
+        { name: 'Task Listing', href: '/tasks', icon: ListTodo },
         { name: 'Weekly Report', href: '/reports', icon: FileText },
         { name: 'My Profile', href: '/profile', icon: UserCircle }
     ];
@@ -130,7 +135,7 @@ export default function Sidebar() {
                                             <Icon className={`h-5 w-5 ${isActive ? "text-indigo-600" : "text-gray-400"}`} />
                                             <span className="flex-1">{item.name}</span>
                                             {item.badge !== undefined && (
-                                                <span className="flex items-center justify-center h-5 min-w-[20px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold animate-pulse">
+                                                <span className={`flex items-center justify-center h-5 min-w-[20px] px-1 rounded-full text-white text-[10px] font-bold animate-pulse ${item.badgeColor === 'fuchsia' ? 'bg-fuchsia-500' : 'bg-amber-500'}`}>
                                                     {item.badge}
                                                 </span>
                                             )}
@@ -172,7 +177,7 @@ export default function Sidebar() {
                                 <div className={`relative p-1.5 rounded-xl transition-colors ${isActive ? 'bg-indigo-50' : ''}`}>
                                     <Icon className={`h-5 w-5 ${isActive ? 'text-indigo-600' : 'text-gray-400'}`} />
                                     {item.badge !== undefined && (
-                                        <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-white text-[9px] font-bold">
+                                        <span className={`absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full text-white text-[9px] font-bold ${item.badgeColor === 'fuchsia' ? 'bg-fuchsia-500' : 'bg-amber-500'}`}>
                                             {item.badge > 9 ? '9+' : item.badge}
                                         </span>
                                     )}
