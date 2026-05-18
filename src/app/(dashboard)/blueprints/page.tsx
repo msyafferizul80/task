@@ -90,6 +90,7 @@ export default function BlueprintsPage() {
                 supabase.from('lv_profiles').select('id, full_name, avatar_url').eq('status', 'active').order('full_name'),
                 supabase.from('tsk_recurring_schedules').select(`
                     id, frequency, trigger_day, trigger_time, start_date, is_active, last_run_at,
+                    run_on_saturday, run_on_sunday,
                     customer:tsk_customers!tsk_recurring_schedules_customer_id_fkey(id, name),
                     blueprint:tsk_blueprints!tsk_recurring_schedules_blueprint_id_fkey(id, name)
                 `).order('created_at', { ascending: false }),
@@ -210,13 +211,15 @@ export default function BlueprintsPage() {
             trigger_day: r.trigger_day,
             trigger_time: r.trigger_time ? dayjs(r.trigger_time, 'HH:mm') : null,
             start_date: r.start_date ? dayjs(r.start_date) : null,
+            run_on_saturday: r.run_on_saturday || false,
+            run_on_sunday: r.run_on_sunday || false,
         });
         setSchedModalOpen(true);
     };
 
     const handleSaveSchedule = async (values: any) => {
         try {
-            const { start_date, trigger_time, frequency, trigger_day, ...rest } = values;
+            const { start_date, trigger_time, frequency, trigger_day, run_on_saturday, run_on_sunday, ...rest } = values;
             const payload: any = {
                 ...rest,
                 frequency,
@@ -224,6 +227,8 @@ export default function BlueprintsPage() {
                 trigger_time: trigger_time ? trigger_time.format('HH:mm') : null,
                 // DAILY has no meaningful trigger_day; store 0
                 trigger_day: frequency === 'DAILY' ? 0 : trigger_day,
+                run_on_saturday: run_on_saturday || false,
+                run_on_sunday: run_on_sunday || false,
             };
 
             if (editingSchedule) {
@@ -736,6 +741,29 @@ export default function BlueprintsPage() {
                     <Form.Item name="start_date" label="Tarikh Mula" rules={[{ required: true }]}>
                         <DatePicker size="large" className="w-full" placeholder="Pilih tarikh mula" />
                     </Form.Item>
+
+                    {schedFrequency === 'DAILY' && (
+                        <>
+                            <Divider>Weekend Schedule</Divider>
+                            
+                            <div className="grid grid-cols-2 gap-4 mb-4">
+                                <Form.Item 
+                                    name="run_on_saturday" 
+                                    label="Jalankan pada Sabtu" 
+                                    valuePropName="checked"
+                                >
+                                    <Switch checkedChildren="Ya" unCheckedChildren="Tidak" />
+                                </Form.Item>
+                                <Form.Item 
+                                    name="run_on_sunday" 
+                                    label="Jalankan pada Ahad" 
+                                    valuePropName="checked"
+                                >
+                                    <Switch checkedChildren="Ya" unCheckedChildren="Tidak" />
+                                </Form.Item>
+                            </div>
+                        </>
+                    )}
 
                     <div className="flex justify-end gap-2 mt-2">
                         <Button onClick={() => { setSchedModalOpen(false); setEditingSchedule(null); schedForm.resetFields(); }}>Batal</Button>

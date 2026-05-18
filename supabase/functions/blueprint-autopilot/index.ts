@@ -146,6 +146,8 @@ Deno.serve(async (req: Request) => {
         trigger_time,
         start_date,
         last_run_at,
+        run_on_saturday,
+        run_on_sunday,
         customer:tsk_customers!tsk_recurring_schedules_customer_id_fkey (id, name),
         blueprint:tsk_blueprints!tsk_recurring_schedules_blueprint_id_fkey (
           id,
@@ -180,6 +182,17 @@ Deno.serve(async (req: Request) => {
 
       if (!shouldRunThisPeriod(schedule.frequency, schedule.trigger_day, schedule.trigger_time ?? null, startDate, lastRunAt, today)) {
         results.push({ schedule_id: schedule.id, status: "skipped", reason: "Not trigger day/time or already ran this period" });
+        continue;
+      }
+
+      // Check if today is Saturday/Sunday and if we should run
+      const todayDayOfWeek = today.getDay(); // 0 = Sunday, 6 = Saturday
+      if (todayDayOfWeek === 6 && !schedule.run_on_saturday) { // Saturday
+        results.push({ schedule_id: schedule.id, status: "skipped", reason: "Saturday, and run_on_saturday is false" });
+        continue;
+      }
+      if (todayDayOfWeek === 0 && !schedule.run_on_sunday) { // Sunday
+        results.push({ schedule_id: schedule.id, status: "skipped", reason: "Sunday, and run_on_sunday is false" });
         continue;
       }
 
