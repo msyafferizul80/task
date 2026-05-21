@@ -53,16 +53,33 @@ export default function TaskStatusHistory({ taskId, currentStatus, taskCreatedAt
 
     const formatDuration = (seconds: number) => {
         if (seconds <= 0) return '-';
-        const hours = Math.floor(seconds / 3600);
-        const minutes = Math.floor((seconds % 3600) / 60);
-        const secs = seconds % 60;
+        const days = Math.floor(seconds / (24 * 3600));
+        const remainingSecondsAfterDays = seconds % (24 * 3600);
+        const hours = Math.floor(remainingSecondsAfterDays / 3600);
+        const minutes = Math.floor((remainingSecondsAfterDays % 3600) / 60);
+        const secs = remainingSecondsAfterDays % 60;
         
         const parts = [];
-        if (hours > 0) parts.push(`${hours}j`);
-        if (minutes > 0) parts.push(`${minutes}m`);
-        if (secs > 0 || parts.length === 0) parts.push(`${secs}s`);
+        if (days > 0) {
+            parts.push(`${days} ${days === 1 ? 'Day' : 'Days'}`);
+        }
+        if (hours > 0) {
+            parts.push(`${hours} ${hours === 1 ? 'Hour' : 'Hours'}`);
+        } 
+        if (minutes > 0) {
+            parts.push(`${minutes} ${minutes === 1 ? 'Minute' : 'Minutes'}`);
+        }
+        if (secs > 0 || parts.length === 0) {
+            parts.push(`${secs} ${secs === 1 ? 'Second' : 'Seconds'}`);
+        }
         
-        return parts.join(' ');
+        if (parts.length === 1) {
+            return parts[0];
+        } else if (parts.length === 2) {
+            return `${parts[0]}, ${parts[1]}`;
+        } else {
+            return parts.slice(0, -1).join(', ') + ', ' + parts[parts.length - 1];
+        }
     };
 
     const calculateDurationFromDates = (startDate: string, endDate: string): number => {
@@ -250,7 +267,7 @@ export default function TaskStatusHistory({ taskId, currentStatus, taskCreatedAt
             </div>
             <div className="flex-1 overflow-y-auto">
                 {history.length === 0 ? (
-                    <div className="py-4 text-center text-slate-400 italic">Tiada rekod perubahan status untuk task ini.</div>
+                    <div className="py-4 text-center text-slate-400 italic">No record found for this task.</div>
                 ) : (
                     <Timeline items={timelineItems} />
                 )}
@@ -278,7 +295,7 @@ export default function TaskStatusHistory({ taskId, currentStatus, taskCreatedAt
                         className="border border-slate-100 rounded-lg overflow-hidden"
                     />
                 ) : (
-                    <div className="text-center text-slate-400 italic py-3">Tiada data masa untuk ditunjukkan.</div>
+                    <div className="text-center text-slate-400 italic py-3">No time data available.</div>
                 )}
             </div>
         </div>
