@@ -604,7 +604,7 @@ export default function ClientHoldTasksPage() {
                                         size="large" 
                                         disabled={role !== 'admin' && role !== 'manager'}
                                         onChange={(val) => {
-                                            if (val !== 'Outsourcing') {
+                                            if (val === 'IT' || val === 'Marketing') {
                                                 editForm.setFieldsValue({ customer_name: 'SYAZNA WORLD (INTERNAL)' });
                                             } else {
                                                 editForm.setFieldsValue({ customer_name: undefined });
