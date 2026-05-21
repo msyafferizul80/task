@@ -142,7 +142,7 @@ export default function KanbanBoard({ tasks, role, profiles, currentUserId }: Ka
         if (newStatus === 'REVIEW') {
             reviewSucceededRef.current = false;
             reviewPrevStatusRef.current = activeTask.status;
-            setReviewTask({ ...activeTask, status: 'REVIEW' });
+            setReviewTask(activeTask); // Don't change status here!
             setIsReviewModalOpen(true);
             setBoardTasks(prev => prev.map(t => (t.id === taskId ? { ...t, status: 'REVIEW' } : t)));
             return;
@@ -154,6 +154,49 @@ export default function KanbanBoard({ tasks, role, profiles, currentUserId }: Ka
         const updateData: any = { status: newStatus, updated_at: new Date().toISOString() };
         if (activeTask.is_escalated && newStatus !== 'BACKLOG') {
             updateData.is_escalated = false;
+        }
+
+        // 1. Fetch last history record for this task to calculate duration
+        const { data: lastHistory } = await supabase
+            .from('tsk_task_history')
+            .select('*')
+            .eq('task_id', taskId)
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+        const now = new Date();
+        let statusBeforeEnteredAt = null;
+        let durationSeconds = null;
+        let durationMinutes = null;
+        let durationHours = null;
+
+        if (lastHistory && lastHistory.length > 0) {
+            statusBeforeEnteredAt = lastHistory[0].created_at;
+            const enteredAtDate = new Date(statusBeforeEnteredAt);
+            const diffMs = Math.max(0, now.getTime() - enteredAtDate.getTime());
+            durationSeconds = Math.floor(diffMs / 1000);
+            durationMinutes = durationSeconds / 60;
+            durationHours = durationMinutes / 60;
+        }
+
+        // Insert task history only if status actually changed AND not REVIEW (REVIEW is handled in EscalateModal)
+        if (activeTask.status !== newStatus && (newStatus as any) !== 'REVIEW') {
+            const { error: historyError } = await supabase
+                .from('tsk_task_history')
+                .insert({
+                    task_id: taskId,
+                    status_before: activeTask.status,
+                    new_status: newStatus,
+                    changed_by: currentUserId,
+                    status_before_entered_at: statusBeforeEnteredAt,
+                    duration_seconds: durationSeconds,
+                    duration_minutes: durationMinutes,
+                    duration_hours: durationHours
+                });
+
+            if (historyError) {
+                console.error('Error inserting task history:', historyError);
+            }
         }
 
         // Persist to Supabase

@@ -58,6 +58,52 @@ export default function EscalateModal({ isOpen, onClose, task, profiles, current
         
         setLoading(true);
         try {
+            // Insert task history
+            // 1. Fetch last history record for this task to calculate duration
+            const { data: lastHistory } = await supabase
+                .from('tsk_task_history')
+                .select('*')
+                .eq('task_id', task.id)
+                .order('created_at', { ascending: false })
+                .limit(1);
+
+            const now = new Date();
+            let statusBeforeEnteredAt = null;
+            let durationSeconds = null;
+            let durationMinutes = null;
+            let durationHours = null;
+
+            if (lastHistory && lastHistory.length > 0) {
+                statusBeforeEnteredAt = lastHistory[0].created_at;
+                const enteredAtDate = new Date(statusBeforeEnteredAt);
+                const diffMs = Math.max(0, now.getTime() - enteredAtDate.getTime());
+                durationSeconds = Math.floor(diffMs / 1000);
+                durationMinutes = durationSeconds / 60;
+                durationHours = durationMinutes / 60;
+            }
+
+            // Only insert history if status actually changed
+            if (task.status !== nextStatus) {
+                const { error: historyError } = await supabase
+                    .from('tsk_task_history')
+                    .insert({
+                        task_id: task.id,
+                        status_before: task.status,
+                        new_status: nextStatus,
+                        changed_by: currentUserId,
+                        status_before_entered_at: statusBeforeEnteredAt,
+                        duration_seconds: durationSeconds,
+                        duration_minutes: durationMinutes,
+                        duration_hours: durationHours
+                    });
+
+                if (historyError) {
+                    console.error('Error inserting task history:', historyError);
+                }
+            }
+
+
+
             // Just update status to REVIEW without escalating
             const { error: taskError } = await supabase
                 .from('tsk_tasks')
@@ -89,6 +135,52 @@ export default function EscalateModal({ isOpen, onClose, task, profiles, current
         setLoading(true);
         try {
             const { to_user_id, reason } = values;
+
+            // Insert task history
+            // 1. Fetch last history record for this task to calculate duration
+            const { data: lastHistory } = await supabase
+                .from('tsk_task_history')
+                .select('*')
+                .eq('task_id', task.id)
+                .order('created_at', { ascending: false })
+                .limit(1);
+
+            const now = new Date();
+            let statusBeforeEnteredAt = null;
+            let durationSeconds = null;
+            let durationMinutes = null;
+            let durationHours = null;
+
+            if (lastHistory && lastHistory.length > 0) {
+                statusBeforeEnteredAt = lastHistory[0].created_at;
+                const enteredAtDate = new Date(statusBeforeEnteredAt);
+                const diffMs = Math.max(0, now.getTime() - enteredAtDate.getTime());
+                durationSeconds = Math.floor(diffMs / 1000);
+                durationMinutes = durationSeconds / 60;
+                durationHours = durationMinutes / 60;
+            }
+
+            // Only insert history if status actually changed
+            if (task.status !== nextStatus) {
+                const { error: historyError } = await supabase
+                    .from('tsk_task_history')
+                    .insert({
+                        task_id: task.id,
+                        status_before: task.status,
+                        new_status: nextStatus,
+                        changed_by: currentUserId,
+                        status_before_entered_at: statusBeforeEnteredAt,
+                        duration_seconds: durationSeconds,
+                        duration_minutes: durationMinutes,
+                        duration_hours: durationHours
+                    });
+
+                if (historyError) {
+                    console.error('Error inserting task history:', historyError);
+                }
+            }
+
+
 
             // 1. Update task
             const { error: taskError } = await supabase

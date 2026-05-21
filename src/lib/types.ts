@@ -46,3 +46,17 @@ export interface TaskChecklist {
     is_completed: boolean;
     created_at: string;
 }
+
+export interface TaskHistory {
+    id: string;
+    task_id: string;
+    status_before: TaskStatus | null;
+    new_status: TaskStatus;
+    changed_by: string | null;
+    status_before_entered_at: string | null;
+    duration_seconds: string | null;
+    duration_minutes: string | null;
+    duration_hours: string | null;
+    created_at: string;
+    changed_by_user?: Profile;
+}
