@@ -137,7 +137,7 @@ export default function EisenhowerDashboard() {
                 customer_name,
                 assignee_id,
                 due_date: due_date?.toISOString(),
-                status: 'BACKLOG',
+                status: 'IN_PROGRESS',
                 created_by: currentUserId,
                 is_internal: customer_name === 'SYAZNA WORLD (INTERNAL)',
                 department: department || 'Outsourcing',
@@ -151,7 +151,7 @@ export default function EisenhowerDashboard() {
                 .insert({
                     task_id: newTaskData.id,
                     status_before: null,
-                    new_status: 'BACKLOG',
+                    new_status: 'IN_PROGRESS',
                     changed_by: currentUserId,
                     status_before_entered_at: null,
                     duration_seconds: null,
