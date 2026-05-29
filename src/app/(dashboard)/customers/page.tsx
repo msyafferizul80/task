@@ -1,9 +1,11 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Table, Button, Modal, Form, Input, message } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { Table, Button, Modal, Form, Input, message, Select, Tag, Popover, Space } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, CheckCircleOutlined, StopOutlined, PauseCircleOutlined } from '@ant-design/icons';
 import { createClient } from '@/utils/supabase/client';
+
+const { Option } = Select;
 
 export default function CustomersPage() {
     const supabase = createClient();
@@ -87,6 +89,31 @@ export default function CustomersPage() {
         }
     };
 
+    const handleStatusChange = async (id: string, status: string) => {
+        try {
+            const { error } = await supabase
+                .from('tsk_customers')
+                .update({ status })
+                .eq('id', id);
+
+            if (error) throw error;
+            message.success('Customer status updated successfully');
+            fetchCustomers();
+        } catch (error: any) {
+            console.error('Error updating customer status:', error.message);
+            message.error('Failed to update customer status');
+        }
+    };
+
+    const getStatusTag = (status: string) => {
+        switch (status) {
+            case 'active': return <Tag icon={<CheckCircleOutlined />} color="success">Active</Tag>;
+            case 'inactive': return <Tag icon={<StopOutlined />} color="default">Inactive</Tag>;
+            case 'suspended': return <Tag icon={<PauseCircleOutlined />} color="warning">Suspended</Tag>;
+            default: return <Tag>{status}</Tag>;
+        }
+    };
+
     const openEditModal = (record: any) => {
         setEditingId(record.id);
         form.setFieldsValue(record);
@@ -104,10 +131,46 @@ export default function CustomersPage() {
         { title: 'Email', dataIndex: 'email', key: 'email' },
         { title: 'Phone', dataIndex: 'phone', key: 'phone' },
         {
+            title: 'Status',
+            dataIndex: 'status',
+            key: 'status',
+            render: (status: string, record: any) => {
+                const statusOptions = [
+                    { value: 'active', label: 'Active', icon: <CheckCircleOutlined />, color: 'success' },
+                    { value: 'inactive', label: 'Inactive', icon: <StopOutlined />, color: 'default' },
+                    { value: 'suspended', label: 'Suspended', icon: <PauseCircleOutlined />, color: 'warning' }
+                ];
+
+                const content = (
+                    <Space direction="vertical" size="small">
+                        {statusOptions.map(option => (
+                            <div
+                                key={option.value}
+                                className={`cursor-pointer p-2 rounded ${status === option.value ? 'bg-gray-100' : 'hover:bg-gray-50'}`}
+                                onClick={() => handleStatusChange(record.id, option.value)}
+                            >
+                                <Tag icon={option.icon} color={option.color}>
+                                    {option.label}
+                                </Tag>
+                            </div>
+                        ))}
+                    </Space>
+                );
+
+                return (
+                    <Popover content={content} title="Change Status" trigger="click">
+                        <div className="cursor-pointer">
+                            {getStatusTag(status)}
+                        </div>
+                    </Popover>
+                );
+            }
+        },
+        {
             title: 'Action',
             key: 'action',
             render: (_: any, record: any) => (
-                <div className="flex gap-2">
+                <div className="flex gap-2 items-center">
                     <Button type="text" icon={<EditOutlined />} onClick={() => openEditModal(record)} />
                     <Button type="text" danger icon={<DeleteOutlined />} onClick={() => handleDelete(record.id)} />
                 </div>
@@ -151,6 +214,13 @@ export default function CustomersPage() {
                     </Form.Item>
                     <Form.Item name="phone" label="Phone Number">
                         <Input />
+                    </Form.Item>
+                    <Form.Item name="status" label="Status" initialValue="active">
+                        <Select>
+                            <Option value="active">Active</Option>
+                            <Option value="inactive">Inactive</Option>
+                            <Option value="suspended">Suspended</Option>
+                        </Select>
                     </Form.Item>
                 </Form>
             </Modal>
