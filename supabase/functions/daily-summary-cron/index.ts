@@ -23,12 +23,12 @@ Deno.serve(async (req) => {
     mytNow.setUTCHours(0, 0, 0, 0);
     const startOfDayUTC = new Date(mytNow.getTime() - (8 * 60 * 60 * 1000)).toISOString();
 
-    // 1. Total tasks marked DONE today
+    // 1. Total tasks marked DONE today (using status transitions in history)
     const { count: completedCount, error: err1 } = await supabase
-        .from('tsk_tasks')
+        .from('tsk_task_history')
         .select('id', { count: 'exact', head: true })
-        .eq('status', 'DONE')
-        .gte('updated_at', startOfDayUTC);
+        .eq('new_status', 'DONE')
+        .gte('created_at', startOfDayUTC);
 
     // 2. Total ONGOING tasks per customer
     const { data: ongoingTasks, error: err2 } = await supabase
