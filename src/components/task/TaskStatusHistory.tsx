@@ -1,8 +1,11 @@
 'use client';
+
 import { useEffect, useState } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import { TaskHistory, TaskStatus } from '@/lib/types';
-import { Spin, Timeline, Typography, Table } from 'antd';
+import { Spin, Timeline, Typography, Table, Button, Tooltip } from 'antd';
+import { PlayCircleOutlined, PauseCircleOutlined, ClockCircleOutlined } from '@ant-design/icons';
+import { useTimer } from '@/components/task/TimerProvider';
 import dayjs from 'dayjs';
 
 interface TaskStatusHistoryProps {
@@ -17,6 +20,40 @@ export default function TaskStatusHistory({ taskId, currentStatus, taskCreatedAt
     const [history, setHistory] = useState<TaskHistory[]>([]);
     const [loading, setLoading] = useState(false);
     const supabase = createClient();
+
+    // Timer context integration
+    const { activeLog, startTimer, stopTimer } = useTimer();
+    const isCurrentActive = activeLog && activeLog.task_id === taskId;
+    const [elapsed, setElapsed] = useState(0);
+
+    // Live ticking elapsed time for active log
+    useEffect(() => {
+        if (!isCurrentActive) {
+            setElapsed(0);
+            return;
+        }
+
+        const calculateElapsed = () => {
+            const start = new Date(activeLog.start_time).getTime();
+            const now = new Date().getTime();
+            return Math.max(0, Math.round((now - start) / 1000));
+        };
+
+        setElapsed(calculateElapsed());
+
+        const interval = setInterval(() => {
+            setElapsed(calculateElapsed());
+        }, 1000);
+
+        return () => clearInterval(interval);
+    }, [isCurrentActive, activeLog]);
+
+    const formatTime = (totalSeconds: number) => {
+        const hrs = Math.floor(totalSeconds / 3600);
+        const mins = Math.floor((totalSeconds % 3600) / 60);
+        const secs = totalSeconds % 60;
+        return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    };
 
     const fetchHistory = async () => {
         if (!taskId) return;
@@ -232,8 +269,6 @@ export default function TaskStatusHistory({ taskId, currentStatus, taskCreatedAt
         }
     ];
 
-    if (loading) return <div className="py-8 flex justify-center"><Spin /></div>;
-
     const getStatusColorClasses = (status: TaskStatus) => {
         switch (status) {
             case 'DONE': return 'bg-green-50 border-green-200 text-green-800';
@@ -256,6 +291,58 @@ export default function TaskStatusHistory({ taskId, currentStatus, taskCreatedAt
         }
     };
 
+    const renderTimerControls = () => {
+        if (!taskId) return null;
+        if (currentStatus === 'DONE') return null;
+
+        return (
+            <div className={`mb-4 p-4 rounded-xl border flex items-center justify-between transition-all ${
+                isCurrentActive 
+                    ? 'bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-100 shadow-sm' 
+                    : 'bg-slate-50 border-slate-200'
+            }`}>
+                <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-full ${isCurrentActive ? 'bg-indigo-100 text-indigo-600 animate-pulse' : 'bg-slate-200 text-slate-500'}`}>
+                        <ClockCircleOutlined className="text-lg" />
+                    </div>
+                    <div>
+                        <Text className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                            {isCurrentActive ? 'Active Tracker' : 'Task Timer'}
+                        </Text>
+                        <Text className={`font-mono text-base ${isCurrentActive ? 'text-indigo-600 font-bold' : 'text-slate-600 font-medium'}`}>
+                            {isCurrentActive ? formatTime(elapsed) : '00:00:00'}
+                        </Text>
+                    </div>
+                </div>
+
+                <div>
+                    {isCurrentActive ? (
+                        <Button
+                            type="primary"
+                            danger
+                            icon={<PauseCircleOutlined />}
+                            onClick={() => stopTimer(taskId)}
+                            className="bg-rose-600 hover:bg-rose-700 shadow-sm flex items-center gap-1.5 h-10 rounded-lg px-4 font-semibold"
+                        >
+                            Stop Timer
+                        </Button>
+                    ) : (
+                        <Button
+                            type="primary"
+                            icon={<PlayCircleOutlined />}
+                            onClick={() => startTimer(taskId)}
+                            className="bg-indigo-600 hover:bg-indigo-700 shadow-sm flex items-center gap-1.5 h-10 rounded-lg px-4 font-semibold"
+                        >
+                            Start Timer
+                        </Button>
+                    )}
+                </div>
+            </div>
+        );
+    };
+
+    if (loading) return <div className="py-8 flex justify-center"><Spin /></div>;
+
     const effectiveStatus = isTaskDone ? 'DONE' : currentStatus;
     const colorClasses = getStatusColorClasses(effectiveStatus);
     const textColorClass = getStatusTextColor(effectiveStatus);
@@ -265,6 +352,9 @@ export default function TaskStatusHistory({ taskId, currentStatus, taskCreatedAt
             <div className="mb-2">
                 <Title level={5} className="!text-slate-700">📊 Task Status Timeline</Title>
             </div>
+            
+            {renderTimerControls()}
+
             <div className="flex-1 overflow-y-auto">
                 {history.length === 0 ? (
                     <div className="py-4 text-center text-slate-400 italic">No record found for this task.</div>

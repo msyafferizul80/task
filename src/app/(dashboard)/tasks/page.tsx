@@ -1,19 +1,112 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { Card, Select, Input, Table, Tag, Typography, Spin, message, Modal, Form, Button, DatePicker } from 'antd';
+import { Card, Select, Input, Table, Tag, Typography, Spin, message, Modal, Form, Button, DatePicker, Tooltip } from 'antd';
 import { createClient } from '@/utils/supabase/client';
 import { Task, Profile } from '@/lib/types';
 import { useRole } from '@/components/layout/RoleProvider';
-import { SearchOutlined, CheckCircleOutlined, SyncOutlined, ClockCircleOutlined, ExclamationCircleOutlined, EditOutlined, DeleteOutlined, ExclamationCircleFilled, PauseCircleOutlined } from '@ant-design/icons';
+import { SearchOutlined, CheckCircleOutlined, SyncOutlined, ClockCircleOutlined, ExclamationCircleOutlined, EditOutlined, DeleteOutlined, ExclamationCircleFilled, PauseCircleOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import EscalateModal from '@/components/task/EscalateModal';
 import TaskStatusHistory from '@/components/task/TaskStatusHistory';
+import { useTimer } from '@/components/task/TimerProvider';
+
 
 const { Title, Text } = Typography;
 const { Option } = Select;
 const { RangePicker } = DatePicker;
 
+function LiveTaskTimer({ 
+    taskId, 
+    taskStatus,
+    activeLog, 
+    startTimer, 
+    stopTimer, 
+    accumulatedDuration 
+}: { 
+    taskId: string; 
+    taskStatus: string;
+    activeLog: any; 
+    startTimer: (id: string) => Promise<void>; 
+    stopTimer: (id: string) => Promise<void>; 
+    accumulatedDuration: number;
+}) {
+    const isCurrentActive = activeLog && activeLog.task_id === taskId;
+    const [elapsed, setElapsed] = useState(0);
+
+    useEffect(() => {
+        if (!isCurrentActive) {
+            setElapsed(0);
+            return;
+        }
+
+        const calculateElapsed = () => {
+            const start = new Date(activeLog.start_time).getTime();
+            const now = new Date().getTime();
+            return Math.max(0, Math.round((now - start) / 1000));
+        };
+
+        setElapsed(calculateElapsed());
+
+        const interval = setInterval(() => {
+            setElapsed(calculateElapsed());
+        }, 1000);
+
+        return () => clearInterval(interval);
+    }, [isCurrentActive, activeLog]);
+
+    const formatTime = (totalSeconds: number) => {
+        const hrs = Math.floor(totalSeconds / 3600);
+        const mins = Math.floor((totalSeconds % 3600) / 60);
+        const secs = totalSeconds % 60;
+        return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    };
+
+    const totalSecs = accumulatedDuration + (isCurrentActive ? elapsed : 0);
+
+    if (taskStatus === 'DONE') {
+        return (
+            <div className="flex flex-col gap-0.5 text-xs text-slate-500 font-medium whitespace-nowrap">
+                <span>⏱️ Logged: {formatTime(accumulatedDuration)}</span>
+            </div>
+        );
+    }
+
+    return (
+        <div className="flex items-center gap-2.5">
+            {isCurrentActive ? (
+                <Tooltip title="Stop Timer">
+                    <Button
+                        type="primary"
+                        danger
+                        shape="circle"
+                        size="small"
+                        icon={<PauseCircleOutlined className="text-sm animate-pulse" />}
+                        onClick={() => stopTimer(taskId)}
+                        className="flex items-center justify-center shadow-sm hover:scale-105 transition-transform"
+                    />
+                </Tooltip>
+            ) : (
+                <Tooltip title="Start Timer">
+                    <Button
+                        type="text"
+                        shape="circle"
+                        size="small"
+                        icon={<PlayCircleOutlined className="text-sm text-indigo-600" />}
+                        onClick={() => startTimer(taskId)}
+                        className="flex items-center justify-center hover:bg-indigo-50 hover:scale-105 transition-transform"
+                    />
+                </Tooltip>
+            )}
+            <div className={`flex flex-col font-mono text-xs ${isCurrentActive ? 'text-indigo-600 font-bold' : 'text-slate-500 font-medium'} whitespace-nowrap`}>
+                {isCurrentActive && <span className="text-[9px] uppercase tracking-wider text-indigo-500 animate-pulse block">Timing</span>}
+                <span>{formatTime(totalSecs)}</span>
+            </div>
+        </div>
+    );
+}
+
 export default function TaskListingPage() {
+    const { activeLog, startTimer, stopTimer } = useTimer();
     const [tasks, setTasks] = useState<Task[]>([]);
     const [customers, setCustomers] = useState<any[]>([]);
     const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -64,7 +157,7 @@ export default function TaskListingPage() {
             const [tasksRes, profilesRes, customersRes] = await Promise.all([
                 query,
                 supabase.from('lv_profiles').select('id, full_name').eq('status', 'active').order('full_name'),
-                supabase.from('tsk_customers').select('id, name').order('name')
+                supabase.from('tsk_customers').select('id, name').eq('status', 'active').order('name')
             ]);
 
             if (tasksRes.error) throw tasksRes.error;
@@ -101,6 +194,58 @@ export default function TaskListingPage() {
         if (!selectedTask) return;
         try {
             const { title, description, priority_type, due_date, customer_name, department, assignee_id, status } = values;
+
+            // Check if status is set to DONE
+            let totalTimeMessage = '';
+            if (status === 'DONE') {
+                try {
+                    // 1. Check if there is an active timer for this task and current user
+                    const { data: activeLog } = await supabase
+                        .from('tsk_time_logs')
+                        .select('*')
+                        .eq('task_id', selectedTask.id)
+                        .eq('user_id', currentUserId)
+                        .eq('status', 'RUNNING')
+                        .maybeSingle();
+
+                    if (activeLog) {
+                        const stopTime = new Date();
+                        const duration = Math.max(0, Math.round((stopTime.getTime() - new Date(activeLog.start_time).getTime()) / 1000));
+                        
+                        await supabase
+                            .from('tsk_time_logs')
+                            .update({
+                                end_time: stopTime.toISOString(),
+                                duration,
+                                status: 'COMPLETED'
+                            })
+                            .eq('id', activeLog.id);
+                    }
+
+                    // 2. Fetch all completed logs for this task to calculate total time spent
+                    const { data: logs } = await supabase
+                        .from('tsk_time_logs')
+                        .select('duration')
+                        .eq('task_id', selectedTask.id)
+                        .eq('status', 'COMPLETED');
+
+                    const totalSeconds = (logs || []).reduce((acc: number, log: any) => acc + (log.duration || 0), 0);
+                    
+                    if (totalSeconds > 0) {
+                        const hrs = Math.floor(totalSeconds / 3600);
+                        const mins = Math.floor((totalSeconds % 3600) / 60);
+                        const secs = totalSeconds % 60;
+                        
+                        const parts = [];
+                        if (hrs > 0) parts.push(`${hrs} ${hrs === 1 ? 'Hour' : 'Hours'}`);
+                        if (mins > 0) parts.push(`${mins} ${mins === 1 ? 'Minute' : 'Minutes'}`);
+                        if (secs > 0 || parts.length === 0) parts.push(`${secs} ${secs === 1 ? 'Second' : 'Seconds'}`);
+                        totalTimeMessage = parts.join(', ');
+                    }
+                } catch (timerErr) {
+                    console.error('Error handling timer auto-stop:', timerErr);
+                }
+            }
 
             // Insert task history if status changed
             if (status !== selectedTask.status) {
@@ -159,7 +304,11 @@ export default function TaskListingPage() {
 
             if (error) throw error;
 
-            message.success('Task updated successfully!');
+            if (status === 'DONE' && totalTimeMessage) {
+                message.success(`Task updated to Done! Total time spent: ${totalTimeMessage}`, 8);
+            } else {
+                message.success('Task updated successfully!');
+            }
             setIsEditModalOpen(false);
             setSelectedTask(null);
             editForm.resetFields();
@@ -366,6 +515,22 @@ export default function TaskListingPage() {
             render: (date: string | null) => date ? new Date(date).toLocaleDateString() : '-'
         },
         {
+            title: 'Timer',
+            key: 'timer',
+            width: 1,
+            onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
+            render: (_: any, record: Task) => (
+                <LiveTaskTimer
+                    taskId={record.id}
+                    taskStatus={record.status}
+                    activeLog={activeLog}
+                    startTimer={startTimer}
+                    stopTimer={stopTimer}
+                    accumulatedDuration={Number(record.total_logged_time || 0)}
+                />
+            )
+        },
+        {
             title: 'Action',
             key: 'action',
             width: '8%',
@@ -559,6 +724,17 @@ export default function TaskListingPage() {
                             {task.description && (
                                 <div className="text-xs text-gray-500 line-clamp-2">{task.description}</div>
                             )}
+                            <div className="mt-2 pt-2 border-t border-slate-100 flex justify-between items-center">
+                                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Tracker:</span>
+                                <LiveTaskTimer
+                                    taskId={task.id}
+                                    taskStatus={task.status}
+                                    activeLog={activeLog}
+                                    startTimer={startTimer}
+                                    stopTimer={stopTimer}
+                                    accumulatedDuration={Number(task.total_logged_time || 0)}
+                                />
+                            </div>
                         </div>
                     ))}
                 </div>

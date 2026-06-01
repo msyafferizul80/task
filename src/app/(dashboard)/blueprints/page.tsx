@@ -86,7 +86,7 @@ export default function BlueprintsPage() {
         try {
             const [bpRes, custRes, profilesRes, schedRes] = await Promise.all([
                 supabase.from('tsk_blueprints').select('id, name, description, created_at').order('created_at', { ascending: false }),
-                supabase.from('tsk_customers').select('id, name').order('name'),
+                supabase.from('tsk_customers').select('id, name').eq('status', 'active').order('name'),
                 supabase.from('lv_profiles').select('id, full_name, avatar_url').eq('status', 'active').order('full_name'),
                 supabase.from('tsk_recurring_schedules').select(`
                     id, frequency, trigger_day, trigger_time, start_date, is_active, last_run_at,

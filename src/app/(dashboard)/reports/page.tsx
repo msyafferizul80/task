@@ -45,7 +45,7 @@ export default function WeeklyReportPage() {
         const fetchInitialData = async () => {
             try {
                 // Fetch customers
-                const { data: customerData, error: customerError } = await supabase.from('tsk_customers').select('id, name').order('name');
+                const { data: customerData, error: customerError } = await supabase.from('tsk_customers').select('id, name').eq('status', 'active').order('name');
                 if (customerError && customerError.code !== '42P01') throw customerError;
                 setCustomers(customerData || []);
 

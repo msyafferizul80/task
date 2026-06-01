@@ -67,7 +67,7 @@ export default function ClientHoldTasksPage() {
             const [tasksRes, profilesRes, customersRes] = await Promise.all([
                 query,
                 supabase.from('lv_profiles').select('id, full_name').eq('status', 'active').order('full_name'),
-                supabase.from('tsk_customers').select('id, name').order('name')
+                supabase.from('tsk_customers').select('id, name').eq('status', 'active').order('name')
             ]);
 
             if (tasksRes.error) throw tasksRes.error;
@@ -105,6 +105,58 @@ export default function ClientHoldTasksPage() {
         try {
             const isPrivileged = role === 'admin' || role === 'manager';
             const { title, description, priority_type, due_date, customer_name, department, assignee_id, status } = values;
+
+            // Check if status is set to DONE
+            let totalTimeMessage = '';
+            if (status === 'DONE') {
+                try {
+                    // 1. Check if there is an active timer for this task and current user
+                    const { data: activeLog } = await supabase
+                        .from('tsk_time_logs')
+                        .select('*')
+                        .eq('task_id', selectedTask.id)
+                        .eq('user_id', currentUserId)
+                        .eq('status', 'RUNNING')
+                        .maybeSingle();
+
+                    if (activeLog) {
+                        const stopTime = new Date();
+                        const duration = Math.max(0, Math.round((stopTime.getTime() - new Date(activeLog.start_time).getTime()) / 1000));
+                        
+                        await supabase
+                            .from('tsk_time_logs')
+                            .update({
+                                end_time: stopTime.toISOString(),
+                                duration,
+                                status: 'COMPLETED'
+                            })
+                            .eq('id', activeLog.id);
+                    }
+
+                    // 2. Fetch all completed logs for this task to calculate total time spent
+                    const { data: logs } = await supabase
+                        .from('tsk_time_logs')
+                        .select('duration')
+                        .eq('task_id', selectedTask.id)
+                        .eq('status', 'COMPLETED');
+
+                    const totalSeconds = (logs || []).reduce((acc: number, log: any) => acc + (log.duration || 0), 0);
+                    
+                    if (totalSeconds > 0) {
+                        const hrs = Math.floor(totalSeconds / 3600);
+                        const mins = Math.floor((totalSeconds % 3600) / 60);
+                        const secs = totalSeconds % 60;
+                        
+                        const parts = [];
+                        if (hrs > 0) parts.push(`${hrs} ${hrs === 1 ? 'Hour' : 'Hours'}`);
+                        if (mins > 0) parts.push(`${mins} ${mins === 1 ? 'Minute' : 'Minutes'}`);
+                        if (secs > 0 || parts.length === 0) parts.push(`${secs} ${secs === 1 ? 'Second' : 'Seconds'}`);
+                        totalTimeMessage = parts.join(', ');
+                    }
+                } catch (timerErr) {
+                    console.error('Error handling timer auto-stop:', timerErr);
+                }
+            }
 
             const nextTitle =
                 typeof title === 'string'
@@ -201,7 +253,11 @@ export default function ClientHoldTasksPage() {
                 })
             );
 
-            message.success('Task updated successfully!');
+            if (status === 'DONE' && totalTimeMessage) {
+                message.success(`Task updated to Done! Total time spent: ${totalTimeMessage}`, 8);
+            } else {
+                message.success('Task updated successfully!');
+            }
             setIsEditModalOpen(false);
             setSelectedTask(null);
             editForm.resetFields();

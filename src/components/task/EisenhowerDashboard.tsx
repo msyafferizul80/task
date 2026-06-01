@@ -65,7 +65,7 @@ export default function EisenhowerDashboard() {
             const [tasksRes, profilesRes, customersRes] = await Promise.all([
                 query,
                 supabase.from('lv_profiles').select('id, full_name').eq('status', 'active').order('full_name'),
-                supabase.from('tsk_customers').select('id, name').order('name')
+                supabase.from('tsk_customers').select('id, name').eq('status', 'active').order('name')
             ]);
 
             if (tasksRes.error) throw tasksRes.error;
@@ -187,6 +187,58 @@ export default function EisenhowerDashboard() {
         try {
             message.loading({ content: 'Updating Task & Generating AI Checklist...', key: 'updateTask' });
 
+            // Check if status is set to DONE
+            let totalTimeMessage = '';
+            if (values.status === 'DONE') {
+                try {
+                    // 1. Check if there is an active timer for this task and current user
+                    const { data: activeLog } = await supabase
+                        .from('tsk_time_logs')
+                        .select('*')
+                        .eq('task_id', selectedTask.id)
+                        .eq('user_id', currentUserId)
+                        .eq('status', 'RUNNING')
+                        .maybeSingle();
+
+                    if (activeLog) {
+                        const stopTime = new Date();
+                        const duration = Math.max(0, Math.round((stopTime.getTime() - new Date(activeLog.start_time).getTime()) / 1000));
+                        
+                        await supabase
+                            .from('tsk_time_logs')
+                            .update({
+                                end_time: stopTime.toISOString(),
+                                duration,
+                                status: 'COMPLETED'
+                            })
+                            .eq('id', activeLog.id);
+                    }
+
+                    // 2. Fetch all completed logs for this task to calculate total time spent
+                    const { data: logs } = await supabase
+                        .from('tsk_time_logs')
+                        .select('duration')
+                        .eq('task_id', selectedTask.id)
+                        .eq('status', 'COMPLETED');
+
+                    const totalSeconds = (logs || []).reduce((acc: number, log: any) => acc + (log.duration || 0), 0);
+                    
+                    if (totalSeconds > 0) {
+                        const hrs = Math.floor(totalSeconds / 3600);
+                        const mins = Math.floor((totalSeconds % 3600) / 60);
+                        const secs = totalSeconds % 60;
+                        
+                        const parts = [];
+                        if (hrs > 0) parts.push(`${hrs} ${hrs === 1 ? 'Hour' : 'Hours'}`);
+                        if (mins > 0) parts.push(`${mins} ${mins === 1 ? 'Minute' : 'Minutes'}`);
+                        if (secs > 0 || parts.length === 0) parts.push(`${secs} ${secs === 1 ? 'Second' : 'Seconds'}`);
+                        totalTimeMessage = parts.join(', ');
+                    }
+                } catch (timerErr) {
+                    console.error('Error handling timer auto-stop:', timerErr);
+                }
+            }
+
             let finalTitle = values.title;
             const descChanged = values.description !== selectedTask.description;
             
@@ -234,7 +286,11 @@ export default function EisenhowerDashboard() {
 
             if (error) throw error;
 
-            message.success({ content: 'Task updated successfully!', key: 'updateTask', duration: 2 });
+            if (values.status === 'DONE' && totalTimeMessage) {
+                message.success({ content: `Task updated to Done! Total time spent: ${totalTimeMessage}`, key: 'updateTask', duration: 8 });
+            } else {
+                message.success({ content: 'Task updated successfully!', key: 'updateTask', duration: 2 });
+            }
             setIsEditModalOpen(false);
             setSelectedTask(null);
             editForm.resetFields();

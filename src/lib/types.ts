@@ -25,7 +25,9 @@ export interface Task {
     assignee?: Profile;
     creator?: Profile;
     is_escalated?: boolean;
+    total_logged_time?: number;
 }
+
 
 export interface EscalationLog {
     id: string;
@@ -60,3 +62,15 @@ export interface TaskHistory {
     created_at: string;
     changed_by_user?: Profile;
 }
+
+export interface TimeLog {
+    id: string;
+    task_id: string;
+    user_id: string;
+    start_time: string;
+    end_time: string | null;
+    duration: number | null;
+    status: 'RUNNING' | 'COMPLETED';
+    created_at: string;
+}
+

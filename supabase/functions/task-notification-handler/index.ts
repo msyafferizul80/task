@@ -45,7 +45,28 @@ Deno.serve(async (req) => {
                 }
             }
 
-            const message = `✅ *Task Completed!*\n\n*Department:* ${record.department || 'Outsourcing'}\n*Customer:* ${record.customer_name || '-'}\n*Task:* ${record.title || '-'}\n*PIC:* ${assigneeName}`;
+            // Fetch total time logged for this task
+            let totalTimeStr = '-';
+            const { data: logs } = await supabase
+                .from('tsk_time_logs')
+                .select('duration')
+                .eq('task_id', record.id)
+                .eq('status', 'COMPLETED');
+
+            const totalSeconds = (logs || []).reduce((acc: number, log: any) => acc + (log.duration || 0), 0);
+            if (totalSeconds > 0) {
+                const hrs = Math.floor(totalSeconds / 3600);
+                const mins = Math.floor((totalSeconds % 3600) / 60);
+                const secs = totalSeconds % 60;
+                
+                const parts = [];
+                if (hrs > 0) parts.push(`${hrs} ${hrs === 1 ? 'Hour' : 'Hours'}`);
+                if (mins > 0) parts.push(`${mins} ${mins === 1 ? 'Minute' : 'Minutes'}`);
+                if (secs > 0 || parts.length === 0) parts.push(`${secs} ${secs === 1 ? 'Second' : 'Seconds'}`);
+                totalTimeStr = parts.join(', ');
+            }
+
+            const message = `✅ *Task Completed!*\n\n*Department:* ${record.department || 'Outsourcing'}\n*Customer:* ${record.customer_name || '-'}\n*Task:* ${record.title || '-'}\n*PIC:* ${assigneeName}\n*Time Spent:* ${totalTimeStr}`;
 
             const tgUrl = `https://api.telegram.org/bot${botToken}/sendMessage`;
             const res = await fetch(tgUrl, {

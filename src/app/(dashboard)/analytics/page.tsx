@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { Card, Table, Tag, Typography, Spin, Badge, Tooltip, Modal, Button, Select } from 'antd';
+import { Card, Table, Tag, Typography, Spin, Badge, Tooltip, Modal, Button, Select, Input } from 'antd';
 import { createClient } from '@/utils/supabase/client';
 import { Task, Profile } from '@/lib/types';
 import { useRole } from '@/components/layout/RoleProvider';
@@ -15,6 +15,7 @@ import {
     RefreshCw,
     ExternalLink,
     Calendar,
+    Hourglass
 } from 'lucide-react';
 import { differenceInDays, formatDistanceToNow, subWeeks, subMonths } from 'date-fns';
 import Link from 'next/link';
@@ -517,15 +518,67 @@ function KpiCard({
     );
 }
 
+// ─── Time Log Progress Chart (Horizontal progress listing) ────────────────
+
+function TimeBarChart({
+    data,
+    total,
+}: {
+    data: { name: string; duration: number }[];
+    total: number;
+}) {
+    const max = Math.max(...data.map((d) => d.duration), 1);
+    const formatDuration = (seconds: number) => {
+        const hrs = (seconds / 3600).toFixed(1);
+        return `${hrs}h`;
+    };
+
+    return (
+        <div className="flex flex-col gap-3 py-2 max-h-[260px] overflow-y-auto pr-1">
+            {data.map(({ name, duration }, idx) => {
+                const pct = max > 0 ? Math.round((duration / max) * 100) : 0;
+                const totalPct = total > 0 ? Math.round((duration / total) * 100) : 0;
+                const color = PIE_PALETTE[idx % PIE_PALETTE.length];
+                return (
+                    <div key={name} className="flex flex-col gap-1">
+                        <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
+                            <span className="truncate max-w-[200px]" title={name}>{name}</span>
+                            <div className="flex items-center gap-2">
+                                <span className="font-bold" style={{ color }}>{formatDuration(duration)}</span>
+                                <span className="text-[10px] text-slate-400 font-medium">({totalPct}%)</span>
+                            </div>
+                        </div>
+                        <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                            <div
+                                className="h-full rounded-full transition-all duration-500"
+                                style={{ width: `${pct}%`, background: color }}
+                            />
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function AnalyticsPage() {
     const [tasks, setTasks] = useState<Task[]>([]);
     const [profiles, setProfiles] = useState<Profile[]>([]);
+    const [timeLogs, setTimeLogs] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
     const [currentUserDepartment, setCurrentUserDepartment] = useState<string | null>(null);
     const [filterDepartment, setFilterDepartment] = useState<string>('All');
+    
+    // Tab switching state
+    const [activeTab, setActiveTab] = useState<string>('overview');
+
+    // Time Log Filters
+    const [filterTimerUser, setFilterTimerUser] = useState<string>('All');
+    const [filterTimerCustomer, setFilterTimerCustomer] = useState<string>('All');
+    const [timerSearchText, setTimerSearchText] = useState<string>('');
 
     // Total task by PIC chart filters
     const [totalPicPeriod, setTotalPicPeriod] = useState<TimePeriod>('month');
@@ -547,7 +600,7 @@ export default function AnalyticsPage() {
 
     const fetchData = useCallback(async () => {
         try {
-            const [tasksRes, profilesRes, authRes] = await Promise.all([
+            const [tasksRes, profilesRes, authRes, logsRes] = await Promise.all([
                 supabase.from('tsk_tasks').select(`
                     *,
                     assignee:lv_profiles!tsk_tasks_assignee_id_fkey (
@@ -557,14 +610,17 @@ export default function AnalyticsPage() {
                     )
                 `).order('created_at', { ascending: false }),
                 supabase.from('lv_profiles').select('id, full_name, avatar_url, department').eq('status', 'active').order('full_name'),
-                supabase.auth.getUser()
+                supabase.auth.getUser(),
+                supabase.from('tsk_time_logs').select('*').eq('status', 'COMPLETED').order('start_time', { ascending: false })
             ]);
 
             if (tasksRes.error) throw tasksRes.error;
             if (profilesRes.error) throw profilesRes.error;
+            if (logsRes.error) throw logsRes.error;
 
             setTasks((tasksRes.data as Task[]) || []);
             setProfiles(profilesRes.data || []);
+            setTimeLogs(logsRes.data || []);
             
             const userId = authRes.data?.user?.id;
             let myDept: string | null = null;
@@ -586,11 +642,20 @@ export default function AnalyticsPage() {
 
     useEffect(() => {
         fetchData();
-        const channel = supabase
-            .channel('analytics-realtime')
+        const channelTasks = supabase
+            .channel('analytics-tasks-realtime')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'tsk_tasks' }, fetchData)
             .subscribe();
-        return () => { supabase.removeChannel(channel); };
+
+        const channelLogs = supabase
+            .channel('analytics-logs-realtime')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'tsk_time_logs' }, fetchData)
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channelTasks);
+            supabase.removeChannel(channelLogs);
+        };
     }, [fetchData]);
 
     const openDrill = useCallback((title: string, filtered: Task[]) => {
@@ -602,6 +667,109 @@ export default function AnalyticsPage() {
     // ── Derived Data ─────────────────────────────────────────────────────────
 
     const now = new Date();
+
+    // ─── Time Tracking Analytics Derivations ───
+    const joinedLogs = useMemo(() => {
+        const taskMap = new Map(tasks.map(t => [t.id, t]));
+        const profileMap = new Map(profiles.map(p => [p.id, p]));
+        return timeLogs.map(log => ({
+            ...log,
+            task: taskMap.get(log.task_id),
+            user: profileMap.get(log.user_id)
+        })).filter(log => log.task);
+    }, [timeLogs, tasks, profiles]);
+
+    const filteredLogs = useMemo(() => {
+        return joinedLogs.filter(log => {
+            if (filterDepartment !== 'All' && log.task?.department !== filterDepartment) return false;
+            if (filterTimerUser !== 'All' && log.user_id !== filterTimerUser) return false;
+            if (filterTimerCustomer !== 'All' && log.task?.customer_name !== filterTimerCustomer) return false;
+            if (timerSearchText) {
+                const search = timerSearchText.toLowerCase();
+                const taskTitle = log.task?.title?.toLowerCase() || '';
+                const userName = log.user?.full_name?.toLowerCase() || '';
+                if (!taskTitle.includes(search) && !userName.includes(search)) return false;
+            }
+            return true;
+        });
+    }, [joinedLogs, filterDepartment, filterTimerUser, filterTimerCustomer, timerSearchText]);
+
+    const totalSecondsTracked = useMemo(() => {
+        return filteredLogs.reduce((acc, log) => acc + (log.duration || 0), 0);
+    }, [filteredLogs]);
+
+    const totalHoursTrackedStr = useMemo(() => {
+        const hrs = (totalSecondsTracked / 3600).toFixed(1);
+        return `${hrs} hrs`;
+    }, [totalSecondsTracked]);
+
+    const timerClientDurations = useMemo(() => {
+        const durMap: Record<string, number> = {};
+        filteredLogs.forEach(log => {
+            const client = log.task?.customer_name || 'No Customer';
+            durMap[client] = (durMap[client] || 0) + (log.duration || 0);
+        });
+        return Object.entries(durMap)
+            .map(([name, duration]) => ({ name, duration }))
+            .sort((a, b) => b.duration - a.duration);
+    }, [filteredLogs]);
+
+    const topClientName = useMemo(() => {
+        return timerClientDurations[0]?.name || 'None';
+    }, [timerClientDurations]);
+
+    const timerEmployeeDurations = useMemo(() => {
+        const durMap: Record<string, number> = {};
+        filteredLogs.forEach(log => {
+            const name = log.user?.full_name || 'Unknown';
+            durMap[name] = (durMap[name] || 0) + (log.duration || 0);
+        });
+        return Object.entries(durMap)
+            .map(([name, duration]) => ({ name, duration }))
+            .sort((a, b) => b.duration - a.duration);
+    }, [filteredLogs]);
+
+    const topPicName = useMemo(() => {
+        return timerEmployeeDurations[0]?.name || 'None';
+    }, [timerEmployeeDurations]);
+
+    const averageSessionStr = useMemo(() => {
+        if (filteredLogs.length === 0) return '0 mins';
+        const avgSecs = totalSecondsTracked / filteredLogs.length;
+        const mins = Math.round(avgSecs / 60);
+        if (mins >= 60) {
+            const hrs = (mins / 60).toFixed(1);
+            return `${hrs} hrs`;
+        }
+        return `${mins} mins`;
+    }, [filteredLogs, totalSecondsTracked]);
+
+    const topTasksByTime = useMemo(() => {
+        const taskDurMap = new Map<string, { title: string; customer: string; assignee: string; duration: number }>();
+        filteredLogs.forEach(log => {
+            const taskId = log.task_id;
+            const existing = taskDurMap.get(taskId);
+            const duration = log.duration || 0;
+            if (existing) {
+                existing.duration += duration;
+            } else {
+                taskDurMap.set(taskId, {
+                    title: log.task?.title || 'Unknown Task',
+                    customer: log.task?.customer_name || '—',
+                    assignee: log.user?.full_name || 'Unknown',
+                    duration
+                });
+            }
+        });
+        return Array.from(taskDurMap.values())
+            .sort((a, b) => b.duration - a.duration)
+            .slice(0, 10);
+    }, [filteredLogs]);
+
+    const uniqueCustomerNames = useMemo(() => {
+        const names = new Set(tasks.map(t => t.customer_name).filter(Boolean));
+        return Array.from(names).sort();
+    }, [tasks]);
     
     // Auto-set the initial filter strictly if not admin
     useEffect(() => {
@@ -926,372 +1094,668 @@ export default function AnalyticsPage() {
                 </div>
             </div>
 
-            {/* ── KPI Cards ── */}
-            <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-                <KpiCard
-                    title="Active Tasks"
-                    value={activeTasks.length}
-                    subtitle={`daripada ${tasks.length} keseluruhan task`}
-                    icon={CheckSquare}
-                    color="bg-indigo-600"
-                    bg="bg-indigo-50"
-                    clickable={hasFullAccess}
-                    onClick={() => hasFullAccess && openDrill(`Semua Task Aktif (${activeTasks.length})`, activeTasks)}
-                />
-                <KpiCard
-                    title="Overdue Tasks"
-                    value={overdueTasks.length}
-                    subtitle="melepasi due date"
-                    icon={AlertTriangle}
-                    color="bg-red-500"
-                    bg="bg-red-50"
-                    clickable={hasFullAccess && overdueTasks.length > 0}
-                    onClick={() => hasFullAccess && openDrill(`⚠️ Task Overdue (${overdueTasks.length})`, overdueTasks)}
-                />
-                <KpiCard
-                    title="Bottleneck Tasks"
-                    value={bottleneckTasks.length}
-                    subtitle="belum siap > 3 hari"
-                    icon={Clock}
-                    color="bg-amber-500"
-                    bg="bg-amber-50"
-                    clickable={hasFullAccess && bottleneckTasks.length > 0}
-                    onClick={() => hasFullAccess && openDrill(`🕐 Bottleneck Tasks (${bottleneckTasks.length})`, bottleneckTasks)}
-                />
-                <KpiCard
-                    title="Klien Aktif"
-                    value={uniqueCustomers}
-                    subtitle="organisasi pelanggan"
-                    icon={Users}
-                    color="bg-emerald-600"
-                    bg="bg-emerald-50"
-                />
+            {/* ── Tabs Navigation ── */}
+            <div className="bg-slate-100 p-1.5 rounded-xl border border-slate-200/60 flex gap-2 w-fit">
+                <button
+                    onClick={() => setActiveTab('overview')}
+                    className={`px-6 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+                        activeTab === 'overview'
+                            ? 'bg-white text-indigo-700 shadow-sm border border-slate-200/30'
+                            : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                >
+                    <BarChart2 className="w-4 h-4" />
+                    Task Overview
+                </button>
+                <button
+                    onClick={() => setActiveTab('timers')}
+                    className={`px-6 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+                        activeTab === 'timers'
+                            ? 'bg-white text-indigo-700 shadow-sm border border-slate-200/30'
+                            : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                >
+                    <Clock className="w-4 h-4" />
+                    Time Tracking Reports
+                </button>
             </div>
 
-            {/* ── Charts Row — Workload + Customer Distribution ── */}
-            <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
-
-                {/* Workload Bar Chart — Task Aktif */}
-                <Card
-                    className="xl:col-span-3 rounded-2xl shadow-sm border border-slate-100"
-                    variant="borderless"
-                    title={
-                        <div className="flex items-center gap-2 py-1">
-                            <TrendingUp className="w-4 h-4 text-indigo-600" />
-                            <span className="font-bold text-slate-700">Workload Chart — Task Aktif per PIC</span>
-                            {hasFullAccess && (
-                                <span className="text-xs font-normal text-indigo-400 bg-indigo-50 px-2 py-0.5 rounded-full ml-1">
-                                    Klik bar untuk drill-down ↗
-                                </span>
-                            )}
-                        </div>
-                    }
-                >
-                    {workloadData.length === 0 ? (
-                        <div className="flex items-center justify-center h-[240px] text-slate-400">
-                            Tiada data task aktif.
-                        </div>
-                    ) : (
-                        <WorkloadBarChart
-                            data={workloadData}
-                            onBarClick={handleBarClick}
-                            isAdmin={hasFullAccess}
+            {activeTab === 'overview' ? (
+                <>
+                    {/* ── KPI Cards ── */}
+                    <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+                        <KpiCard
+                            title="Active Tasks"
+                            value={activeTasks.length}
+                            subtitle={`daripada ${tasks.length} keseluruhan task`}
+                            icon={CheckSquare}
+                            color="bg-indigo-600"
+                            bg="bg-indigo-50"
+                            clickable={hasFullAccess}
+                            onClick={() => hasFullAccess && openDrill(`Semua Task Aktif (${activeTasks.length})`, activeTasks)}
                         />
-                    )}
-                </Card>
-
-                {/* Customer Distribution */}
-                <Card
-                    className="xl:col-span-2 rounded-2xl shadow-sm border border-slate-100"
-                    variant="borderless"
-                    title={
-                        <div className="flex items-center gap-2 py-1">
-                            <Users className="w-4 h-4 text-violet-600" />
-                            <span className="font-bold text-slate-700">Customer Distribution</span>
-                            {hasFullAccess && (
-                                <span className="text-xs font-normal text-violet-400 bg-violet-50 px-2 py-0.5 rounded-full ml-1">
-                                    Klik untuk drill-down ↗
-                                </span>
-                            )}
-                        </div>
-                    }
-                >
-                    {customerData.length === 0 ? (
-                        <div className="flex items-center justify-center h-[260px] text-slate-400">
-                            Tiada data.
-                        </div>
-                    ) : (
-                        <CustomerDistributionList
-                            data={customerData}
-                            total={tasks.length}
-                            onSegmentClick={handleCustomerClick}
-                            isAdmin={hasFullAccess}
+                        <KpiCard
+                            title="Overdue Tasks"
+                            value={overdueTasks.length}
+                            subtitle="melepasi due date"
+                            icon={AlertTriangle}
+                            color="bg-red-500"
+                            bg="bg-red-50"
+                            clickable={hasFullAccess && overdueTasks.length > 0}
+                            onClick={() => hasFullAccess && openDrill(`⚠️ Task Overdue (${overdueTasks.length})`, overdueTasks)}
                         />
-                    )}
-                </Card>
-            </div>
-
-            {/* ── Total Task per PIC — Full Width Horizontal Chart ── */}
-            <Card
-                className="rounded-2xl shadow-sm border border-slate-100"
-                variant="borderless"
-                title={
-                    <div className="flex items-center gap-2 py-1">
-                        <BarChart2 className="w-4 h-4 text-emerald-600" />
-                        <span className="font-bold text-slate-700">Total Task per PIC</span>
-                        <span className="text-xs font-normal text-slate-400 ml-1">— jumlah task diterima mengikut tempoh masa</span>
-                        {hasFullAccess && (
-                            <span className="text-xs font-normal text-emerald-500 bg-emerald-50 px-2 py-0.5 rounded-full ml-auto">
-                                Klik bar untuk drill-down ↗
-                            </span>
-                        )}
+                        <KpiCard
+                            title="Bottleneck Tasks"
+                            value={bottleneckTasks.length}
+                            subtitle="belum siap > 3 hari"
+                            icon={Clock}
+                            color="bg-amber-500"
+                            bg="bg-amber-50"
+                            clickable={hasFullAccess && bottleneckTasks.length > 0}
+                            onClick={() => hasFullAccess && openDrill(`🕐 Bottleneck Tasks (${bottleneckTasks.length})`, bottleneckTasks)}
+                        />
+                        <KpiCard
+                            title="Klien Aktif"
+                            value={uniqueCustomers}
+                            subtitle="organisasi pelanggan"
+                            icon={Users}
+                            color="bg-emerald-600"
+                            bg="bg-emerald-50"
+                        />
                     </div>
-                }
-            >
-                <TotalTaskBarChart
-                    data={totalTaskByPicData}
-                    onBarClick={handleTotalPicBarClick}
-                    isAdmin={hasFullAccess}
-                    period={totalPicPeriod}
-                    onPeriodChange={setTotalPicPeriod}
-                    customStart={totalPicCustomStart}
-                    customEnd={totalPicCustomEnd}
-                    onCustomStartChange={setTotalPicCustomStart}
-                    onCustomEndChange={setTotalPicCustomEnd}
-                />
-            </Card>
 
-            {/* ── Overdue Summary + Bottleneck Table ── */}
-            <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
-
-                {/* Overdue Summary */}
-                <Card
-                    className="xl:col-span-1 rounded-2xl shadow-sm border border-slate-100"
-                    variant="borderless"
-                    title={
-                        <div className="flex items-center gap-2 py-1">
-                            <AlertTriangle className="w-4 h-4 text-red-500" />
-                            <span className="font-bold text-slate-700">Overdue Summary</span>
-                        </div>
-                    }
-                >
-                    <div className="flex flex-col gap-3">
-                        {overdueTasks.length === 0 ? (
-                            <div className="text-center text-emerald-500 font-semibold py-8">
-                                🎉 Tiada task overdue!
-                            </div>
-                        ) : (
-                            <>
-                                <div
-                                    className={`bg-red-50 border border-red-100 rounded-xl p-4 text-center transition-all ${hasFullAccess ? 'cursor-pointer hover:bg-red-100' : ''}`}
-                                    onClick={() => hasFullAccess && openDrill(`⚠️ Task Overdue (${overdueTasks.length})`, overdueTasks)}
-                                >
-                                    <p className="text-4xl font-black text-red-500">{overdueTasks.length}</p>
-                                    <p className="text-xs text-red-400 font-semibold mt-1">JUMLAH OVERDUE</p>
-                                    {hasFullAccess && <p className="text-xs text-red-300 mt-0.5">Klik untuk lihat senarai ↗</p>}
-                                </div>
-
-                                {Object.entries(overdueByStatus).filter(([, v]) => v > 0).map(([status, count]) => (
-                                    <div
-                                        key={status}
-                                        className={`flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100 transition-all ${hasFullAccess ? 'cursor-pointer hover:bg-slate-100' : ''}`}
-                                        onClick={() => {
-                                            if (!hasFullAccess) return;
-                                            const filtered = overdueTasks.filter(t => t.status === status);
-                                            openDrill(`Overdue — ${STATUS_LABELS[status]} (${filtered.length})`, filtered);
-                                        }}
-                                    >
-                                        <div className="flex items-center gap-2">
-                                            <span className="inline-block w-2 h-2 rounded-full" style={{ background: STATUS_COLORS[status] }} />
-                                            <span className="text-sm font-medium text-slate-600">{STATUS_LABELS[status]}</span>
-                                        </div>
-                                        <div className="flex items-center gap-1">
-                                            <Badge count={count} style={{ backgroundColor: STATUS_COLORS[status] }} />
-                                            {hasFullAccess && <span className="text-xs text-slate-300 ml-1">↗</span>}
-                                        </div>
-                                    </div>
-                                ))}
-
-                                <div className="mt-4">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Task Terlibat</p>
-                                        <span className="text-[10px] font-bold text-red-400 bg-red-50 px-1.5 py-0.5 rounded-full">
-                                            {overdueTasks.length} task
+                    {/* ── Charts Row — Workload + Customer Distribution ── */}
+                    <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
+                        {/* Workload Bar Chart — Task Aktif */}
+                        <Card
+                            className="xl:col-span-3 rounded-2xl shadow-sm border border-slate-100"
+                            variant="borderless"
+                            title={
+                                <div className="flex items-center gap-2 py-1">
+                                    <TrendingUp className="w-4 h-4 text-indigo-600" />
+                                    <span className="font-bold text-slate-700">Workload Chart — Task Aktif per PIC</span>
+                                    {hasFullAccess && (
+                                        <span className="text-xs font-normal text-indigo-400 bg-indigo-50 px-2 py-0.5 rounded-full ml-1">
+                                            Klik bar untuk drill-down ↗
                                         </span>
-                                    </div>
-                                    <div className="flex flex-col gap-2 max-h-[320px] overflow-y-auto pr-1">
-                                        {overdueTasks.map(t => {
-                                            const daysLate = t.due_date ? differenceInDays(now, new Date(t.due_date)) : 0;
-                                            return (
-                                                <div 
-                                                    key={t.id} 
-                                                    className="group flex flex-col gap-1.5 p-2.5 bg-white border border-red-100 rounded-xl hover:border-red-300 hover:shadow-md transition-all cursor-pointer"
-                                                    onClick={() => openDrill(`Detail Task: ${t.title}`, [t])}
-                                                >
-                                                    <div className="flex items-start gap-2">
-                                                        <AlertTriangle className="w-3.5 h-3.5 text-red-500 mt-0.5 flex-shrink-0" />
-                                                        <span className="text-[12px] leading-snug font-bold text-slate-700 break-words line-clamp-2">
-                                                            {t.title}
-                                                        </span>
-                                                    </div>
-                                                    
-                                                    <div className="flex items-center justify-between mt-1 pt-1.5 border-t border-red-50">
-                                                        <div className="flex items-center gap-1.5">
-                                                            <img
-                                                                src={(t.assignee as any)?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent((t.assignee as any)?.full_name || 'U')}&background=f1f5f9&color=64748b`}
-                                                                className="w-4 h-4 rounded-full border border-slate-100"
-                                                                alt="PIC"
-                                                            />
-                                                            <span className="text-[10px] text-slate-500 font-medium truncate max-w-[80px]">
-                                                                {(t.assignee as any)?.full_name || 'Unassigned'}
-                                                            </span>
-                                                        </div>
-                                                        {t.due_date && (
-                                                            <span className="text-[10px] font-black text-red-500 bg-red-50 px-1.5 py-0.5 rounded-md">
-                                                                {daysLate}d late
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
+                                    )}
                                 </div>
-                            </>
-                        )}
-                    </div>
-                </Card>
-
-                {/* Bottleneck Table */}
-                <Card
-                    className="xl:col-span-3 rounded-2xl shadow-sm border border-slate-100"
-                    variant="borderless"
-                    title={
-                        <div className="flex items-center gap-2 py-1">
-                            <Clock className="w-4 h-4 text-amber-500" />
-                            <span className="font-bold text-slate-700">Bottleneck Detection</span>
-                            <span className="text-xs font-normal text-slate-400 ml-1">
-                                — task belum siap melebihi 3 hari
-                            </span>
-                        </div>
-                    }
-                    extra={
-                        bottleneckTasks.length > 0 && (
-                            <Badge count={bottleneckTasks.length} style={{ backgroundColor: '#f59e0b' }} />
-                        )
-                    }
-                >
-                    <Table
-                        columns={bottleneckColumns}
-                        dataSource={bottleneckTasks}
-                        rowKey="id"
-                        pagination={{ pageSize: 8, size: 'small' }}
-                        size="small"
-                        locale={{ emptyText: '✅ Tiada bottleneck — semua task dalam tempoh!' }}
-                        rowClassName={(record) => {
-                            const days = differenceInDays(now, new Date(record.created_at));
-                            return days >= 7 ? 'bg-red-50/50' : days >= 5 ? 'bg-amber-50/50' : '';
-                        }}
-                    />
-                </Card>
-            </div>
-
-            {/* ── Customer Detailed Analytics Table ── */}
-            <Card
-                className="rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 mt-2"
-                variant="borderless"
-                title={
-                    <div className="flex items-center gap-2 py-2">
-                        <Users className="w-5 h-5 text-indigo-600" />
-                        <span className="font-extrabold text-slate-800 text-lg">Customer Analytics (Maklumat Terperinci)</span>
-                        <span className="text-xs font-normal text-slate-400 bg-slate-50 border border-slate-100 px-3 py-1 rounded-full ml-2">
-                            {customerDetailedData.length} Pelanggan
-                        </span>
-                    </div>
-                }
-            >
-                <Table
-                    dataSource={customerDetailedData}
-                    rowKey="customer"
-                    pagination={{ pageSize: 10 }}
-                    scroll={{ x: 800 }}
-                    columns={[
-                        {
-                            title: 'Customer Name',
-                            dataIndex: 'customer',
-                            key: 'customer',
-                            sorter: (a: any, b: any) => a.customer.localeCompare(b.customer),
-                            render: (text: string) => <span className="font-bold text-slate-700">{text}</span>
-                        },
-                        {
-                            title: <Tooltip title="Jumlah keseluruhan task dari mula hingga kini">Total Tasks</Tooltip>,
-                            dataIndex: 'total',
-                            key: 'total',
-                            sorter: (a: any, b: any) => a.total - b.total,
-                            defaultSortOrder: 'descend',
-                            render: (val: number) => <span className="font-bold text-lg text-slate-800">{val}</span>
-                        },
-                        {
-                            title: <Tooltip title="Task yang sedang dijalankan / diusahakan">Pending Active</Tooltip>,
-                            dataIndex: 'pending',
-                            key: 'pending',
-                            sorter: (a: any, b: any) => a.pending - b.pending,
-                            render: (val: number, record: any) => (
-                                <div className="flex flex-col gap-1">
-                                    <span className="font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md w-fit">{val} task</span>
-                                    {record.overdue > 0 && <span className="text-[10px] text-red-500 font-bold bg-red-50 border border-red-100 px-1 py-0.5 rounded w-fit">⚠️ {record.overdue} OVERDUE</span>}
-                                </div>
-                            )
-                        },
-                        {
-                            title: <Tooltip title="Task yang telah siap (DONE)">Completed (DONE)</Tooltip>,
-                            dataIndex: 'completed',
-                            key: 'completed',
-                            sorter: (a: any, b: any) => a.completed - b.completed,
-                            render: (val: number, record: any) => {
-                                const percent = Math.round((val / record.total) * 100) || 0;
-                                return (
-                                    <div className="flex items-center gap-2">
-                                        <span className="font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md">{val} task</span>
-                                        <span className="text-[10px] text-slate-400 font-bold">({percent}%)</span>
-                                    </div>
-                                );
                             }
-                        },
-                        {
-                            title: <Tooltip title="Purata task baru yang masuk sehari secara sejarah">Frequency (Task/Hari)</Tooltip>,
-                            dataIndex: 'tasksPerDay',
-                            key: 'tasksPerDay',
-                            sorter: (a: any, b: any) => a.tasksPerDay - b.tasksPerDay,
-                            render: (val: number) => {
-                                const isHigh = val > 2;
-                                return (
-                                    <span className={`font-bold ${isHigh ? 'text-rose-500' : 'text-slate-600'}`}>
-                                        {val} {isHigh && '🔥'}
+                        >
+                            {workloadData.length === 0 ? (
+                                <div className="flex items-center justify-center h-[240px] text-slate-400">
+                                    Tiada data task aktif.
+                                </div>
+                            ) : (
+                                <WorkloadBarChart
+                                    data={workloadData}
+                                    onBarClick={handleBarClick}
+                                    isAdmin={hasFullAccess}
+                                />
+                            )}
+                        </Card>
+
+                        {/* Customer Distribution */}
+                        <Card
+                            className="xl:col-span-2 rounded-2xl shadow-sm border border-slate-100"
+                            variant="borderless"
+                            title={
+                                <div className="flex items-center gap-2 py-1">
+                                    <Users className="w-4 h-4 text-violet-600" />
+                                    <span className="font-bold text-slate-700">Customer Distribution</span>
+                                    {hasFullAccess && (
+                                        <span className="text-xs font-normal text-violet-400 bg-violet-50 px-2 py-0.5 rounded-full ml-1">
+                                            Klik untuk drill-down ↗
+                                        </span>
+                                    )}
+                                </div>
+                            }
+                        >
+                            {customerData.length === 0 ? (
+                                <div className="flex items-center justify-center h-[260px] text-slate-400">
+                                    Tiada data.
+                                </div>
+                            ) : (
+                                <CustomerDistributionList
+                                    data={customerData}
+                                    total={tasks.length}
+                                    onSegmentClick={handleCustomerClick}
+                                    isAdmin={hasFullAccess}
+                                />
+                            )}
+                        </Card>
+                    </div>
+
+                    {/* ── Total Task per PIC — Full Width Horizontal Chart ── */}
+                    <Card
+                        className="rounded-2xl shadow-sm border border-slate-100"
+                        variant="borderless"
+                        title={
+                            <div className="flex items-center gap-2 py-1">
+                                <BarChart2 className="w-4 h-4 text-emerald-600" />
+                                <span className="font-bold text-slate-700">Total Task per PIC</span>
+                                <span className="text-xs font-normal text-slate-400 ml-1">— jumlah task diterima mengikut tempoh masa</span>
+                                {hasFullAccess && (
+                                    <span className="text-xs font-normal text-emerald-500 bg-emerald-50 px-2 py-0.5 rounded-full ml-auto">
+                                        Klik bar untuk drill-down ↗
                                     </span>
-                                );
-                            }
-                        },
-                        {
-                            title: 'Action',
-                            key: 'action',
-                            render: (_: any, record: any) => (
-                                <Button
-                                    type="text"
-                                    size="small"
-                                    className="text-indigo-600 bg-indigo-50 border border-indigo-100 hover:bg-indigo-600 hover:text-white transition-all font-semibold text-xs"
-                                    onClick={() => {
-                                        const filtered = tasks.filter(t => (t.customer_name || 'No Customer') === record.customer);
-                                        openDrill(`Detailed View: ${record.customer} (${filtered.length} task)`, filtered);
-                                    }}
-                                >
-                                    Semak Task
-                                </Button>
-                            )
+                                )}
+                            </div>
                         }
-                    ]}
-                />
-            </Card>
+                    >
+                        <TotalTaskBarChart
+                            data={totalTaskByPicData}
+                            onBarClick={handleTotalPicBarClick}
+                            isAdmin={hasFullAccess}
+                            period={totalPicPeriod}
+                            onPeriodChange={setTotalPicPeriod}
+                            customStart={totalPicCustomStart}
+                            customEnd={totalPicCustomEnd}
+                            onCustomStartChange={setTotalPicCustomStart}
+                            onCustomEndChange={setTotalPicCustomEnd}
+                        />
+                    </Card>
+
+                    {/* ── Overdue Summary + Bottleneck Table ── */}
+                    <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
+                        {/* Overdue Summary */}
+                        <Card
+                            className="xl:col-span-1 rounded-2xl shadow-sm border border-slate-100"
+                            variant="borderless"
+                            title={
+                                <div className="flex items-center gap-2 py-1">
+                                    <AlertTriangle className="w-4 h-4 text-red-500" />
+                                    <span className="font-bold text-slate-700">Overdue Summary</span>
+                                </div>
+                            }
+                        >
+                            <div className="flex flex-col gap-3">
+                                {overdueTasks.length === 0 ? (
+                                    <div className="text-center text-emerald-500 font-semibold py-8">
+                                        🎉 Tiada task overdue!
+                                    </div>
+                                ) : (
+                                    <>
+                                        <div
+                                            className={`bg-red-50 border border-red-100 rounded-xl p-4 text-center transition-all ${hasFullAccess ? 'cursor-pointer hover:bg-red-100' : ''}`}
+                                            onClick={() => hasFullAccess && openDrill(`⚠️ Task Overdue (${overdueTasks.length})`, overdueTasks)}
+                                        >
+                                            <p className="text-4xl font-black text-red-500">{overdueTasks.length}</p>
+                                            <p className="text-xs text-red-400 font-semibold mt-1">JUMLAH OVERDUE</p>
+                                            {hasFullAccess && <p className="text-xs text-red-300 mt-0.5">Klik untuk lihat senarai ↗</p>}
+                                        </div>
+
+                                        {Object.entries(overdueByStatus).filter(([, v]) => v > 0).map(([status, count]) => (
+                                            <div
+                                                key={status}
+                                                className={`flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100 transition-all ${hasFullAccess ? 'cursor-pointer hover:bg-slate-100' : ''}`}
+                                                onClick={() => {
+                                                    if (!hasFullAccess) return;
+                                                    const filtered = overdueTasks.filter(t => t.status === status);
+                                                    openDrill(`Overdue — ${STATUS_LABELS[status]} (${filtered.length})`, filtered);
+                                                }}
+                                            >
+                                                <div className="flex items-center gap-2">
+                                                    <span className="inline-block w-2 h-2 rounded-full" style={{ background: STATUS_COLORS[status] }} />
+                                                    <span className="text-sm font-medium text-slate-600">{STATUS_LABELS[status]}</span>
+                                                </div>
+                                                <div className="flex items-center gap-1">
+                                                    <Badge count={count} style={{ backgroundColor: STATUS_COLORS[status] }} />
+                                                    {hasFullAccess && <span className="text-xs text-slate-300 ml-1">↗</span>}
+                                                </div>
+                                            </div>
+                                        ))}
+
+                                        <div className="mt-4">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Task Terlibat</p>
+                                                <span className="text-[10px] font-bold text-red-400 bg-red-50 px-1.5 py-0.5 rounded-full">
+                                                    {overdueTasks.length} task
+                                                </span>
+                                            </div>
+                                            <div className="flex flex-col gap-2 max-h-[320px] overflow-y-auto pr-1">
+                                                {overdueTasks.map(t => {
+                                                    const daysLate = t.due_date ? differenceInDays(now, new Date(t.due_date)) : 0;
+                                                    return (
+                                                        <div 
+                                                            key={t.id} 
+                                                            className="group flex flex-col gap-1.5 p-2.5 bg-white border border-red-100 rounded-xl hover:border-red-300 hover:shadow-md transition-all cursor-pointer"
+                                                            onClick={() => openDrill(`Detail Task: ${t.title}`, [t])}
+                                                        >
+                                                            <div className="flex items-start gap-2">
+                                                                <AlertTriangle className="w-3.5 h-3.5 text-red-500 mt-0.5 flex-shrink-0" />
+                                                                <span className="text-[12px] leading-snug font-bold text-slate-700 break-words line-clamp-2">
+                                                                    {t.title}
+                                                                </span>
+                                                            </div>
+                                                            
+                                                            <div className="flex items-center justify-between mt-1 pt-1.5 border-t border-red-50">
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <img
+                                                                        src={(t.assignee as any)?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent((t.assignee as any)?.full_name || 'U')}&background=f1f5f9&color=64748b`}
+                                                                        className="w-4 h-4 rounded-full border border-slate-100"
+                                                                        alt="PIC"
+                                                                    />
+                                                                    <span className="text-[10px] text-slate-500 font-medium truncate max-w-[80px]">
+                                                                        {(t.assignee as any)?.full_name || 'Unassigned'}
+                                                                    </span>
+                                                                </div>
+                                                                {t.due_date && (
+                                                                    <span className="text-[10px] font-black text-red-500 bg-red-50 px-1.5 py-0.5 rounded-md">
+                                                                        {daysLate}d late
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        </Card>
+
+                        {/* Bottleneck Table */}
+                        <Card
+                            className="xl:col-span-3 rounded-2xl shadow-sm border border-slate-100"
+                            variant="borderless"
+                            title={
+                                <div className="flex items-center gap-2 py-1">
+                                    <Clock className="w-4 h-4 text-amber-500" />
+                                    <span className="font-bold text-slate-700">Bottleneck Detection</span>
+                                    <span className="text-xs font-normal text-slate-400 ml-1">
+                                        — task belum siap melebihi 3 hari
+                                    </span>
+                                </div>
+                            }
+                            extra={
+                                bottleneckTasks.length > 0 && (
+                                    <Badge count={bottleneckTasks.length} style={{ backgroundColor: '#f59e0b' }} />
+                                )
+                            }
+                        >
+                            <Table
+                                columns={bottleneckColumns}
+                                dataSource={bottleneckTasks}
+                                rowKey="id"
+                                pagination={{ pageSize: 8, size: 'small' }}
+                                size="small"
+                                locale={{ emptyText: '✅ Tiada bottleneck — semua task dalam tempoh!' }}
+                                rowClassName={(record) => {
+                                    const days = differenceInDays(now, new Date(record.created_at));
+                                    return days >= 7 ? 'bg-red-50/50' : days >= 5 ? 'bg-amber-50/50' : '';
+                                }}
+                            />
+                        </Card>
+                    </div>
+
+                    {/* ── Customer Detailed Analytics Table ── */}
+                    <Card
+                        className="rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 mt-2"
+                        variant="borderless"
+                        title={
+                            <div className="flex items-center gap-2 py-2">
+                                <Users className="w-5 h-5 text-indigo-600" />
+                                <span className="font-extrabold text-slate-800 text-lg">Customer Analytics (Maklumat Terperinci)</span>
+                                <span className="text-xs font-normal text-slate-400 bg-slate-50 border border-slate-100 px-3 py-1 rounded-full ml-2">
+                                    {customerDetailedData.length} Pelanggan
+                                </span>
+                            </div>
+                        }
+                    >
+                        <Table
+                            dataSource={customerDetailedData}
+                            rowKey="customer"
+                            pagination={{ pageSize: 10 }}
+                            scroll={{ x: 800 }}
+                            columns={[
+                                {
+                                    title: 'Customer Name',
+                                    dataIndex: 'customer',
+                                    key: 'customer',
+                                    sorter: (a: any, b: any) => a.customer.localeCompare(b.customer),
+                                    render: (text: string) => <span className="font-bold text-slate-700">{text}</span>
+                                },
+                                {
+                                    title: <Tooltip title="Jumlah keseluruhan task dari mula hingga kini">Total Tasks</Tooltip>,
+                                    dataIndex: 'total',
+                                    key: 'total',
+                                    sorter: (a: any, b: any) => a.total - b.total,
+                                    defaultSortOrder: 'descend',
+                                    render: (val: number) => <span className="font-bold text-lg text-slate-800">{val}</span>
+                                },
+                                {
+                                    title: <Tooltip title="Task yang sedang dijalankan / diusahakan">Pending Active</Tooltip>,
+                                    dataIndex: 'pending',
+                                    key: 'pending',
+                                    sorter: (a: any, b: any) => a.pending - b.pending,
+                                    render: (val: number, record: any) => (
+                                        <div className="flex flex-col gap-1">
+                                            <span className="font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md w-fit">{val} task</span>
+                                            {record.overdue > 0 && <span className="text-[10px] text-red-500 font-bold bg-red-50 border border-red-100 px-1 py-0.5 rounded w-fit">⚠️ {record.overdue} OVERDUE</span>}
+                                        </div>
+                                    )
+                                },
+                                {
+                                    title: <Tooltip title="Task yang telah siap (DONE)">Completed (DONE)</Tooltip>,
+                                    dataIndex: 'completed',
+                                    key: 'completed',
+                                    sorter: (a: any, b: any) => a.completed - b.completed,
+                                    render: (val: number, record: any) => {
+                                        const percent = Math.round((val / record.total) * 100) || 0;
+                                        return (
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md">{val} task</span>
+                                                <span className="text-[10px] text-slate-400 font-bold">({percent}%)</span>
+                                            </div>
+                                        );
+                                    }
+                                },
+                                {
+                                    title: <Tooltip title="Purata task baru yang masuk sehari secara sejarah">Frequency (Task/Hari)</Tooltip>,
+                                    dataIndex: 'tasksPerDay',
+                                    key: 'tasksPerDay',
+                                    sorter: (a: any, b: any) => a.tasksPerDay - b.tasksPerDay,
+                                    render: (val: number) => {
+                                        const isHigh = val > 2;
+                                        return (
+                                            <span className={`font-bold ${isHigh ? 'text-rose-500' : 'text-slate-600'}`}>
+                                                {val} {isHigh && '🔥'}
+                                            </span>
+                                        );
+                                    }
+                                },
+                                {
+                                    title: 'Action',
+                                    key: 'action',
+                                    render: (_: any, record: any) => (
+                                        <Button
+                                            type="text"
+                                            size="small"
+                                            className="text-indigo-600 bg-indigo-50 border border-indigo-100 hover:bg-indigo-600 hover:text-white transition-all font-semibold text-xs"
+                                            onClick={() => {
+                                                const filtered = tasks.filter(t => (t.customer_name || 'No Customer') === record.customer);
+                                                openDrill(`Detailed View: ${record.customer} (${filtered.length} task)`, filtered);
+                                            }}
+                                        >
+                                            Semak Task
+                                        </Button>
+                                    )
+                                }
+                            ]}
+                        />
+                    </Card>
+                </>
+            ) : (
+                <>
+                    {/* ── Time Tracking KPI Cards ── */}
+                    <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+                        <KpiCard
+                            title="Total Hours Tracked"
+                            value={totalHoursTrackedStr}
+                            subtitle={`daripada ${filteredLogs.length} sesi masa`}
+                            icon={Hourglass}
+                            color="bg-indigo-600"
+                            bg="bg-indigo-50"
+                        />
+                        <KpiCard
+                            title="Top Customer (by Hours)"
+                            value={topClientName}
+                            subtitle="klien menggunakan masa tertinggi"
+                            icon={Users}
+                            color="bg-emerald-600"
+                            bg="bg-emerald-50"
+                        />
+                        <KpiCard
+                            title="Top PIC (by Hours)"
+                            value={topPicName}
+                            subtitle="pekerja paling banyak log jam"
+                            icon={BarChart2}
+                            color="bg-violet-600"
+                            bg="bg-violet-50"
+                        />
+                        <KpiCard
+                            title="Avg Session Duration"
+                            value={averageSessionStr}
+                            subtitle="purata masa per sesi"
+                            icon={Clock}
+                            color="bg-amber-600"
+                            bg="bg-amber-50"
+                        />
+                    </div>
+
+                    {/* ── Time Tracking Filters ── */}
+                    <Card className="rounded-2xl shadow-sm border border-slate-100" variant="borderless">
+                        <div className="flex flex-wrap items-center gap-4">
+                            <div className="flex flex-col gap-1.5">
+                                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Filter Pekerja (PIC)</span>
+                                <Select
+                                    value={filterTimerUser}
+                                    onChange={setFilterTimerUser}
+                                    className="w-[200px]"
+                                    options={[
+                                        { value: 'All', label: 'Semua PIC' },
+                                        ...profiles.map(p => ({ value: p.id, label: p.full_name }))
+                                    ]}
+                                />
+                            </div>
+
+                            <div className="flex flex-col gap-1.5">
+                                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Filter Pelanggan (Customer)</span>
+                                <Select
+                                    value={filterTimerCustomer}
+                                    onChange={setFilterTimerCustomer}
+                                    className="w-[220px]"
+                                    options={[
+                                        { value: 'All', label: 'Semua Customer' },
+                                        ...uniqueCustomerNames.map(c => ({ value: c, label: c }))
+                                    ]}
+                                />
+                            </div>
+
+                            <div className="flex flex-col gap-1.5 md:ml-auto w-full md:w-auto">
+                                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Cari Tugasan / PIC</span>
+                                <Input
+                                    placeholder="Cari kata kunci..."
+                                    value={timerSearchText}
+                                    onChange={e => setTimerSearchText(e.target.value)}
+                                    className="w-full md:w-[260px] rounded-lg"
+                                    allowClear
+                                />
+                            </div>
+                        </div>
+                    </Card>
+
+                    {/* ── Time Allocation Charts Grid ── */}
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                        {/* PIC Work Hours Chart */}
+                        <Card
+                            className="rounded-2xl shadow-sm border border-slate-100"
+                            variant="borderless"
+                            title={
+                                <div className="flex items-center gap-2 py-1">
+                                    <BarChart2 className="w-4 h-4 text-indigo-600" />
+                                    <span className="font-bold text-slate-700">Analisis Jam Kerja Pekerja (PIC)</span>
+                                </div>
+                            }
+                        >
+                            {timerEmployeeDurations.length === 0 ? (
+                                <div className="flex items-center justify-center h-[200px] text-slate-400">
+                                    Tiada data timer dikesan.
+                                </div>
+                            ) : (
+                                <TimeBarChart
+                                    data={timerEmployeeDurations}
+                                    total={totalSecondsTracked}
+                                />
+                            )}
+                        </Card>
+
+                        {/* Customer Resource Allocation */}
+                        <Card
+                            className="rounded-2xl shadow-sm border border-slate-100"
+                            variant="borderless"
+                            title={
+                                <div className="flex items-center gap-2 py-1">
+                                    <Users className="w-4 h-4 text-violet-600" />
+                                    <span className="font-bold text-slate-700">Agihan Masa Mengikut Pelanggan (Customer)</span>
+                                </div>
+                            }
+                        >
+                            {timerClientDurations.length === 0 ? (
+                                <div className="flex items-center justify-center h-[200px] text-slate-400">
+                                    Tiada data timer dikesan.
+                                </div>
+                            ) : (
+                                <TimeBarChart
+                                    data={timerClientDurations}
+                                    total={totalSecondsTracked}
+                                />
+                            )}
+                        </Card>
+                    </div>
+
+                    {/* ── Longest Tasks Analysis ── */}
+                    <Card
+                        className="rounded-2xl shadow-sm border border-slate-100"
+                        variant="borderless"
+                        title={
+                            <div className="flex items-center gap-2 py-1">
+                                <Clock className="w-4 h-4 text-rose-500" />
+                                <span className="font-bold text-slate-700">Tugasan Paling Banyak Memakan Masa (Top 10 Longest Tasks)</span>
+                            </div>
+                        }
+                    >
+                        <Table
+                            dataSource={topTasksByTime}
+                            rowKey="title"
+                            pagination={false}
+                            size="small"
+                            locale={{ emptyText: 'Tiada tugasan dikesan mengikut penapis semasa.' }}
+                            columns={[
+                                {
+                                    title: 'Nama Tugasan (Task Title)',
+                                    dataIndex: 'title',
+                                    key: 'title',
+                                    render: (text: string) => <span className="font-bold text-slate-700 text-sm">{text}</span>
+                                },
+                                {
+                                    title: 'Pelanggan',
+                                    dataIndex: 'customer',
+                                    key: 'customer',
+                                    render: (text: string) => <span className="text-slate-500 text-sm">{text}</span>
+                                },
+                                {
+                                    title: 'PIC Utama',
+                                    dataIndex: 'assignee',
+                                    key: 'assignee',
+                                    render: (text: string) => <span className="text-slate-600 text-sm font-medium">{text}</span>
+                                },
+                                {
+                                    title: 'Jumlah Masa Kerja',
+                                    dataIndex: 'duration',
+                                    key: 'duration',
+                                    sorter: (a: any, b: any) => a.duration - b.duration,
+                                    render: (val: number) => {
+                                        const hrs = (val / 3600).toFixed(1);
+                                        return <span className="font-black text-sm text-rose-500 bg-rose-50 border border-rose-100 px-2.5 py-1 rounded-md">{hrs} hrs</span>;
+                                    }
+                                }
+                            ]}
+                        />
+                    </Card>
+
+                    {/* ── Detailed Time Logs Table ── */}
+                    <Card
+                        className="rounded-2xl shadow-sm border border-slate-100"
+                        variant="borderless"
+                        title={
+                            <div className="flex items-center gap-2 py-1">
+                                <Hourglass className="w-4 h-4 text-indigo-600" />
+                                <span className="font-bold text-slate-700">Rekod Log Masa Terperinci (Detailed Work Session Logs)</span>
+                            </div>
+                        }
+                    >
+                        <Table
+                            dataSource={filteredLogs}
+                            rowKey="id"
+                            pagination={{ pageSize: 10 }}
+                            size="middle"
+                            locale={{ emptyText: 'Tiada rekod log masa dikesan.' }}
+                            columns={[
+                                {
+                                    title: 'Pekerja (PIC)',
+                                    key: 'user',
+                                    render: (_: any, record: any) => {
+                                        const user = record.user;
+                                        if (!user) return <span className="text-slate-400 text-xs">—</span>;
+                                        return (
+                                            <div className="flex items-center gap-2">
+                                                <img
+                                                    src={user.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.full_name)}&background=6366f1&color=fff`}
+                                                    className="w-5 h-5 rounded-full"
+                                                    alt=""
+                                                />
+                                                <span className="text-xs font-semibold text-slate-700">{user.full_name}</span>
+                                            </div>
+                                        );
+                                    }
+                                },
+                                {
+                                    title: 'Task Title',
+                                    key: 'task',
+                                    render: (_: any, record: any) => (
+                                        <span className="text-slate-800 text-xs font-medium">{record.task?.title || '—'}</span>
+                                    )
+                                },
+                                {
+                                    title: 'Customer',
+                                    key: 'customer',
+                                    render: (_: any, record: any) => (
+                                        <span className="text-slate-500 text-xs">{record.task?.customer_name || '—'}</span>
+                                    )
+                                },
+                                {
+                                    title: 'Mula Bekerja',
+                                    dataIndex: 'start_time',
+                                    key: 'start_time',
+                                    render: (val: string) => (
+                                        <span className="text-slate-500 text-[11px]">
+                                            {new Date(val).toLocaleString('ms-MY', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                        </span>
+                                    )
+                                },
+                                {
+                                    title: 'Tamat Bekerja',
+                                    dataIndex: 'end_time',
+                                    key: 'end_time',
+                                    render: (val: string) => (
+                                        <span className="text-slate-500 text-[11px]">
+                                            {val ? new Date(val).toLocaleString('ms-MY', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
+                                        </span>
+                                    )
+                                },
+                                {
+                                    title: 'Tempoh Kerja',
+                                    dataIndex: 'duration',
+                                    key: 'duration',
+                                    render: (val: number) => {
+                                        const hrs = Math.floor(val / 3600);
+                                        const mins = Math.floor((val % 3600) / 60);
+                                        const secs = val % 60;
+                                        
+                                        if (hrs > 0) return <span className="font-mono font-bold text-xs text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">{hrs}h {mins}m</span>;
+                                        if (mins > 0) return <span className="font-mono font-bold text-xs text-slate-600 bg-slate-50 px-2 py-0.5 rounded">{mins}m</span>;
+                                        return <span className="font-mono font-medium text-xs text-slate-400">{secs}s</span>;
+                                    }
+                                }
+                            ]}
+                        />
+                    </Card>
+                </>
+            )}
         </div>
     );
 }
+
