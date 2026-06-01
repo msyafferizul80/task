@@ -10,6 +10,7 @@ import EscalateModal from '@/components/task/EscalateModal';
 import TaskStatusHistory from '@/components/task/TaskStatusHistory';
 import TaskComments from '@/components/task/TaskComments';
 import { useTimer } from '@/components/task/TimerProvider';
+import dayjs from 'dayjs';
 
 
 const { Title, Text } = Typography;
@@ -194,7 +195,7 @@ export default function TaskListingPage() {
     const doUpdateTask = async (values: any) => {
         if (!selectedTask) return;
         try {
-            const { title, description, priority_type, due_date, customer_name, department, assignee_id, status } = values;
+            const { title, description, priority_type, start_date, due_date, customer_name, department, assignee_id, status } = values;
 
             // Check if status is set to DONE
             let totalTimeMessage = '';
@@ -299,7 +300,8 @@ export default function TaskListingPage() {
                 customer_name,
                 department,
                 assignee_id,
-                due_date: due_date?.toISOString(),
+                start_date: start_date?.toISOString() || null,
+                due_date: due_date?.toISOString() || null,
                 status,
             }).eq('id', selectedTask.id);
 
@@ -544,6 +546,8 @@ export default function TaskListingPage() {
                         setSelectedTask(record);
                         editForm.setFieldsValue({
                             ...record,
+                            start_date: record.start_date ? dayjs(record.start_date) : null,
+                            due_date: record.due_date ? dayjs(record.due_date) : null,
                         });
                         setIsEditModalOpen(true);
                     }}
@@ -683,7 +687,11 @@ export default function TaskListingPage() {
                                     className="text-indigo-500 shrink-0"
                                     onClick={() => {
                                         setSelectedTask(task);
-                                        editForm.setFieldsValue({ ...task });
+                                        editForm.setFieldsValue({
+                                            ...task,
+                                            start_date: task.start_date ? dayjs(task.start_date) : null,
+                                            due_date: task.due_date ? dayjs(task.due_date) : null,
+                                        });
                                         setIsEditModalOpen(true);
                                     }}
                                 />
@@ -833,11 +841,14 @@ export default function TaskListingPage() {
                                 <Input.TextArea rows={4} placeholder="Detailed task requirements..." className="resize-y" disabled={role !== 'admin' && role !== 'manager'} />
                             </Form.Item>
 
-                            {selectedTask?.due_date && (
-                                <div className="mb-4 text-sm text-gray-500">
-                                    <strong>Current Due Date:</strong> {new Date(selectedTask.due_date).toLocaleString()}
-                                </div>
-                            )}
+                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                                 <Form.Item name="start_date" label="Start Date">
+                                     <DatePicker className="w-full" size="large" showTime disabled={role !== 'admin' && role !== 'manager'} />
+                                 </Form.Item>
+                                 <Form.Item name="due_date" label="Due Date" rules={[{ required: true, message: 'Due date is required' }]}>
+                                     <DatePicker className="w-full" size="large" showTime disabled={role !== 'admin' && role !== 'manager'} />
+                                 </Form.Item>
+                             </div>
 
                             {selectedTask?.updated_at && (
                                 <div className="mb-4 text-sm text-gray-500">

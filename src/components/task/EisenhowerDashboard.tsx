@@ -103,7 +103,7 @@ export default function EisenhowerDashboard() {
         try {
             message.loading({ content: 'Creating Task & Analyzing via AI...', key: 'createTask' });
             
-            const { title, description, priority_type, due_date, customer_name, assignee_id, department } = values;
+            const { title, description, priority_type, start_date, due_date, customer_name, assignee_id, department } = values;
             let finalTitle = title;
             let aiChecklist: string[] = [];
 
@@ -137,6 +137,7 @@ export default function EisenhowerDashboard() {
                 priority_type,
                 customer_name,
                 assignee_id,
+                start_date: start_date?.toISOString(),
                 due_date: due_date?.toISOString(),
                 status: 'IN_PROGRESS',
                 created_by: currentUserId,
@@ -279,7 +280,8 @@ export default function EisenhowerDashboard() {
                 priority_type: values.priority_type,
                 customer_name: values.customer_name,
                 assignee_id: values.assignee_id,
-                due_date: values.due_date?.toISOString(),
+                start_date: values.start_date?.toISOString() || null,
+                due_date: values.due_date?.toISOString() || null,
                 status: values.status,
                 is_internal: values.customer_name === 'SYAZNA WORLD (INTERNAL)',
                 department: values.department || 'Outsourcing',
@@ -389,6 +391,8 @@ export default function EisenhowerDashboard() {
                 fetchChecklist(task.id);
                 editForm.setFieldsValue({
                     ...task,
+                    start_date: task.start_date ? dayjs(task.start_date) : null,
+                    due_date: task.due_date ? dayjs(task.due_date) : null,
                 });
                 setIsEditModalOpen(true);
             }}
@@ -620,9 +624,15 @@ export default function EisenhowerDashboard() {
                         <Input.TextArea rows={4} placeholder="Detailed task requirements..." className="resize-none" />
                     </Form.Item>
 
-                    <Form.Item name="due_date" label="Due Date" rules={[{ required: true, message: 'Please select a due date' }]}>
-                        <DatePicker className="w-full" size="large" showTime disabledDate={(current) => current && current < dayjs().startOf('day')} />   
-                    </Form.Item>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <Form.Item name="start_date" label="Start Date">
+                            <DatePicker className="w-full" size="large" showTime disabledDate={(current) => current && current < dayjs().startOf('day')} />
+                        </Form.Item>
+
+                        <Form.Item name="due_date" label="Due Date" rules={[{ required: true, message: 'Please select a due date' }]}>
+                            <DatePicker className="w-full" size="large" showTime disabledDate={(current) => current && current < dayjs().startOf('day')} />   
+                        </Form.Item>
+                    </div>
 
                     <Form.Item className="flex justify-end mb-0 mt-6 pt-4 border-t">
                         <Button onClick={() => setIsModalOpen(false)} className="mr-3" size="large">Cancel</Button>
@@ -745,11 +755,14 @@ export default function EisenhowerDashboard() {
                                             </div>
                                         )}
 
-                                        {selectedTask?.due_date && (
-                                            <div className="mb-4 text-sm text-gray-500">
-                                                <strong>Current Due Date:</strong> {new Date(selectedTask.due_date).toLocaleString()}
-                                            </div>
-                                        )}
+                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                                             <Form.Item name="start_date" label="Start Date">
+                                                 <DatePicker className="w-full" size="large" showTime disabled={role !== 'admin' && role !== 'manager'} />
+                                             </Form.Item>
+                                             <Form.Item name="due_date" label="Due Date" rules={[{ required: true, message: 'Due date is required' }]}>
+                                                 <DatePicker className="w-full" size="large" showTime disabled={role !== 'admin' && role !== 'manager'} />
+                                             </Form.Item>
+                                         </div>
 
                                         <Form.Item className="mb-0 mt-6 pt-4 border-t">
                                             <div className="flex items-center justify-between w-full">

@@ -15,7 +15,8 @@ import {
     Menu,
     X,
     Bot,
-    PauseCircle
+    PauseCircle,
+    Calendar
 } from 'lucide-react'
 import { createClient } from '@/utils/supabase/client'
 import { useRole } from '@/components/layout/RoleProvider'
@@ -71,6 +72,7 @@ export default function Sidebar() {
         { name: 'My Tasks', href: '/mytasks', icon: CheckSquare, badge: bottleneckCount > 0 ? bottleneckCount : undefined, badgeColor: 'amber' },
         { name: 'Client Hold Tasks', href: '/client-hold-tasks', icon: PauseCircle, badge: clientHoldCount > 0 ? clientHoldCount : undefined, badgeColor: 'fuchsia' },
         { name: 'Task Listing', href: '/tasks', icon: ListTodo },
+        { name: 'Calendar & Timeline', href: '/calendar', icon: Calendar },
         { name: 'Weekly Report', href: '/reports', icon: FileText },
         { name: 'My Profile', href: '/profile', icon: UserCircle }
     ];

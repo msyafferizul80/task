@@ -17,6 +17,7 @@ export interface Task {
     customer_name: string | null;
     priority_type: PriorityType | null;
     status: TaskStatus;
+    start_date: string | null;
     due_date: string | null;
     created_at: string;
     updated_at?: string;
