@@ -4,6 +4,13 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 const botToken = Deno.env.get('TELEGRAM_BOT_TOKEN');
 const chatId = Deno.env.get('TELEGRAM_CHAT_ID');
 
+function escapeHtml(text: string): string {
+    return (text || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
 Deno.serve(async (req) => {
     if (!botToken || !chatId) {
         return new Response("Missing telegram secrets", { status: 500 });
@@ -64,12 +71,18 @@ Deno.serve(async (req) => {
                 totalTimeStr = parts.join(', ');
             }
 
-            const message = `✅ *Task Completed!*\n\n*Department:* ${record.department || 'Outsourcing'}\n*Customer:* ${record.customer_name || '-'}\n*Task:* ${record.title || '-'}\n*PIC:* ${assigneeName}\n*Time Spent:* ${totalTimeStr}`;
+            const safeDept = escapeHtml(record.department || 'Outsourcing');
+            const safeCust = escapeHtml(record.customer_name || '-');
+            const safeTitle = escapeHtml(record.title || '-');
+            const safePIC = escapeHtml(assigneeName);
+            const safeTime = escapeHtml(totalTimeStr);
+
+            const message = `✅ <b>Task Completed!</b>\n\n<b>Department:</b> ${safeDept}\n<b>Customer:</b> ${safeCust}\n<b>Task:</b> ${safeTitle}\n<b>PIC:</b> ${safePIC}\n<b>Time Spent:</b> ${safeTime}`;
 
             await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ chat_id: targetChatId, text: message, parse_mode: 'Markdown' })
+                body: JSON.stringify({ chat_id: targetChatId, text: message, parse_mode: 'HTML' })
             });
         }
     }
@@ -97,11 +110,6 @@ Deno.serve(async (req) => {
             if (commenter) commenterName = commenter.full_name;
         }
 
-        // Skip notification if commenter is the same as assignee (commenting on own task)
-        if (task.assignee_id && record.user_id === task.assignee_id) {
-            return new Response("OK", { status: 200 });
-        }
-
         // Department-based Telegram Routing
         let targetChatId = chatId;
         if (task.department) {
@@ -120,12 +128,17 @@ Deno.serve(async (req) => {
             ? record.content.substring(0, 200) + '...'
             : (record.content || '');
 
-        const message = `💬 *Komen Baru pada Task*\n\n*Task:* ${task.title || '-'}\n*Customer:* ${task.customer_name || '-'}\n*Dari:* ${commenterName}\n\n_"${contentPreview}"_`;
+        const safeTitle = escapeHtml(task.title || '-');
+        const safeCust = escapeHtml(task.customer_name || '-');
+        const safeCommenter = escapeHtml(commenterName);
+        const safeContent = escapeHtml(contentPreview);
+
+        const message = `💬 <b>Komen Baru pada Task</b>\n\n<b>Task:</b> ${safeTitle}\n<b>Customer:</b> ${safeCust}\n<b>Dari:</b> ${safeCommenter}\n\n<i>"${safeContent}"</i>`;
 
         const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ chat_id: targetChatId, text: message, parse_mode: 'Markdown' })
+            body: JSON.stringify({ chat_id: targetChatId, text: message, parse_mode: 'HTML' })
         });
 
         if (!res.ok) {
