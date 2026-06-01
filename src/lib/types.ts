@@ -6,6 +6,7 @@ export interface Profile {
     full_name: string;
     avatar_url?: string;
     jawatan?: string;
+    department?: string;
 }
 
 export interface Task {
@@ -74,3 +75,27 @@ export interface TimeLog {
     created_at: string;
 }
 
+export interface TaskAttachment {
+    id: string;
+    task_id: string;
+    comment_id: string | null;
+    user_id: string;
+    file_name: string;
+    file_size: number | null;
+    file_type: string | null;
+    storage_path: string;
+    public_url: string | null;
+    created_at: string;
+    user?: Profile;
+}
+
+export interface TaskComment {
+    id: string;
+    task_id: string;
+    user_id: string;
+    content: string;
+    created_at: string;
+    updated_at: string;
+    user?: Profile;
+    attachments?: TaskAttachment[];
+}

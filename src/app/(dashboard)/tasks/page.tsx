@@ -8,6 +8,7 @@ import { useRole } from '@/components/layout/RoleProvider';
 import { SearchOutlined, CheckCircleOutlined, SyncOutlined, ClockCircleOutlined, ExclamationCircleOutlined, EditOutlined, DeleteOutlined, ExclamationCircleFilled, PauseCircleOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import EscalateModal from '@/components/task/EscalateModal';
 import TaskStatusHistory from '@/components/task/TaskStatusHistory';
+import TaskComments from '@/components/task/TaskComments';
 import { useTimer } from '@/components/task/TimerProvider';
 
 
@@ -760,10 +761,10 @@ export default function TaskListingPage() {
                     editForm.resetFields();
                 }}
                 footer={null}
-                width={1200}
-                style={{ maxWidth: '95vw', top: 20 }}
+                width={1600}
+                style={{ maxWidth: '97vw', top: 20 }}
             >
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     <div className="lg:border-r lg:pr-6">
                         <Form form={editForm} layout="vertical" onFinish={handleUpdateTask}>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -882,6 +883,15 @@ export default function TaskListingPage() {
                                 taskId={selectedTask.id} 
                                 currentStatus={selectedTask.status}
                                 taskCreatedAt={selectedTask.created_at}
+                            />
+                        )}
+                    </div>
+                    <div className="lg:border-l lg:pl-6 relative">
+                        {selectedTask && (
+                            <TaskComments
+                                taskId={selectedTask.id}
+                                currentUserId={currentUserId ?? ''}
+                                role={role}
                             />
                         )}
                     </div>
