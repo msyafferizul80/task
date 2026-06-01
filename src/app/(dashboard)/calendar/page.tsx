@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { Card, Select, Input, Tag, Typography, Spin, message, Modal, Form, Button, DatePicker, Tooltip, Calendar, Avatar, Tabs } from 'antd';
+import { Card, Select, Input, Tag, Typography, Spin, message, Modal, Form, Button, DatePicker, Tooltip, Calendar, Avatar, Tabs, InputNumber } from 'antd';
 import { SearchOutlined, CheckCircleOutlined, SyncOutlined, ClockCircleOutlined, ExclamationCircleOutlined, EditOutlined, DeleteOutlined, ExclamationCircleFilled, PauseCircleOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons';
 import { createClient } from '@/utils/supabase/client';
 import { Task, Profile } from '@/lib/types';
@@ -118,7 +118,7 @@ export default function CalendarTimelinePage() {
         if (!selectedTask) return;
         try {
             const isPrivileged = role === 'admin' || role === 'manager';
-            const { title, description, priority_type, start_date, due_date, customer_name, department, assignee_id, status } = values;
+            const { title, description, priority_type, start_date, due_date, customer_name, department, assignee_id, status, estimated_hours } = values;
 
             let totalTimeMessage = '';
             if (status === 'DONE') {
@@ -179,6 +179,7 @@ export default function CalendarTimelinePage() {
                     start_date: start_date?.toISOString() || null,
                     due_date: due_date?.toISOString() || null,
                     status,
+                    estimated_hours: estimated_hours || null,
                 }
                 : {
                     title: nextTitle,
@@ -709,13 +710,16 @@ export default function CalendarTimelinePage() {
                             <Form.Item name="description" label="Description">
                                 <Input.TextArea rows={4} placeholder="Detailed task requirements..." className="resize-y" disabled={role !== 'admin' && role !== 'manager'} />
                             </Form.Item>
-
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                            
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
                                 <Form.Item name="start_date" label="Start Date">
                                     <DatePicker className="w-full" size="large" showTime disabled={role !== 'admin' && role !== 'manager'} />
                                 </Form.Item>
                                 <Form.Item name="due_date" label="Due Date" rules={[{ required: true, message: 'Due date is required' }]}>
                                     <DatePicker className="w-full" size="large" showTime disabled={role !== 'admin' && role !== 'manager'} />
+                                </Form.Item>
+                                <Form.Item name="estimated_hours" label="Est. Hours">
+                                    <InputNumber className="w-full" size="large" min={0} step={0.5} placeholder="e.g. 4.5" disabled={role !== 'admin' && role !== 'manager'} />
                                 </Form.Item>
                             </div>
 

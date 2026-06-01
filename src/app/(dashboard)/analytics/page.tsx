@@ -494,25 +494,75 @@ function KpiCard({
     onClick?: () => void;
     clickable?: boolean;
 }) {
+    // Determine dynamic premium accents based on classes passed
+    let accentBorder = 'border-l-indigo-500';
+    let iconGradient = 'bg-gradient-to-tr from-indigo-500 to-indigo-600 shadow-indigo-200/50';
+    let hoverShadow = 'hover:shadow-[0_12px_30px_rgba(99,102,241,0.08)]';
+    
+    if (color.includes('red') || color.includes('rose')) {
+        accentBorder = 'border-l-rose-500';
+        iconGradient = 'bg-gradient-to-tr from-rose-500 to-red-600 shadow-rose-200/50';
+        hoverShadow = 'hover:shadow-[0_12px_30px_rgba(244,63,94,0.08)]';
+    } else if (color.includes('amber') || color.includes('yellow')) {
+        accentBorder = 'border-l-amber-500';
+        iconGradient = 'bg-gradient-to-tr from-amber-500 to-orange-600 shadow-amber-200/50';
+        hoverShadow = 'hover:shadow-[0_12px_30px_rgba(245,158,11,0.08)]';
+    } else if (color.includes('emerald') || color.includes('green')) {
+        accentBorder = 'border-l-emerald-500';
+        iconGradient = 'bg-gradient-to-tr from-emerald-500 to-teal-600 shadow-emerald-200/50';
+        hoverShadow = 'hover:shadow-[0_12px_30px_rgba(16,185,129,0.08)]';
+    } else if (color.includes('sky') || color.includes('blue')) {
+        accentBorder = 'border-l-sky-500';
+        iconGradient = 'bg-gradient-to-tr from-sky-500 to-blue-600 shadow-sky-200/50';
+        hoverShadow = 'hover:shadow-[0_12px_30px_rgba(14,165,233,0.08)]';
+    } else if (color.includes('violet') || color.includes('purple')) {
+        accentBorder = 'border-l-violet-500';
+        iconGradient = 'bg-gradient-to-tr from-violet-500 to-fuchsia-600 shadow-violet-200/50';
+        hoverShadow = 'hover:shadow-[0_12px_30px_rgba(139,92,246,0.08)]';
+    }
+
+    const isLongText = typeof value === 'string' && value.length > 12;
+    const valueSizeClass = isLongText 
+        ? (value.length > 22 ? 'text-sm font-extrabold leading-tight' : 'text-lg font-extrabold leading-tight') 
+        : 'text-2xl font-black leading-none';
+
     return (
         <div
-            className={`rounded-2xl p-5 shadow-sm border border-white/60 flex items-start gap-4 ${bg} transition-all duration-200 ${clickable ? 'cursor-pointer hover:shadow-md hover:scale-[1.02] select-none' : ''}`}
             onClick={onClick}
+            className={`relative overflow-hidden rounded-2xl bg-white p-5 border-l-4 ${accentBorder} border-y border-r border-slate-100 shadow-[0_4px_20px_rgba(0,0,0,0.02)] flex items-start gap-4 transition-all duration-300 ${
+                clickable 
+                    ? `cursor-pointer hover:-translate-y-1 hover:border-slate-200/80 ${hoverShadow} select-none` 
+                    : ''
+            }`}
         >
-            <div className={`rounded-xl p-3 ${color}`}>
-                <Icon className="w-6 h-6 text-white" />
+            {/* Background subtle blur glow */}
+            <div className="absolute -right-6 -bottom-6 w-24 h-24 rounded-full bg-slate-50 opacity-40 blur-xl pointer-events-none" />
+
+            <div className={`rounded-xl p-3 text-white shadow-lg ${iconGradient} shrink-0`}>
+                <Icon className="w-5 h-5" />
             </div>
-            <div className="flex-1">
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">{title}</p>
-                <div className="flex items-baseline gap-2">
-                    <p className="text-3xl font-bold text-slate-800 leading-none">{value}</p>
+
+            <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between mb-1.5">
+                    <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider leading-snug">{title}</p>
                     {clickable && (
-                        <span className="text-xs text-indigo-500 font-medium bg-indigo-50 px-1.5 py-0.5 rounded-full">
-                            Klik ↗
+                        <span className="text-[9px] text-indigo-600 font-extrabold bg-indigo-50 border border-indigo-100/50 px-1.5 py-0.5 rounded-full uppercase tracking-wider shrink-0 ml-2">
+                            Drill ↗
                         </span>
                     )}
                 </div>
-                {subtitle && <p className="text-xs text-slate-400 mt-1">{subtitle}</p>}
+                <div className="flex items-baseline gap-2">
+                    <Tooltip title={isLongText ? value : undefined}>
+                        <p className={`font-black text-slate-800 break-words line-clamp-2 ${valueSizeClass}`}>
+                            {value}
+                        </p>
+                    </Tooltip>
+                </div>
+                {subtitle && (
+                    <p className="text-[11px] text-slate-400 font-medium mt-0.5 leading-normal">
+                        {subtitle}
+                    </p>
+                )}
             </div>
         </div>
     );
@@ -744,6 +794,7 @@ export default function AnalyticsPage() {
         return `${mins} mins`;
     }, [filteredLogs, totalSecondsTracked]);
 
+
     const topTasksByTime = useMemo(() => {
         const taskDurMap = new Map<string, { title: string; customer: string; assignee: string; duration: number }>();
         filteredLogs.forEach(log => {
@@ -888,6 +939,85 @@ export default function AnalyticsPage() {
             .map(([customer, data]) => ({ customer, ...data }))
             .sort((a, b) => b.total - a.total);
     }, [tasks, now]);
+
+    // ─── Estimated vs Actual Derivations ───
+    const filteredTasksForEstimation = useMemo(() => {
+        return baseTasks.filter(t => {
+            if (filterTimerUser !== 'All' && t.assignee_id !== filterTimerUser) return false;
+            if (filterTimerCustomer !== 'All' && t.customer_name !== filterTimerCustomer) return false;
+            if (timerSearchText) {
+                const search = timerSearchText.toLowerCase();
+                const title = t.title?.toLowerCase() || '';
+                const assigneeName = (t.assignee as any)?.full_name?.toLowerCase() || '';
+                if (!title.includes(search) && !assigneeName.includes(search)) return false;
+            }
+            return true;
+        });
+    }, [baseTasks, filterTimerUser, filterTimerCustomer, timerSearchText]);
+
+    const totalEstimatedHours = useMemo(() => {
+        return filteredTasksForEstimation.reduce((acc, t) => acc + Number(t.estimated_hours || 0), 0);
+    }, [filteredTasksForEstimation]);
+
+    const totalActualHoursForEstTasks = useMemo(() => {
+        const taskIds = new Set(filteredTasksForEstimation.map(t => t.id));
+        const seconds = timeLogs
+            .filter(log => taskIds.has(log.task_id) && log.status === 'COMPLETED')
+            .reduce((acc, log) => acc + (log.duration || 0), 0);
+        return seconds / 3600;
+    }, [filteredTasksForEstimation, timeLogs]);
+
+    const estimatedVsActualData = useMemo(() => {
+        const taskDurationMap: Record<string, number> = {};
+        timeLogs.forEach(log => {
+            if (log.status === 'COMPLETED') {
+                taskDurationMap[log.task_id] = (taskDurationMap[log.task_id] || 0) + (log.duration || 0);
+            }
+        });
+
+        return filteredTasksForEstimation.map(t => {
+            const actualSeconds = taskDurationMap[t.id] || 0;
+            const actualHours = actualSeconds / 3600;
+            const estimatedHours = t.estimated_hours ? Number(t.estimated_hours) : null;
+            
+            let variance = null;
+            let status = 'No Estimate';
+            if (estimatedHours !== null) {
+                variance = estimatedHours - actualHours;
+                if (actualHours <= estimatedHours) {
+                    status = 'Within Estimate';
+                } else {
+                    status = 'Exceeded';
+                }
+            }
+
+            return {
+                key: t.id,
+                title: t.title,
+                customer_name: t.customer_name || '—',
+                assignee_name: (t.assignee as any)?.full_name || 'Unassigned',
+                assignee_avatar: (t.assignee as any)?.avatar_url,
+                estimatedHours,
+                actualHours,
+                variance,
+                status
+            };
+        }).sort((a, b) => {
+            if (a.status === 'Exceeded' && b.status !== 'Exceeded') return -1;
+            if (a.status !== 'Exceeded' && b.status === 'Exceeded') return 1;
+            if (a.estimatedHours !== null && b.estimatedHours === null) return -1;
+            if (a.estimatedHours === null && b.estimatedHours !== null) return 1;
+            return b.actualHours - a.actualHours;
+        });
+    }, [filteredTasksForEstimation, timeLogs]);
+
+    const estimationAccuracyStr = useMemo(() => {
+        const tasksWithEstimates = estimatedVsActualData.filter(d => d.estimatedHours !== null);
+        if (tasksWithEstimates.length === 0) return '—';
+        const withinEstimateCount = tasksWithEstimates.filter(d => d.status === 'Within Estimate').length;
+        const pct = Math.round((withinEstimateCount / tasksWithEstimates.length) * 100);
+        return `${pct}% (${withinEstimateCount}/${tasksWithEstimates.length})`;
+    }, [estimatedVsActualData]);
 
     // ── Bottleneck Table Columns ──────────────────────────────────────────────
 
@@ -1050,30 +1180,31 @@ export default function AnalyticsPage() {
             />
 
             {/* ── Header ── */}
-            <div className="bg-gradient-to-r from-indigo-700 to-violet-700 rounded-2xl p-6 text-white shadow-lg">
+            <div className="bg-gradient-to-r from-indigo-950 via-slate-900 to-violet-950 rounded-2xl p-6 text-white shadow-[0_10px_30px_-10px_rgba(79,70,229,0.3)] border border-indigo-500/20">
                 <div className="flex items-center justify-between">
                     <div>
                         <div className="flex items-center gap-2 mb-1">
-                            <BarChart2 className="w-6 h-6" />
-                            <Title level={2} className="!text-white !m-0">Management Analytics</Title>
+                            <BarChart2 className="w-6 h-6 text-indigo-400" />
+                            <Title level={2} className="!text-white !m-0 font-extrabold tracking-tight">Management Analytics</Title>
                         </div>
-                        <Text className="!text-indigo-200 text-sm">
+                        <Text className="!text-indigo-200/80 text-sm font-medium">
                             Boss View — gambaran keseluruhan prestasi pasukan secara real-time
                         </Text>
                     </div>
                     <div className="flex flex-col items-end gap-2">
-                        <div className="flex items-center gap-2 text-indigo-200 text-xs">
+                        <div className="flex items-center gap-2 text-indigo-200/60 text-xs">
                             <RefreshCw className="w-3.5 h-3.5" />
                             <span>Live · {lastRefreshed.toLocaleTimeString('ms-MY')}</span>
                         </div>
                         <div className="flex items-center gap-2 mt-1">
-                            <span className="text-xs text-indigo-200 uppercase font-semibold">Jabatan:</span>
+                            <span className="text-xs text-indigo-200 uppercase font-bold tracking-wider">Jabatan:</span>
                             <Select
                                 value={filterDepartment}
                                 onChange={setFilterDepartment}
-                                size="small"
+                                size="middle"
                                 disabled={!hasFullAccess}
-                                className="w-[140px] text-slate-800"
+                                className="w-[185px]"
+                                popupClassName="rounded-xl shadow-lg border border-slate-100"
                                 options={[
                                     { value: 'All', label: 'Seluruh Organisasi' },
                                     { value: 'Outsourcing', label: 'Outsourcing' },
@@ -1123,7 +1254,7 @@ export default function AnalyticsPage() {
             {activeTab === 'overview' ? (
                 <>
                     {/* ── KPI Cards ── */}
-                    <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
                         <KpiCard
                             title="Active Tasks"
                             value={activeTasks.length}
@@ -1490,27 +1621,43 @@ export default function AnalyticsPage() {
             ) : (
                 <>
                     {/* ── Time Tracking KPI Cards ── */}
-                    <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
                         <KpiCard
                             title="Total Hours Tracked"
                             value={totalHoursTrackedStr}
-                            subtitle={`daripada ${filteredLogs.length} sesi masa`}
+                            subtitle={`daripada ${filteredLogs.length} sesi`}
                             icon={Hourglass}
                             color="bg-indigo-600"
                             bg="bg-indigo-50"
                         />
                         <KpiCard
-                            title="Top Customer (by Hours)"
+                            title="Total Est. Hours"
+                            value={totalEstimatedHours.toFixed(1) + ' hrs'}
+                            subtitle="anggaran keseluruhan"
+                            icon={Clock}
+                            color="bg-sky-600"
+                            bg="bg-sky-50"
+                        />
+                        <KpiCard
+                            title="Estimation Accuracy"
+                            value={estimationAccuracyStr}
+                            subtitle="menempati anggaran"
+                            icon={TrendingUp}
+                            color="bg-rose-500"
+                            bg="bg-rose-50"
+                        />
+                        <KpiCard
+                            title="Top Customer (Hours)"
                             value={topClientName}
-                            subtitle="klien menggunakan masa tertinggi"
+                            subtitle="penggunaan masa tertinggi"
                             icon={Users}
                             color="bg-emerald-600"
                             bg="bg-emerald-50"
                         />
                         <KpiCard
-                            title="Top PIC (by Hours)"
+                            title="Top PIC (Hours)"
                             value={topPicName}
-                            subtitle="pekerja paling banyak log jam"
+                            subtitle="paling banyak log jam"
                             icon={BarChart2}
                             color="bg-violet-600"
                             bg="bg-violet-50"
@@ -1615,6 +1762,96 @@ export default function AnalyticsPage() {
                             )}
                         </Card>
                     </div>
+
+                    {/* ── Estimated vs Actual Comparison ── */}
+                    <Card
+                        className="rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.03)] border border-slate-100 mt-2"
+                        variant="borderless"
+                        title={
+                            <div className="flex items-center gap-2 py-2">
+                                <Clock className="w-5 h-5 text-indigo-600" />
+                                <span className="font-extrabold text-slate-800 text-lg">Anggaran vs Masa Sebenar (Estimated vs Actual)</span>
+                                <span className="text-xs font-normal text-slate-400 bg-slate-50 border border-slate-100 px-3 py-1 rounded-full ml-2">
+                                    {estimatedVsActualData.length} Tugasan
+                                </span>
+                            </div>
+                        }
+                    >
+                        <Table
+                            dataSource={estimatedVsActualData}
+                            rowKey="key"
+                            pagination={{ pageSize: 10 }}
+                            columns={[
+                                {
+                                    title: 'Nama Tugasan (Task Title)',
+                                    dataIndex: 'title',
+                                    key: 'title',
+                                    render: (text: string) => <span className="font-bold text-slate-700 text-sm">{text}</span>
+                                },
+                                {
+                                    title: 'Pelanggan',
+                                    dataIndex: 'customer_name',
+                                    key: 'customer_name',
+                                    render: (text: string) => <span className="text-slate-500 text-xs">{text}</span>
+                                },
+                                {
+                                    title: 'PIC / Assignee',
+                                    key: 'assignee',
+                                    render: (_: any, record: any) => (
+                                        <div className="flex items-center gap-2">
+                                            <img
+                                                src={record.assignee_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(record.assignee_name)}&background=6366f1&color=fff`}
+                                                className="w-5 h-5 rounded-full"
+                                                alt=""
+                                            />
+                                            <span className="text-xs font-semibold text-slate-700">{record.assignee_name}</span>
+                                        </div>
+                                    )
+                                },
+                                {
+                                    title: 'Estimated Hours',
+                                    dataIndex: 'estimatedHours',
+                                    key: 'estimatedHours',
+                                    render: (val: number | null) => val !== null ? <span className="font-semibold text-slate-700">{val.toFixed(1)} hrs</span> : <span className="text-slate-400 italic">—</span>
+                                },
+                                {
+                                    title: 'Actual Hours',
+                                    dataIndex: 'actualHours',
+                                    key: 'actualHours',
+                                    render: (val: number) => <span className="font-semibold text-slate-700">{val.toFixed(2)} hrs</span>
+                                },
+                                {
+                                    title: 'Variance',
+                                    dataIndex: 'variance',
+                                    key: 'variance',
+                                    render: (val: number | null) => {
+                                        if (val === null) return <span className="text-slate-400 italic">—</span>;
+                                        const isPositive = val >= 0;
+                                        const colorClass = isPositive ? 'text-emerald-600 bg-emerald-50 border-emerald-100' : 'text-rose-600 bg-rose-50 border-rose-100';
+                                        const prefix = isPositive ? '+' : '';
+                                        return (
+                                            <span className={`font-bold font-mono text-xs border px-2 py-0.5 rounded-md ${colorClass}`}>
+                                                {prefix}{val.toFixed(2)} hrs
+                                            </span>
+                                        );
+                                    }
+                                },
+                                {
+                                    title: 'Status',
+                                    dataIndex: 'status',
+                                    key: 'status',
+                                    render: (status: string) => {
+                                        if (status === 'Exceeded') {
+                                            return <Tag color="error" className="rounded-full font-bold">⚠️ Exceeded</Tag>;
+                                        } else if (status === 'Within Estimate') {
+                                            return <Tag color="success" className="rounded-full font-bold">✓ On Track</Tag>;
+                                        }
+                                        return <Tag color="default" className="rounded-full font-semibold">No Estimate</Tag>;
+                                    }
+                                }
+                            ]}
+                        />
+                    </Card>
 
                     {/* ── Longest Tasks Analysis ── */}
                     <Card

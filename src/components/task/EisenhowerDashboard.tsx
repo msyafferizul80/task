@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { Card, Button, Input, Modal, Form, Select, DatePicker, message, Spin, Typography, Tabs } from 'antd';
+import { Card, Button, Input, Modal, Form, Select, DatePicker, message, Spin, Typography, Tabs, InputNumber } from 'antd';
 import { PlusOutlined, DeleteOutlined, ExclamationCircleFilled } from '@ant-design/icons';
 import { createClient } from '@/utils/supabase/client';
 import { Task, PriorityType } from '@/lib/types';
@@ -103,7 +103,7 @@ export default function EisenhowerDashboard() {
         try {
             message.loading({ content: 'Creating Task & Analyzing via AI...', key: 'createTask' });
             
-            const { title, description, priority_type, start_date, due_date, customer_name, assignee_id, department } = values;
+            const { title, description, priority_type, start_date, due_date, customer_name, assignee_id, department, estimated_hours } = values;
             let finalTitle = title;
             let aiChecklist: string[] = [];
 
@@ -139,6 +139,7 @@ export default function EisenhowerDashboard() {
                 assignee_id,
                 start_date: start_date?.toISOString(),
                 due_date: due_date?.toISOString(),
+                estimated_hours: estimated_hours || null,
                 status: 'IN_PROGRESS',
                 created_by: currentUserId,
                 is_internal: customer_name === 'SYAZNA WORLD (INTERNAL)',
@@ -285,6 +286,7 @@ export default function EisenhowerDashboard() {
                 status: values.status,
                 is_internal: values.customer_name === 'SYAZNA WORLD (INTERNAL)',
                 department: values.department || 'Outsourcing',
+                estimated_hours: values.estimated_hours || null,
             }).eq('id', selectedTask.id);
 
             if (error) throw error;
@@ -624,13 +626,17 @@ export default function EisenhowerDashboard() {
                         <Input.TextArea rows={4} placeholder="Detailed task requirements..." className="resize-none" />
                     </Form.Item>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         <Form.Item name="start_date" label="Start Date">
                             <DatePicker className="w-full" size="large" showTime disabledDate={(current) => current && current < dayjs().startOf('day')} />
                         </Form.Item>
 
                         <Form.Item name="due_date" label="Due Date" rules={[{ required: true, message: 'Please select a due date' }]}>
                             <DatePicker className="w-full" size="large" showTime disabledDate={(current) => current && current < dayjs().startOf('day')} />   
+                        </Form.Item>
+
+                        <Form.Item name="estimated_hours" label="Est. Hours">
+                            <InputNumber className="w-full" size="large" min={0} step={0.5} placeholder="e.g. 4.5" />
                         </Form.Item>
                     </div>
 
@@ -755,12 +761,15 @@ export default function EisenhowerDashboard() {
                                             </div>
                                         )}
 
-                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
                                              <Form.Item name="start_date" label="Start Date">
                                                  <DatePicker className="w-full" size="large" showTime disabled={role !== 'admin' && role !== 'manager'} />
                                              </Form.Item>
                                              <Form.Item name="due_date" label="Due Date" rules={[{ required: true, message: 'Due date is required' }]}>
                                                  <DatePicker className="w-full" size="large" showTime disabled={role !== 'admin' && role !== 'manager'} />
+                                             </Form.Item>
+                                             <Form.Item name="estimated_hours" label="Est. Hours">
+                                                 <InputNumber className="w-full" size="large" min={0} step={0.5} placeholder="e.g. 4.5" disabled={role !== 'admin' && role !== 'manager'} />
                                              </Form.Item>
                                          </div>
 
