@@ -108,7 +108,7 @@ function LiveTaskTimer({
 }
 
 export default function TaskListingPage() {
-    const { activeLog, startTimer, stopTimer } = useTimer();
+    const { activeLog, startTimer, stopTimer, handleStatusChange } = useTimer();
     const [tasks, setTasks] = useState<Task[]>([]);
     const [customers, setCustomers] = useState<any[]>([]);
     const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -201,30 +201,7 @@ export default function TaskListingPage() {
             let totalTimeMessage = '';
             if (status === 'DONE') {
                 try {
-                    // 1. Check if there is an active timer for this task and current user
-                    const { data: activeLog } = await supabase
-                        .from('tsk_time_logs')
-                        .select('*')
-                        .eq('task_id', selectedTask.id)
-                        .eq('user_id', currentUserId)
-                        .eq('status', 'RUNNING')
-                        .maybeSingle();
-
-                    if (activeLog) {
-                        const stopTime = new Date();
-                        const duration = Math.max(0, Math.round((stopTime.getTime() - new Date(activeLog.start_time).getTime()) / 1000));
-                        
-                        await supabase
-                            .from('tsk_time_logs')
-                            .update({
-                                end_time: stopTime.toISOString(),
-                                duration,
-                                status: 'COMPLETED'
-                            })
-                            .eq('id', activeLog.id);
-                    }
-
-                    // 2. Fetch all completed logs for this task to calculate total time spent
+                    // Fetch all completed logs for this task to calculate total time spent
                     const { data: logs } = await supabase
                         .from('tsk_time_logs')
                         .select('duration')
@@ -245,7 +222,7 @@ export default function TaskListingPage() {
                         totalTimeMessage = parts.join(', ');
                     }
                 } catch (timerErr) {
-                    console.error('Error handling timer auto-stop:', timerErr);
+                    console.error('Error handling timer stats:', timerErr);
                 }
             }
 
@@ -325,6 +302,12 @@ export default function TaskListingPage() {
     const handleUpdateTask = async (values: any) => {
         if (!selectedTask) return;
         
+        // Check if status is changing
+        if (values.status === selectedTask.status) {
+            await doUpdateTask(values);
+            return;
+        }
+
         // Check if status is changing to REVIEW
         if (values.status === 'REVIEW' && selectedTask.status !== 'REVIEW') {
             setPendingUpdateValues(values);
@@ -332,8 +315,10 @@ export default function TaskListingPage() {
             return;
         }
 
-        // Otherwise, proceed with normal update
-        await doUpdateTask(values);
+        // Intercept status transition with handleStatusChange
+        await handleStatusChange(selectedTask.id, values.status, async () => {
+            await doUpdateTask(values);
+        });
     };
 
     const handleDeleteTask = () => {

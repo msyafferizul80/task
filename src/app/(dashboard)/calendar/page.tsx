@@ -9,12 +9,14 @@ import { useRole } from '@/components/layout/RoleProvider';
 import EscalateModal from '@/components/task/EscalateModal';
 import TaskStatusHistory from '@/components/task/TaskStatusHistory';
 import TaskComments from '@/components/task/TaskComments';
+import { useTimer } from '@/components/task/TimerProvider';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
 
 export default function CalendarTimelinePage() {
+    const { handleStatusChange } = useTimer();
     const [tasks, setTasks] = useState<Task[]>([]);
     const [profiles, setProfiles] = useState<Profile[]>([]);
     const [customers, setCustomers] = useState<any[]>([]);
@@ -123,27 +125,6 @@ export default function CalendarTimelinePage() {
             let totalTimeMessage = '';
             if (status === 'DONE') {
                 try {
-                    const { data: activeLog } = await supabase
-                        .from('tsk_time_logs')
-                        .select('*')
-                        .eq('task_id', selectedTask.id)
-                        .eq('user_id', currentUserId)
-                        .eq('status', 'RUNNING')
-                        .maybeSingle();
-
-                    if (activeLog) {
-                        const stopTime = new Date();
-                        const duration = Math.max(0, Math.round((stopTime.getTime() - new Date(activeLog.start_time).getTime()) / 1000));
-                        await supabase
-                            .from('tsk_time_logs')
-                            .update({
-                                end_time: stopTime.toISOString(),
-                                duration,
-                                status: 'COMPLETED'
-                            })
-                            .eq('id', activeLog.id);
-                    }
-
                     const { data: logs } = await supabase
                         .from('tsk_time_logs')
                         .select('duration')
@@ -208,12 +189,23 @@ export default function CalendarTimelinePage() {
 
     const handleUpdateTask = async (values: any) => {
         if (!selectedTask) return;
+        
+        // Check if status is changing
+        if (values.status === selectedTask.status) {
+            await doUpdateTask(values);
+            return;
+        }
+
         if (values.status === 'REVIEW' && selectedTask.status !== 'REVIEW') {
             setPendingUpdateValues(values);
             setIsEscalateModalOpen(true);
             return;
         }
-        await doUpdateTask(values);
+
+        // Intercept status transition with handleStatusChange
+        await handleStatusChange(selectedTask.id, values.status, async () => {
+            await doUpdateTask(values);
+        });
     };
 
     const handleDeleteTask = () => {

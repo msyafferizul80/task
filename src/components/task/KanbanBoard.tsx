@@ -8,6 +8,7 @@ import { Profile, Task, TaskStatus } from '@/lib/types';
 import KanbanColumn from './KanbanColumn';
 import { message } from 'antd';
 import EscalateModal from './EscalateModal';
+import { useTimer } from '@/components/task/TimerProvider';
 
 const ACTIVE_STATUSES: TaskStatus[] = ['BACKLOG', 'CLIENT_HOLD', 'IN_PROGRESS', 'REVIEW'];
 
@@ -22,6 +23,7 @@ const DONE_HIDDEN_KEY = 'kanban_done_hidden';
 
 export default function KanbanBoard({ tasks, role, profiles, currentUserId }: KanbanBoardProps) {
     const supabase = createClient();
+    const { handleStatusChange } = useTimer();
     const isAdminOrManager = role === 'admin' || role === 'manager';
     const [isDragging, setIsDragging] = useState(false);
     const [isExpanded, setIsExpanded] = useState(false);
@@ -148,123 +150,102 @@ export default function KanbanBoard({ tasks, role, profiles, currentUserId }: Ka
             return;
         }
 
-        // Check if status is set to DONE
-        let totalTimeMessage = '';
-        if (newStatus === 'DONE') {
-            try {
-                // 1. Check if there is an active timer for this task and current user
-                const { data: activeLog } = await supabase
-                    .from('tsk_time_logs')
-                    .select('*')
-                    .eq('task_id', taskId)
-                    .eq('user_id', currentUserId)
-                    .eq('status', 'RUNNING')
-                    .maybeSingle();
-
-                if (activeLog) {
-                    const stopTime = new Date();
-                    const duration = Math.max(0, Math.round((stopTime.getTime() - new Date(activeLog.start_time).getTime()) / 1000));
-                    
-                    await supabase
+        await handleStatusChange(taskId, newStatus, async () => {
+            // Check if status is set to DONE
+            let totalTimeMessage = '';
+            if (newStatus === 'DONE') {
+                try {
+                    // Fetch all completed logs for this task to calculate total time spent
+                    const { data: logs } = await supabase
                         .from('tsk_time_logs')
-                        .update({
-                            end_time: stopTime.toISOString(),
-                            duration,
-                            status: 'COMPLETED'
-                        })
-                        .eq('id', activeLog.id);
-                }
+                        .select('duration')
+                        .eq('task_id', taskId)
+                        .eq('status', 'COMPLETED');
 
-                // 2. Fetch all completed logs for this task to calculate total time spent
-                const { data: logs } = await supabase
-                    .from('tsk_time_logs')
-                    .select('duration')
-                    .eq('task_id', taskId)
-                    .eq('status', 'COMPLETED');
-
-                const totalSeconds = (logs || []).reduce((acc: number, log: any) => acc + (log.duration || 0), 0);
-                
-                if (totalSeconds > 0) {
-                    const hrs = Math.floor(totalSeconds / 3600);
-                    const mins = Math.floor((totalSeconds % 3600) / 60);
-                    const secs = totalSeconds % 60;
+                    const totalSeconds = (logs || []).reduce((acc: number, log: any) => acc + (log.duration || 0), 0);
                     
-                    const parts = [];
-                    if (hrs > 0) parts.push(`${hrs} ${hrs === 1 ? 'Hour' : 'Hours'}`);
-                    if (mins > 0) parts.push(`${mins} ${mins === 1 ? 'Minute' : 'Minutes'}`);
-                    if (secs > 0 || parts.length === 0) parts.push(`${secs} ${secs === 1 ? 'Second' : 'Seconds'}`);
-                    totalTimeMessage = parts.join(', ');
+                    if (totalSeconds > 0) {
+                        const hrs = Math.floor(totalSeconds / 3600);
+                        const mins = Math.floor((totalSeconds % 3600) / 60);
+                        const secs = totalSeconds % 60;
+                        
+                        const parts = [];
+                        if (hrs > 0) parts.push(`${hrs} ${hrs === 1 ? 'Hour' : 'Hours'}`);
+                        if (mins > 0) parts.push(`${mins} ${mins === 1 ? 'Minute' : 'Minutes'}`);
+                        if (secs > 0 || parts.length === 0) parts.push(`${secs} ${secs === 1 ? 'Second' : 'Seconds'}`);
+                        totalTimeMessage = parts.join(', ');
+                    }
+                } catch (timerErr) {
+                    console.error('Error handling timer stats:', timerErr);
                 }
-            } catch (timerErr) {
-                console.error('Error handling timer auto-stop:', timerErr);
             }
-        }
 
-        // Optimistic update
-        setBoardTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus, is_escalated: (t.is_escalated && newStatus !== 'BACKLOG' ? false : t.is_escalated) } : t));
+            // Optimistic update
+            setBoardTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus, is_escalated: (t.is_escalated && newStatus !== 'BACKLOG' ? false : t.is_escalated) } : t));
 
-        const updateData: any = { status: newStatus, updated_at: new Date().toISOString() };
-        if (activeTask.is_escalated && newStatus !== 'BACKLOG') {
-            updateData.is_escalated = false;
-        }
+            const updateData: any = { status: newStatus, updated_at: new Date().toISOString() };
+            if (activeTask.is_escalated && newStatus !== 'BACKLOG') {
+                updateData.is_escalated = false;
+            }
 
-        // 1. Fetch last history record for this task to calculate duration
-        const { data: lastHistory } = await supabase
-            .from('tsk_task_history')
-            .select('*')
-            .eq('task_id', taskId)
-            .order('created_at', { ascending: false })
-            .limit(1);
-
-        const now = new Date();
-        let statusBeforeEnteredAt = null;
-        let durationSeconds = null;
-        let durationMinutes = null;
-        let durationHours = null;
-
-        if (lastHistory && lastHistory.length > 0) {
-            statusBeforeEnteredAt = lastHistory[0].created_at;
-            const enteredAtDate = new Date(statusBeforeEnteredAt);
-            const diffMs = Math.max(0, now.getTime() - enteredAtDate.getTime());
-            durationSeconds = Math.floor(diffMs / 1000);
-            durationMinutes = durationSeconds / 60;
-            durationHours = durationMinutes / 60;
-        }
-
-        // Insert task history only if status actually changed AND not REVIEW (REVIEW is handled in EscalateModal)
-        if (activeTask.status !== newStatus && (newStatus as any) !== 'REVIEW') {
-            const { error: historyError } = await supabase
+            // 1. Fetch last history record for this task to calculate duration
+            const { data: lastHistory } = await supabase
                 .from('tsk_task_history')
-                .insert({
-                    task_id: taskId,
-                    status_before: activeTask.status,
-                    new_status: newStatus,
-                    changed_by: currentUserId,
-                    status_before_entered_at: statusBeforeEnteredAt,
-                    duration_seconds: durationSeconds,
-                    duration_minutes: durationMinutes,
-                    duration_hours: durationHours
-                });
+                .select('*')
+                .eq('task_id', taskId)
+                .order('created_at', { ascending: false })
+                .limit(1);
 
-            if (historyError) {
-                console.error('Error inserting task history:', historyError);
+            const now = new Date();
+            let statusBeforeEnteredAt = null;
+            let durationSeconds = null;
+            let durationMinutes = null;
+            let durationHours = null;
+
+            if (lastHistory && lastHistory.length > 0) {
+                statusBeforeEnteredAt = lastHistory[0].created_at;
+                const enteredAtDate = new Date(statusBeforeEnteredAt);
+                const diffMs = Math.max(0, now.getTime() - enteredAtDate.getTime());
+                durationSeconds = Math.floor(diffMs / 1000);
+                durationMinutes = durationSeconds / 60;
+                durationHours = durationMinutes / 60;
             }
-        }
 
-        // Persist to Supabase
-        const { error } = await supabase
-            .from('tsk_tasks')
-            .update(updateData)
-            .eq('id', taskId);
+            // Insert task history only if status actually changed AND not REVIEW (REVIEW is handled in EscalateModal)
+            if (activeTask.status !== newStatus && (newStatus as any) !== 'REVIEW') {
+                const { error: historyError } = await supabase
+                    .from('tsk_task_history')
+                    .insert({
+                        task_id: taskId,
+                        status_before: activeTask.status,
+                        new_status: newStatus,
+                        changed_by: currentUserId,
+                        status_before_entered_at: statusBeforeEnteredAt,
+                        duration_seconds: durationSeconds,
+                        duration_minutes: durationMinutes,
+                        duration_hours: durationHours
+                    });
 
-        if (error) {
-            message.error(error.message || 'Failed to move task');
-            setBoardTasks(tasks);
-        } else {
-            if (newStatus === 'DONE' && totalTimeMessage) {
-                message.success(`Task updated to Done! Total time spent: ${totalTimeMessage}`, 8);
+                if (historyError) {
+                    console.error('Error inserting task history:', historyError);
+                }
             }
-        }
+
+            // Persist to Supabase
+            const { error } = await supabase
+                .from('tsk_tasks')
+                .update(updateData)
+                .eq('id', taskId);
+
+            if (error) {
+                message.error(error.message || 'Failed to move task');
+                setBoardTasks(tasks);
+            } else {
+                if (newStatus === 'DONE' && totalTimeMessage) {
+                    message.success(`Task updated to Done! Total time spent: ${totalTimeMessage}`, 8);
+                }
+            }
+        });
     };
 
     const totalDone = boardTasks.filter(t => t.status === 'DONE').length;

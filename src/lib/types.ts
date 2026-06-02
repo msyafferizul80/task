@@ -75,6 +75,8 @@ export interface TimeLog {
     duration: number | null;
     status: 'RUNNING' | 'COMPLETED';
     created_at: string;
+    is_manual?: boolean;
+    note?: string | null;
 }
 
 export interface TaskAttachment {
