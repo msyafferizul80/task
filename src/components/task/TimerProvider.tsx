@@ -49,6 +49,7 @@ export default function TimerProvider({ children }: { children: React.ReactNode 
     const [showManualLogModal, setShowManualLogModal] = useState(false);
     const [manualDuration, setManualDuration] = useState<number | null>(1.0);
     const [manualReason, setManualReason] = useState<string>('');
+    const [manualReasonError, setManualReasonError] = useState(false);
     const [pendingTaskId, setPendingTaskId] = useState<string | null>(null);
     const [pendingOnProceed, setPendingOnProceed] = useState<(() => Promise<void>) | null>(null);
     const [isSubmittingManualLog, setIsSubmittingManualLog] = useState(false);
@@ -261,9 +262,11 @@ export default function TimerProvider({ children }: { children: React.ReactNode 
             return;
         }
         if (!manualReason || manualReason.trim().length < 5) {
+            setManualReasonError(true);
             message.error('Sila isi sebab dengan sekurang-kurangnya 5 aksara.');
             return;
         }
+        setManualReasonError(false);
 
         setIsSubmittingManualLog(true);
 
@@ -355,6 +358,7 @@ export default function TimerProvider({ children }: { children: React.ReactNode 
                     setPendingOnProceed(() => onProceed);
                     setManualDuration(1.0);
                     setManualReason('');
+                    setManualReasonError(false);
                     setShowManualLogModal(true);
                 }
             } else {
@@ -469,6 +473,7 @@ export default function TimerProvider({ children }: { children: React.ReactNode 
                             setShowManualLogModal(false);
                             setPendingTaskId(null);
                             setPendingOnProceed(null);
+                            setManualReasonError(false);
                         }}
                         disabled={isSubmittingManualLog}
                         className="rounded-lg font-medium"
@@ -515,16 +520,25 @@ export default function TimerProvider({ children }: { children: React.ReactNode 
                     </div>
 
                     <div className="flex flex-col gap-1">
-                        <Text strong className="text-xs text-slate-500 uppercase tracking-wider mb-1">Sebab Merekod Secara Manual</Text>
+                        <Text strong className="text-xs text-slate-500 uppercase tracking-wider mb-1">
+                            Sebab Merekod Secara Manual <span className="text-red-500">*</span>
+                        </Text>
                         <Input.TextArea
                             rows={3}
                             value={manualReason}
-                            onChange={(e) => setManualReason(e.target.value)}
+                            onChange={(e) => {
+                                setManualReason(e.target.value);
+                                if (e.target.value.trim().length >= 5) {
+                                    setManualReasonError(false);
+                                }
+                            }}
                             className="rounded-lg"
+                            status={manualReasonError ? 'error' : ''}
                             placeholder="Sila nyatakan sebab log manual (contoh: Lupa mulakan timer, tugasan luar site, tugasan lama sebelum sistem timer diperkenalkan)"
-                            minLength={5}
                         />
-                        <Text type="secondary" className="text-[11px]">Minimum 5 aksara diperlukan.</Text>
+                        <Text type={manualReasonError ? "danger" : "secondary"} className="text-[11px]">
+                            {manualReasonError ? "Wajib diisi dengan sekurang-kurangnya 5 aksara." : "Minimum 5 aksara diperlukan."}
+                        </Text>
                     </div>
                 </div>
             </Modal>
