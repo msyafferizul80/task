@@ -77,6 +77,11 @@ export interface TimeLog {
     created_at: string;
     is_manual?: boolean;
     note?: string | null;
+    task?: {
+        id: string;
+        title: string;
+        customer_name: string | null;
+    };
 }
 
 export interface TaskAttachment {

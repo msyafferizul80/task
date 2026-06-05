@@ -3,6 +3,7 @@ import RoleProvider from "@/components/layout/RoleProvider";
 import TimerProvider from "@/components/task/TimerProvider";
 import BottleneckAlertBanner from "@/components/layout/BottleneckAlertBanner";
 import ClientHoldAlertBanner from "@/components/layout/ClientHoldAlertBanner";
+import ActiveTimersBar from "@/components/layout/ActiveTimersBar";
 
 export default function DashboardLayout({
     children,
@@ -17,6 +18,7 @@ export default function DashboardLayout({
                     <div className="flex-1 flex flex-col overflow-hidden print:h-auto print:overflow-visible">
                         <BottleneckAlertBanner />
                         <ClientHoldAlertBanner />
+                        <ActiveTimersBar />
                         <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 pb-20 md:p-8 md:pb-8 print:h-auto print:p-0 print:overflow-visible print:bg-white">
                             {children}
                         </main>

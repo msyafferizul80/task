@@ -20,29 +20,30 @@ const { RangePicker } = DatePicker;
 function LiveTaskTimer({ 
     taskId, 
     taskStatus,
-    activeLog, 
+    activeLogs, 
     startTimer, 
     stopTimer, 
     accumulatedDuration 
 }: { 
     taskId: string; 
     taskStatus: string;
-    activeLog: any; 
+    activeLogs: any[]; 
     startTimer: (id: string) => Promise<void>; 
     stopTimer: (id: string) => Promise<void>; 
     accumulatedDuration: number;
 }) {
-    const isCurrentActive = activeLog && activeLog.task_id === taskId;
+    const activeLogForTask = activeLogs.find((log: any) => log.task_id === taskId);
+    const isCurrentActive = !!activeLogForTask;
     const [elapsed, setElapsed] = useState(0);
 
     useEffect(() => {
-        if (!isCurrentActive) {
+        if (!isCurrentActive || !activeLogForTask) {
             setElapsed(0);
             return;
         }
 
         const calculateElapsed = () => {
-            const start = new Date(activeLog.start_time).getTime();
+            const start = new Date(activeLogForTask.start_time).getTime();
             const now = new Date().getTime();
             return Math.max(0, Math.round((now - start) / 1000));
         };
@@ -54,7 +55,7 @@ function LiveTaskTimer({
         }, 1000);
 
         return () => clearInterval(interval);
-    }, [isCurrentActive, activeLog]);
+    }, [isCurrentActive, activeLogForTask]);
 
     const formatTime = (totalSeconds: number) => {
         const hrs = Math.floor(totalSeconds / 3600);
@@ -108,7 +109,7 @@ function LiveTaskTimer({
 }
 
 export default function TaskListingPage() {
-    const { activeLog, startTimer, stopTimer, handleStatusChange } = useTimer();
+    const { activeLogs, startTimer, stopTimer, handleStatusChange } = useTimer();
     const [tasks, setTasks] = useState<Task[]>([]);
     const [customers, setCustomers] = useState<any[]>([]);
     const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -512,7 +513,7 @@ export default function TaskListingPage() {
                 <LiveTaskTimer
                     taskId={record.id}
                     taskStatus={record.status}
-                    activeLog={activeLog}
+                    activeLogs={activeLogs}
                     startTimer={startTimer}
                     stopTimer={stopTimer}
                     accumulatedDuration={Number(record.total_logged_time || 0)}
@@ -724,7 +725,7 @@ export default function TaskListingPage() {
                                 <LiveTaskTimer
                                     taskId={task.id}
                                     taskStatus={task.status}
-                                    activeLog={activeLog}
+                                    activeLogs={activeLogs}
                                     startTimer={startTimer}
                                     stopTimer={stopTimer}
                                     accumulatedDuration={Number(task.total_logged_time || 0)}

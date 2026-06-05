@@ -22,19 +22,20 @@ export default function TaskStatusHistory({ taskId, currentStatus, taskCreatedAt
     const supabase = createClient();
 
     // Timer context integration
-    const { activeLog, startTimer, stopTimer } = useTimer();
-    const isCurrentActive = activeLog && activeLog.task_id === taskId;
+    const { activeLogs, startTimer, stopTimer } = useTimer();
+    const activeLogForTask = activeLogs.find(log => log.task_id === taskId);
+    const isCurrentActive = !!activeLogForTask;
     const [elapsed, setElapsed] = useState(0);
 
     // Live ticking elapsed time for active log
     useEffect(() => {
-        if (!isCurrentActive) {
+        if (!isCurrentActive || !activeLogForTask) {
             setElapsed(0);
             return;
         }
 
         const calculateElapsed = () => {
-            const start = new Date(activeLog.start_time).getTime();
+            const start = new Date(activeLogForTask.start_time).getTime();
             const now = new Date().getTime();
             return Math.max(0, Math.round((now - start) / 1000));
         };
@@ -46,7 +47,7 @@ export default function TaskStatusHistory({ taskId, currentStatus, taskCreatedAt
         }, 1000);
 
         return () => clearInterval(interval);
-    }, [isCurrentActive, activeLog]);
+    }, [isCurrentActive, activeLogForTask]);
 
     const formatTime = (totalSeconds: number) => {
         const hrs = Math.floor(totalSeconds / 3600);

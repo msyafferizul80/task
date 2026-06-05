@@ -12,6 +12,7 @@ const { Text, Title, Paragraph } = Typography;
 
 interface TimerContextType {
     activeLog: TimeLog | null;
+    activeLogs: TimeLog[];
     loading: boolean;
     startTimer: (taskId: string) => Promise<void>;
     stopTimer: (taskId: string, customEndTime?: Date) => Promise<void>;
@@ -21,6 +22,7 @@ interface TimerContextType {
 
 const TimerContext = createContext<TimerContextType>({
     activeLog: null,
+    activeLogs: [],
     loading: true,
     startTimer: async () => {},
     stopTimer: async () => {},
@@ -34,6 +36,7 @@ export default function TimerProvider({ children }: { children: React.ReactNode 
     const supabase = createClient();
     const { userId } = useRole();
 
+    const [activeLogs, setActiveLogs] = useState<TimeLog[]>([]);
     const [activeLog, setActiveLog] = useState<TimeLog | null>(null);
     const [loading, setLoading] = useState(true);
 
@@ -54,27 +57,29 @@ export default function TimerProvider({ children }: { children: React.ReactNode 
     const [pendingOnProceed, setPendingOnProceed] = useState<(() => Promise<void>) | null>(null);
     const [isSubmittingManualLog, setIsSubmittingManualLog] = useState(false);
 
-    // Fetch active log
+    // Fetch active logs
     const refreshTimerData = useCallback(async () => {
         if (!userId) {
+            setActiveLogs([]);
             setActiveLog(null);
             setLoading(false);
             return;
         }
 
         try {
-            // Fetch active timer for current user
+            // Fetch active timers for current user, including task details
             const { data: activeData, error: activeErr } = await supabase
                 .from('tsk_time_logs')
-                .select('*')
+                .select('*, task:tsk_tasks(id, title, customer_name)')
                 .eq('user_id', userId)
-                .eq('status', 'RUNNING')
-                .maybeSingle();
+                .eq('status', 'RUNNING');
 
             if (activeErr) throw activeErr;
-            setActiveLog(activeData as TimeLog || null);
+            const logs = activeData as TimeLog[] || [];
+            setActiveLogs(logs);
+            setActiveLog(logs[0] || null);
         } catch (err: any) {
-            console.error('Error fetching active timer:', err.message);
+            console.error('Error fetching active timers:', err.message);
         } finally {
             setLoading(false);
         }
@@ -82,22 +87,31 @@ export default function TimerProvider({ children }: { children: React.ReactNode 
 
     // Check for forgotten timers
     useEffect(() => {
-        if (activeLog && !ignoredForgottenLogIds.includes(activeLog.id)) {
-            const startTime = new Date(activeLog.start_time);
-            const now = new Date();
-            const isDifferentDay = startTime.toDateString() !== now.toDateString();
-            const isOver12Hours = (now.getTime() - startTime.getTime()) > (12 * 60 * 60 * 1000);
+        const checkForgotten = () => {
+            for (const log of activeLogs) {
+                if (!ignoredForgottenLogIds.includes(log.id)) {
+                    const startTime = new Date(log.start_time);
+                    const now = new Date();
+                    const isDifferentDay = startTime.toDateString() !== now.toDateString();
+                    const isOver12Hours = (now.getTime() - startTime.getTime()) > (12 * 60 * 60 * 1000);
 
-            if (isDifferentDay || isOver12Hours) {
-                setForgottenLog(activeLog);
-                setResolutionOption('save_standard');
-                // Set default custom stop time to start_time + 8 hours, capped at now
-                const standardEnd = dayjs(startTime).add(8, 'hour');
-                setCustomEndTime(standardEnd.isAfter(dayjs()) ? dayjs() : standardEnd);
-                setShowForgottenModal(true);
+                    if (isDifferentDay || isOver12Hours) {
+                        setForgottenLog(log);
+                        setResolutionOption('save_standard');
+                        // Set default custom stop time to start_time + 8 hours, capped at now
+                        const standardEnd = dayjs(startTime).add(8, 'hour');
+                        setCustomEndTime(standardEnd.isAfter(dayjs()) ? dayjs() : standardEnd);
+                        setShowForgottenModal(true);
+                        break; // Only handle one forgotten log at a time
+                    }
+                }
             }
+        };
+
+        if (activeLogs.length > 0) {
+            checkForgotten();
         }
-    }, [activeLog, ignoredForgottenLogIds]);
+    }, [activeLogs, ignoredForgottenLogIds]);
 
     // Subscribe to realtime database changes on tsk_time_logs
     useEffect(() => {
@@ -128,28 +142,13 @@ export default function TimerProvider({ children }: { children: React.ReactNode 
         }
 
         try {
-            // 1. If there's an active timer running, stop it first
-            if (activeLog) {
-                if (activeLog.task_id === taskId) {
-                    // Already running on this task
-                    return;
-                }
-                const nowStr = new Date().toISOString();
-                const duration = Math.max(0, Math.round((new Date(nowStr).getTime() - new Date(activeLog.start_time).getTime()) / 1000));
-                
-                const { error: stopErr } = await supabase
-                    .from('tsk_time_logs')
-                    .update({
-                        end_time: nowStr,
-                        duration,
-                        status: 'COMPLETED'
-                    })
-                    .eq('id', activeLog.id);
-
-                if (stopErr) throw stopErr;
+            // Check if timer is already running on this task
+            const existingActiveOnTask = activeLogs.find(log => log.task_id === taskId);
+            if (existingActiveOnTask) {
+                return;
             }
 
-            // 2. Start the new timer
+            // Start the new timer (leaving other running timers active)
             const { error: startErr } = await supabase
                 .from('tsk_time_logs')
                 .insert({
@@ -168,11 +167,12 @@ export default function TimerProvider({ children }: { children: React.ReactNode 
     };
 
     const stopTimer = async (taskId: string, customEndTimeVal?: Date) => {
-        if (!activeLog || activeLog.task_id !== taskId) return;
+        const targetLog = activeLogs.find(log => log.task_id === taskId);
+        if (!targetLog) return;
 
         try {
             const stopTime = customEndTimeVal || new Date();
-            const duration = Math.max(0, Math.round((stopTime.getTime() - new Date(activeLog.start_time).getTime()) / 1000));
+            const duration = Math.max(0, Math.round((stopTime.getTime() - new Date(targetLog.start_time).getTime()) / 1000));
 
             const { error } = await supabase
                 .from('tsk_time_logs')
@@ -181,7 +181,7 @@ export default function TimerProvider({ children }: { children: React.ReactNode 
                     duration,
                     status: 'COMPLETED'
                 })
-                .eq('id', activeLog.id);
+                .eq('id', targetLog.id);
 
             if (error) throw error;
             message.success('Timer stopped. Time log saved.');
@@ -326,12 +326,13 @@ export default function TimerProvider({ children }: { children: React.ReactNode 
         try {
             if (newStatus === 'IN_PROGRESS') {
                 // Auto-start timer on status changed to IN_PROGRESS
-                if (!activeLog || activeLog.task_id !== taskId) {
+                const hasActiveLogOnThisTask = activeLogs.some(log => log.task_id === taskId);
+                if (!hasActiveLogOnThisTask) {
                     await startTimer(taskId);
                 }
                 await onProceed();
             } else if (newStatus === 'DONE') {
-                const hasActiveLogOnThisTask = activeLog && activeLog.task_id === taskId;
+                const hasActiveLogOnThisTask = activeLogs.some(log => log.task_id === taskId);
 
                 // Stop the active timer if it's on this task
                 if (hasActiveLogOnThisTask) {
@@ -371,7 +372,7 @@ export default function TimerProvider({ children }: { children: React.ReactNode 
     };
 
     return (
-        <TimerContext.Provider value={{ activeLog, loading, startTimer, stopTimer, refreshTimerData, handleStatusChange }}>
+        <TimerContext.Provider value={{ activeLog, activeLogs, loading, startTimer, stopTimer, refreshTimerData, handleStatusChange }}>
             {children}
 
             {/* Forgotten Timer Modal */}
