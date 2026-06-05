@@ -44,8 +44,9 @@ function ActiveTimerRow({ log, stopTimer }: { log: any; stopTimer: (taskId: stri
                 )}
             </div>
             <div className="flex items-center gap-3">
-                <div className="flex items-center gap-1.5 font-mono text-xs font-bold text-emerald-400 bg-emerald-950/40 border border-emerald-900/50 px-2 py-0.5 rounded-md">
+                <div className="flex items-center gap-1.5 font-mono text-xs font-bold text-emerald-400 bg-emerald-950/40 border border-emerald-900/50 px-2.5 py-1 rounded-md">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping flex-shrink-0" />
+                    <span className="text-[10px] uppercase tracking-wider text-emerald-300/80 mr-0.5 font-sans">Sesi Semasa:</span>
                     {formatTime(elapsed)}
                 </div>
                 <Button 

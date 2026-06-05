@@ -70,8 +70,9 @@ function LiveTaskTimer({
 
     if (taskStatus === 'DONE') {
         return (
-            <div className="flex flex-col gap-0.5 text-xs text-slate-500 font-medium whitespace-nowrap">
-                <span>⏱️ Logged: {formatTime(accumulatedDuration)}</span>
+            <div className="flex flex-col font-mono text-xs text-slate-400 font-medium whitespace-nowrap">
+                <span className="text-[9px] uppercase tracking-wider text-slate-400 block">Jumlah</span>
+                <span className="text-slate-500 font-semibold">⏱️ {formatTime(accumulatedDuration)}</span>
             </div>
         );
     }
@@ -103,7 +104,7 @@ function LiveTaskTimer({
                 </Tooltip>
             )}
             <div className={`flex flex-col font-mono text-xs ${isCurrentActive ? 'text-indigo-600 font-bold' : 'text-slate-500 font-medium'} whitespace-nowrap`}>
-                {isCurrentActive && <span className="text-[9px] uppercase tracking-wider text-indigo-500 animate-pulse block">Timing</span>}
+                <span className={`text-[9px] uppercase tracking-wider ${isCurrentActive ? 'text-indigo-500 animate-pulse' : 'text-slate-400'} block`}>Jumlah</span>
                 <span>{formatTime(totalSecs)}</span>
             </div>
         </div>
