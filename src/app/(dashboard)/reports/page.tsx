@@ -102,16 +102,57 @@ export default function WeeklyReportPage() {
             if (dateRange[0] && dateRange[1]) {
                 const start = dateRange[0].startOf('day');
                 const end = dateRange[1].endOf('day');
+                const taskIds = tasks.map(t => t.id);
+
+                let historyLogs: any[] = [];
+                let timeLogs: any[] = [];
+
+                if (taskIds.length > 0) {
+                    const [historyRes, timeRes] = await Promise.all([
+                        supabase
+                            .from('tsk_task_history')
+                            .select('task_id, new_status, created_at')
+                            .in('task_id', taskIds)
+                            .gte('created_at', start.toISOString())
+                            .lte('created_at', end.toISOString()),
+                        supabase
+                            .from('tsk_time_logs')
+                            .select('task_id')
+                            .in('task_id', taskIds)
+                            .gte('start_time', start.toISOString())
+                            .lte('start_time', end.toISOString())
+                    ]);
+                    historyLogs = historyRes.data || [];
+                    timeLogs = timeRes.data || [];
+                }
+
+                const historyTaskIds = new Set(historyLogs.map(h => h.task_id));
+                const timeLogTaskIds = new Set(timeLogs.map(t => t.task_id));
+                const completedTaskIds = new Set(
+                    historyLogs
+                        .filter(h => h.new_status === 'DONE')
+                        .map(h => h.task_id)
+                );
+
                 tasks = tasks.filter(t => {
                     const createdDate = dayjs(t.created_at);
-                    const updatedDate = t.updated_at ? dayjs(t.updated_at) : null;
                     const dueDate = t.due_date ? dayjs(t.due_date) : null;
 
-                    const isCreatedInRange = createdDate.isAfter(start) && createdDate.isBefore(end);
-                    const isUpdatedInRange = updatedDate && updatedDate.isAfter(start) && updatedDate.isBefore(end);
-                    const isDueInRange = dueDate && dueDate.isAfter(start) && dueDate.isBefore(end);
+                    const isCreatedInRange = !createdDate.isBefore(start) && !createdDate.isAfter(end);
+                    const isDueInRange = dueDate && !dueDate.isBefore(start) && !dueDate.isAfter(end);
 
-                    return isCreatedInRange || isUpdatedInRange || isDueInRange;
+                    if (t.status === 'DONE') {
+                        // For completed tasks: include if completed in range (via history), or created in range
+                        const isCompletedInRange = completedTaskIds.has(t.id);
+                        return isCreatedInRange || isCompletedInRange;
+                    } else {
+                        // For ongoing tasks: include if created/due in range, or has history/time log activity in range,
+                        // or if it is currently actively in progress (IN_PROGRESS, REVIEW, CLIENT_HOLD)
+                        const hasActivity = historyTaskIds.has(t.id) || timeLogTaskIds.has(t.id);
+                        const isCurrentlyActive = t.status === 'IN_PROGRESS' || t.status === 'REVIEW' || t.status === 'CLIENT_HOLD';
+                        
+                        return isCreatedInRange || isDueInRange || hasActivity || isCurrentlyActive;
+                    }
                 });
             }
 
