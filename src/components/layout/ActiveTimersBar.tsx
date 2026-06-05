@@ -83,14 +83,13 @@ export default function ActiveTimersBar() {
                         Anda mempunyai <span className="font-bold text-emerald-400">{activeLogs.length}</span> timer task yang sedang berjalan.
                     </p>
                 </div>
-                <Button
-                    type="text"
+                <button
                     onClick={() => setIsExpanded(!isExpanded)}
-                    className="text-indigo-200 hover:text-white hover:bg-white/10 flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 h-8 rounded-lg"
+                    className="text-indigo-200 hover:text-white hover:bg-white/10 flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 h-8 rounded-lg transition-colors border-none bg-transparent cursor-pointer outline-none"
                 >
                     {isExpanded ? 'Tutup Senarai' : 'Lihat Senarai'}
                     {isExpanded ? <UpOutlined className="text-[10px]" /> : <DownOutlined className="text-[10px]" />}
-                </Button>
+                </button>
             </div>
 
             {isExpanded && (
