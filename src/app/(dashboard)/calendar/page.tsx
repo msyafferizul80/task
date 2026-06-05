@@ -636,6 +636,7 @@ export default function CalendarTimelinePage() {
             <Modal
                 title={<div className="font-bold text-lg mb-4 text-indigo-900 border-b pb-2">Edit Task Details</div>}
                 open={isEditModalOpen}
+                destroyOnClose
                 onCancel={() => {
                     setIsEditModalOpen(false);
                     setSelectedTask(null);
@@ -645,133 +646,142 @@ export default function CalendarTimelinePage() {
                 width={1600}
                 style={{ maxWidth: '97vw', top: 20 }}
             >
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div className="lg:border-r lg:pr-6">
-                        <Form form={editForm} layout="vertical" onFinish={handleUpdateTask}>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <Form.Item name="customer_name" label="Customer Name" className="col-span-2 sm:col-span-1" rules={[{ required: true, message: 'Customer name is required' }]}>
-                                    <Select placeholder="Select Customer" size="large" showSearch optionFilterProp="children" disabled={role !== 'admin' && role !== 'manager'}>
-                                        {customers.map(c => (
-                                            <Option key={c.id} value={c.name}>{c.name}</Option>
-                                        ))}
-                                    </Select>
-                                </Form.Item>
+                {selectedTask && (
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div className="lg:border-r lg:pr-6">
+                            <Form 
+                                key={selectedTask.id}
+                                form={editForm} 
+                                layout="vertical"
+                                initialValues={{
+                                    ...selectedTask,
+                                    description: selectedTask.description ?? '',
+                                    start_date: selectedTask.start_date ? dayjs(selectedTask.start_date) : null,
+                                    due_date: selectedTask.due_date ? dayjs(selectedTask.due_date) : null,
+                                }}
+                                onFinish={handleUpdateTask}
+                            >
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <Form.Item name="customer_name" label="Customer Name" className="col-span-2 sm:col-span-1" rules={[{ required: true, message: 'Customer name is required' }]}>
+                                        <Select placeholder="Select Customer" size="large" showSearch optionFilterProp="children" disabled={role !== 'admin' && role !== 'manager'}>
+                                            {customers.map(c => (
+                                                <Option key={c.id} value={c.name}>{c.name}</Option>
+                                            ))}
+                                        </Select>
+                                    </Form.Item>
 
-                                <Form.Item name="department" label="Jabatan (Department)" className="col-span-2 sm:col-span-1" rules={[{ required: true, message: 'Please select a department' }]}>
-                                    <Select placeholder="Select Department" size="large" disabled={role !== 'admin' && role !== 'manager'}>
-                                        <Option value="Outsourcing">Outsourcing</Option>
-                                        <Option value="IT">IT</Option>
-                                        <Option value="Sales">Sales</Option>
-                                        <Option value="Marketing">Marketing</Option>
-                                        <Option value="Recruitment">Recruitment</Option>
-                                    </Select>
-                                </Form.Item>
+                                    <Form.Item name="department" label="Jabatan (Department)" className="col-span-2 sm:col-span-1" rules={[{ required: true, message: 'Please select a department' }]}>
+                                        <Select placeholder="Select Department" size="large" disabled={role !== 'admin' && role !== 'manager'}>
+                                            <Option value="Outsourcing">Outsourcing</Option>
+                                            <Option value="IT">IT</Option>
+                                            <Option value="Sales">Sales</Option>
+                                            <Option value="Marketing">Marketing</Option>
+                                            <Option value="Recruitment">Recruitment</Option>
+                                        </Select>
+                                    </Form.Item>
 
-                                <Form.Item name="title" label="Task Title" className="col-span-2" rules={[{ required: true, message: 'Please enter a title' }]}>
-                                    <Input placeholder="Enter task title" size="large" disabled={role !== 'admin' && role !== 'manager'} />
-                                </Form.Item>
+                                    <Form.Item name="title" label="Task Title" className="col-span-2" rules={[{ required: true, message: 'Please enter a title' }]}>
+                                        <Input placeholder="Enter task title" size="large" disabled={role !== 'admin' && role !== 'manager'} />
+                                    </Form.Item>
 
-                                <Form.Item name="assignee_id" label="PIC / Assignee" rules={[{ required: true, message: 'Assignee is required' }]}>
-                                    <Select placeholder="Select Assignee" size="large" showSearch optionFilterProp="children" disabled={role !== 'admin' && role !== 'manager'}>
-                                        {profiles.map(p => (
-                                            <Option key={p.id} value={p.id}>{p.full_name}</Option>
-                                        ))}
-                                    </Select>
-                                </Form.Item>
+                                    <Form.Item name="assignee_id" label="PIC / Assignee" rules={[{ required: true, message: 'Assignee is required' }]}>
+                                        <Select placeholder="Select Assignee" size="large" showSearch optionFilterProp="children" disabled={role !== 'admin' && role !== 'manager'}>
+                                            {profiles.map(p => (
+                                                <Option key={p.id} value={p.id}>{p.full_name}</Option>
+                                            ))}
+                                        </Select>
+                                    </Form.Item>
 
-                                <Form.Item name="priority_type" label="Eisenhower Priority" rules={[{ required: true, message: 'Please select a priority' }]}>
-                                    <Select placeholder="Select Priority" size="large" disabled={role !== 'admin' && role !== 'manager'}>
-                                        <Option value="DO_FIRST"><span className="text-red-600 font-medium">🔴 DO FIRST</span></Option>
-                                        <Option value="SCHEDULE"><span className="text-blue-600 font-medium">🔵 SCHEDULE</span></Option>
-                                        <Option value="DELEGATE"><span className="text-yellow-600 font-medium">🟡 DELEGATE</span></Option>
-                                        <Option value="ELIMINATE"><span className="text-gray-500 font-medium">⚫ ELIMINATE</span></Option>
-                                    </Select>
-                                </Form.Item>
+                                    <Form.Item name="priority_type" label="Eisenhower Priority" rules={[{ required: true, message: 'Please select a priority' }]}>
+                                        <Select placeholder="Select Priority" size="large" disabled={role !== 'admin' && role !== 'manager'}>
+                                            <Option value="DO_FIRST"><span className="text-red-600 font-medium">🔴 DO FIRST</span></Option>
+                                            <Option value="SCHEDULE"><span className="text-blue-600 font-medium">🔵 SCHEDULE</span></Option>
+                                            <Option value="DELEGATE"><span className="text-yellow-600 font-medium">🟡 DELEGATE</span></Option>
+                                            <Option value="ELIMINATE"><span className="text-gray-500 font-medium">⚫ ELIMINATE</span></Option>
+                                        </Select>
+                                    </Form.Item>
 
-                                <Form.Item name="status" label="Task Status" rules={[{ required: true, message: 'Please select a status' }]}>
-                                    <Select placeholder="Select Status" size="large">
-                                        <Option value="BACKLOG">Backlog</Option>
-                                        <Option value="CLIENT_HOLD">Client Hold</Option>
-                                        <Option value="IN_PROGRESS">In Progress</Option>
-                                        <Option value="REVIEW">Review</Option>
-                                        <Option value="DONE">Done</Option>
-                                    </Select>
-                                </Form.Item>
-                            </div>
-
-                            <Form.Item name="description" label="Description">
-                                <Input.TextArea rows={4} placeholder="Detailed task requirements..." className="resize-y" disabled={role !== 'admin' && role !== 'manager'} />
-                            </Form.Item>
-                            
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
-                                <Form.Item name="start_date" label="Start Date">
-                                    <DatePicker className="w-full" size="large" showTime disabled={role !== 'admin' && role !== 'manager'} />
-                                </Form.Item>
-                                <Form.Item name="due_date" label="Due Date" rules={[{ required: true, message: 'Due date is required' }]}>
-                                    <DatePicker className="w-full" size="large" showTime disabled={role !== 'admin' && role !== 'manager'} />
-                                </Form.Item>
-                                <Form.Item name="estimated_hours" label="Est. Hours">
-                                    <InputNumber className="w-full" size="large" min={0} step={0.5} placeholder="e.g. 4.5" disabled={role !== 'admin' && role !== 'manager'} />
-                                </Form.Item>
-                            </div>
-
-                            {selectedTask?.updated_at && (
-                                <div className="mb-4 text-sm text-gray-500">
-                                    <strong>{selectedTask.status === 'DONE' ? 'Completed On:' : 'Last Updated:'}</strong> {new Date(selectedTask.updated_at).toLocaleString()}
+                                    <Form.Item name="status" label="Task Status" rules={[{ required: true, message: 'Please select a status' }]}>
+                                        <Select placeholder="Select Status" size="large">
+                                            <Option value="BACKLOG">Backlog</Option>
+                                            <Option value="CLIENT_HOLD">Client Hold</Option>
+                                            <Option value="IN_PROGRESS">In Progress</Option>
+                                            <Option value="REVIEW">Review</Option>
+                                            <Option value="DONE">Done</Option>
+                                        </Select>
+                                    </Form.Item>
                                 </div>
-                            )}
 
-                            <Form.Item className="mb-0 mt-6 pt-4 border-t">
-                                <div className="flex items-center justify-between w-full">
-                                    <div>
-                                        {((role === 'admin' || role === 'manager') || (selectedTask && (selectedTask.status !== 'DONE' || selectedTask.assignee_id === currentUserId))) && selectedTask && (
-                                            <Button danger type="text" onClick={handleDeleteTask} size="large" icon={<DeleteOutlined />}>
-                                                Delete
-                                            </Button>
-                                        )}
-                                    </div>
-                                    <div className="flex items-center gap-2" style={{ marginTop: '20px' }}>
-                                        <Button onClick={() => {
-                                            setIsEditModalOpen(false);
-                                            setSelectedTask(null);
-                                        }} className="mr-3" size="large">Cancel</Button>
-
-                                        {selectedTask && (role === 'admin' || role === 'manager' || selectedTask.assignee_id === currentUserId) && (
-                                            <Button
-                                                type="default"
-                                                size="large"
-                                                className="border-orange-500 text-orange-600 hover:bg-orange-50 bg-white mr-3"
-                                                onClick={() => setIsEscalateModalOpen(true)}
-                                            >
-                                                🚩 Escalate
-                                            </Button>
-                                        )}
-
-                                        <Button type="primary" htmlType="submit" size="large" className="bg-indigo-600 shadow-md">Update Task</Button>
-                                    </div>
+                                <Form.Item name="description" label="Description">
+                                    <Input.TextArea rows={4} placeholder="Detailed task requirements..." className="resize-y" disabled={role !== 'admin' && role !== 'manager'} />
+                                </Form.Item>
+                                
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+                                    <Form.Item name="start_date" label="Start Date">
+                                        <DatePicker className="w-full" size="large" showTime disabled={role !== 'admin' && role !== 'manager'} />
+                                    </Form.Item>
+                                    <Form.Item name="due_date" label="Due Date" rules={[{ required: true, message: 'Due date is required' }]}>
+                                        <DatePicker className="w-full" size="large" showTime disabled={role !== 'admin' && role !== 'manager'} />
+                                    </Form.Item>
+                                    <Form.Item name="estimated_hours" label="Est. Hours">
+                                        <InputNumber className="w-full" size="large" min={0} step={0.5} placeholder="e.g. 4.5" disabled={role !== 'admin' && role !== 'manager'} />
+                                    </Form.Item>
                                 </div>
-                            </Form.Item>
-                        </Form>
-                    </div>
-                    <div className="lg:pl-0">
-                        {selectedTask && (
+
+                                {selectedTask.updated_at && (
+                                    <div className="mb-4 text-sm text-gray-500">
+                                        <strong>{selectedTask.status === 'DONE' ? 'Completed On:' : 'Last Updated:'}</strong> {new Date(selectedTask.updated_at).toLocaleString()}
+                                    </div>
+                                )}
+
+                                <Form.Item className="mb-0 mt-6 pt-4 border-t">
+                                    <div className="flex items-center justify-between w-full">
+                                        <div>
+                                            {((role === 'admin' || role === 'manager') || (selectedTask.status !== 'DONE' || selectedTask.assignee_id === currentUserId)) && (
+                                                <Button danger type="text" onClick={handleDeleteTask} size="large" icon={<DeleteOutlined />}>
+                                                    Delete
+                                                </Button>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center gap-2" style={{ marginTop: '20px' }}>
+                                            <Button onClick={() => {
+                                                setIsEditModalOpen(false);
+                                                setSelectedTask(null);
+                                            }} className="mr-3" size="large">Cancel</Button>
+
+                                            {(role === 'admin' || role === 'manager' || selectedTask.assignee_id === currentUserId) && (
+                                                <Button
+                                                    type="default"
+                                                    size="large"
+                                                    className="border-orange-500 text-orange-600 hover:bg-orange-50 bg-white mr-3"
+                                                    onClick={() => setIsEscalateModalOpen(true)}
+                                                >
+                                                    🚩 Escalate
+                                                </Button>
+                                            )}
+
+                                            <Button type="primary" htmlType="submit" size="large" className="bg-indigo-600 shadow-md">Update Task</Button>
+                                        </div>
+                                    </div>
+                                </Form.Item>
+                            </Form>
+                        </div>
+                        <div className="lg:pl-0">
                             <TaskStatusHistory 
                                 taskId={selectedTask.id} 
                                 currentStatus={selectedTask.status}
                                 taskCreatedAt={selectedTask.created_at}
                             />
-                        )}
-                    </div>
-                    <div className="lg:border-l lg:pl-6 relative">
-                        {selectedTask && (
+                        </div>
+                        <div className="lg:border-l lg:pl-6 relative">
                             <TaskComments
                                 taskId={selectedTask.id}
                                 currentUserId={currentUserId ?? ''}
                                 role={role}
                             />
-                        )}
+                        </div>
                     </div>
-                </div>
+                )}
             </Modal>
 
             {selectedTask && (
