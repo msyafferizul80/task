@@ -281,52 +281,52 @@ export default function EscalateModal({ isOpen, onClose, task, profiles, current
                 </div>
             )}
 
-            {(nextStatus !== 'REVIEW' || escalateEnabled) && (
-                <Form layout="vertical" form={form} onFinish={handleEscalate}>
-                    <Form.Item 
-                        name="to_user_id" 
-                        label="New PIC / Assignee" 
-                        rules={[{ required: true, message: 'Please select a new PIC' }]}
-                    >
-                        <Select placeholder="Select next person in charge" size="large" showSearch optionFilterProp="children">
-                            {profiles.filter(p => p.id !== currentUserId).map(p => (
-                                <Option key={p.id} value={p.id}>{p.full_name}</Option>
-                            ))}
-                        </Select>
-                    </Form.Item>
+            <Form layout="vertical" form={form} onFinish={escalateEnabled ? handleEscalate : handleDoNothing}>
+                {escalateEnabled ? (
+                    <>
+                        <Form.Item 
+                            name="to_user_id" 
+                            label="New PIC / Assignee" 
+                            rules={[{ required: true, message: 'Please select a new PIC' }]}
+                        >
+                            <Select placeholder="Select next person in charge" size="large" showSearch optionFilterProp="children">
+                                {profiles.filter(p => p.id !== currentUserId).map(p => (
+                                    <Option key={p.id} value={p.id}>{p.full_name}</Option>
+                                ))}
+                            </Select>
+                        </Form.Item>
 
-                    <Form.Item 
-                        name="reason" 
-                        label={
-                            <div className="flex items-center justify-between w-full">
-                                <span>Reason for Escalation</span>
-                                <Button type="text" size="small" onClick={handleAutoDraft} loading={generatingAI} className="text-indigo-600 font-medium bg-indigo-50 hover:bg-indigo-100 rounded-md py-0 px-2" style={{ marginLeft: 'auto' }}>
-                                    ✨ AI Auto Draft
-                                </Button>
-                            </div>
-                        }
-                        rules={[{ required: true, message: 'Please provide a reason' }]}
-                    >
-                        <TextArea rows={4} placeholder="Contoh: Calculation siap, perlu review oleh manager..." />
-                    </Form.Item>
+                        <Form.Item 
+                            name="reason" 
+                            label={
+                                <div className="flex items-center justify-between w-full">
+                                    <span>Reason for Escalation</span>
+                                    <Button type="text" size="small" onClick={handleAutoDraft} loading={generatingAI} className="text-indigo-600 font-medium bg-indigo-50 hover:bg-indigo-100 rounded-md py-0 px-2" style={{ marginLeft: 'auto' }}>
+                                        ✨ AI Auto Draft
+                                    </Button>
+                                </div>
+                            }
+                            rules={[{ required: true, message: 'Please provide a reason' }]}
+                        >
+                            <TextArea rows={4} placeholder="Contoh: Calculation siap, perlu review oleh manager..." />
+                        </Form.Item>
 
+                        <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
+                            <Button onClick={onClose} disabled={loading} size="large">Cancel</Button>
+                            <Button type="primary" htmlType="submit" loading={loading} className="bg-orange-500 hover:bg-orange-600 border-none shadow-md" size="large">
+                                Confirm Escalate
+                            </Button>
+                        </div>
+                    </>
+                ) : (
                     <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
                         <Button onClick={onClose} disabled={loading} size="large">Cancel</Button>
-                        <Button type="primary" htmlType="submit" loading={loading} className="bg-orange-500 hover:bg-orange-600 border-none shadow-md" size="large">
-                            Confirm Escalate
+                        <Button type="primary" htmlType="submit" loading={loading} className="bg-indigo-600 hover:bg-indigo-700 border-none shadow-md" size="large">
+                            Mark as Review
                         </Button>
                     </div>
-                </Form>
-            )}
-
-            {nextStatus === 'REVIEW' && !escalateEnabled && (
-                <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
-                    <Button onClick={onClose} disabled={loading} size="large">Cancel</Button>
-                    <Button type="primary" onClick={handleDoNothing} loading={loading} className="bg-indigo-600 hover:bg-indigo-700 border-none shadow-md" size="large">
-                        Mark as Review
-                    </Button>
-                </div>
-            )}
+                )}
+            </Form>
         </Modal>
     );
 }

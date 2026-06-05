@@ -380,7 +380,7 @@ export default function TimerProvider({ children }: { children: React.ReactNode 
                 }
                 open={showForgottenModal}
                 closable={false}
-                maskClosable={false}
+                mask={{ closable: false }}
                 footer={[
                     <Button 
                         key="submit" 
@@ -461,7 +461,7 @@ export default function TimerProvider({ children }: { children: React.ReactNode 
                 }
                 open={showManualLogModal}
                 closable={false}
-                maskClosable={false}
+                mask={{ closable: false }}
                 footer={[
                     <Button 
                         key="cancel" 

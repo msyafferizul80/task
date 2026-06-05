@@ -463,7 +463,7 @@ export default function BlueprintsPage() {
 
             {/* Blueprints Section */}
             <Card
-                bordered={false}
+                variant="borderless"
                 className="shadow-sm rounded-xl border border-slate-100"
                 title={<span className="text-indigo-900 font-bold text-base">📋 Master Blueprints</span>}
                 extra={
@@ -483,7 +483,7 @@ export default function BlueprintsPage() {
 
             {/* Schedules Section */}
             <Card
-                bordered={false}
+                variant="borderless"
                 className="shadow-sm rounded-xl border border-slate-100"
                 title={<span className="text-indigo-900 font-bold text-base">⚡ Active Schedules (Blueprint → Customer)</span>}
                 extra={

@@ -551,7 +551,7 @@ export default function TaskListingPage() {
                 <Text type="secondary" className="text-base">Lihat dan urus semua tugasan termasuk yang telah siap (DONE).</Text>
             </div>
 
-            <Card bordered={false} className="shadow-sm rounded-xl border border-slate-100">
+            <Card variant="borderless" className="shadow-sm rounded-xl border border-slate-100">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6 bg-slate-50 p-4 rounded-lg">
                     <div className="sm:col-span-2">
                         <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Search Title / Nota</label>

@@ -526,7 +526,7 @@ export default function CalendarTimelinePage() {
             </div>
 
             {/* Filter Bar */}
-            <Card bordered={false} className="shadow-sm rounded-xl border border-slate-100">
+            <Card variant="borderless" className="shadow-sm rounded-xl border border-slate-100">
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 bg-slate-50 p-4 rounded-xl">
                     <div className="sm:col-span-2 md:col-span-1">
                         <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Search Title</label>
@@ -616,7 +616,7 @@ export default function CalendarTimelinePage() {
                         key: 'calendar',
                         label: '📅 Calendar View',
                         children: (
-                            <Card bordered={false} className="shadow-sm rounded-xl p-3 bg-white border border-slate-100">
+                            <Card variant="borderless" className="shadow-sm rounded-xl p-3 bg-white border border-slate-100">
                                 <Calendar
                                     cellRender={dateCellRender}
                                     className="custom-calendar-component"
