@@ -16,7 +16,8 @@ import {
     X,
     Bot,
     PauseCircle,
-    Calendar
+    Calendar,
+    Inbox
 } from 'lucide-react'
 import { createClient } from '@/utils/supabase/client'
 import { useRole } from '@/components/layout/RoleProvider'
@@ -78,6 +79,7 @@ export default function Sidebar() {
     ];
 
     if (role === 'admin' || role === 'manager') {
+        //navItems.push({ name: 'Submissions', href: '/submissions', icon: Inbox });
         navItems.push({ name: 'Analytics', href: '/analytics', icon: BarChart2 });
         navItems.push({ name: 'Customers', href: '/customers', icon: Users });
         navItems.push({ name: 'Blueprints', href: '/blueprints', icon: Bot });

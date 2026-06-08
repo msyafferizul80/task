@@ -26,7 +26,7 @@ export default function RoleProvider({ children }: { children: React.ReactNode }
                 if (user) {
                     setUserId(user.id);
                     const { data } = await supabase.from('lv_profiles').select('role').eq('id', user.id).single();
-                    setRole(data?.role || 'user');
+                    setRole((data?.role || 'user').toLowerCase());
                 } else {
                     setRole('user');
                     setUserId(null);
