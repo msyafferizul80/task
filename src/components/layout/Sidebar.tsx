@@ -34,67 +34,122 @@ export default function Sidebar() {
     const [clientHoldCount, setClientHoldCount] = useState(0)
     const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false)
     const [isLoggingOut, setIsLoggingOut] = useState(false)
+    const [userProfile, setUserProfile] = useState<{ full_name: string; avatar_url: string | null } | null>(null)
 
-    // Fetch bottleneck and client hold tasks for the current user
+    // Fetch bottleneck, client hold tasks and user profile for the current user
     useEffect(() => {
-        const fetchCounts = async () => {
+        const fetchCountsAndProfile = async () => {
             try {
                 const { data: { user } } = await supabase.auth.getUser()
                 if (!user) return
 
-                const { data } = await supabase
+                // 1. Fetch counts
+                const { data: tasksData } = await supabase
                     .from('tsk_tasks')
                     .select('id, created_at, status')
                     .eq('assignee_id', user.id)
                     .neq('status', 'DONE')
 
-                if (!data) return
-                const now = new Date()
-                const bottleneckCountVal = data.filter(t => differenceInDays(now, new Date(t.created_at)) >= 3).length
-                const clientHoldCountVal = data.filter(t => t.status === 'CLIENT_HOLD').length
-                setBottleneckCount(bottleneckCountVal)
-                setClientHoldCount(clientHoldCountVal)
+                if (tasksData) {
+                    const now = new Date()
+                    const bottleneckCountVal = tasksData.filter(t => differenceInDays(now, new Date(t.created_at)) >= 3).length
+                    const clientHoldCountVal = tasksData.filter(t => t.status === 'CLIENT_HOLD').length
+                    setBottleneckCount(bottleneckCountVal)
+                    setClientHoldCount(clientHoldCountVal)
+                }
+
+                // 2. Fetch profile
+                const { data: profileData } = await supabase
+                    .from('lv_profiles')
+                    .select('full_name, avatar_url')
+                    .eq('id', user.id)
+                    .single()
+
+                if (profileData) {
+                    setUserProfile(profileData)
+                }
             } catch (e) {
                 // silently fail
             }
         }
 
-        fetchCounts()
+        fetchCountsAndProfile()
         const channel = supabase
             .channel('sidebar-counts')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'tsk_tasks' }, fetchCounts)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'tsk_tasks' }, fetchCountsAndProfile)
             .subscribe()
         return () => { supabase.removeChannel(channel) }
     }, [])
 
-    // Nav items with optional badge
-    const navItems: { name: string; href: string; icon: React.ElementType; badge?: number; badgeColor?: string }[] = [
+    type SidebarNavItem = {
+        name: string;
+        href: string;
+        icon: React.ComponentType<any>;
+        badge?: number;
+        badgeColor?: string;
+    };
+
+    // Nav items categorized by groups for Desktop
+    const myWorkspaceItems: SidebarNavItem[] = [
         { name: 'Dashboard', href: '/', icon: LayoutDashboard },
         { name: 'My Tasks', href: '/mytasks', icon: CheckSquare, badge: bottleneckCount > 0 ? bottleneckCount : undefined, badgeColor: 'amber' },
         { name: 'Client Hold Tasks', href: '/client-hold-tasks', icon: PauseCircle, badge: clientHoldCount > 0 ? clientHoldCount : undefined, badgeColor: 'fuchsia' },
+        { name: 'My Profile', href: '/profile', icon: UserCircle }
+    ];
+
+    const projectToolsItems: SidebarNavItem[] = [
         { name: 'Task Listing', href: '/tasks', icon: ListTodo },
         { name: 'Calendar & Timeline', href: '/calendar', icon: Calendar },
-        { name: 'Weekly Report', href: '/reports', icon: FileText },
+        { name: 'Weekly Report', href: '/reports', icon: FileText }
+    ];
+
+    const managementItems: SidebarNavItem[] = [];
+    if (role === 'admin' || role === 'manager') {
+        managementItems.push({ name: 'Submissions', href: '/submissions', icon: Inbox });
+        managementItems.push({ name: 'Analytics', href: '/analytics', icon: BarChart2 });
+        managementItems.push({ name: 'Customers', href: '/customers', icon: Users });
+        managementItems.push({ name: 'Blueprints', href: '/blueprints', icon: Bot });
+    }
+
+    if (role === 'admin') {
+        managementItems.push({ name: 'User Management', href: '/users', icon: UserCircle });
+    }
+
+    const navGroups: { title: string; items: SidebarNavItem[] }[] = [
+        { title: 'Tugasan Saya', items: myWorkspaceItems },
+        { title: 'Projek & Kalendar', items: projectToolsItems }
+    ];
+
+    if (managementItems.length > 0) {
+        navGroups.push({ title: 'Pengurusan', items: managementItems });
+    }
+
+    // Mobile bottom navigation bar - optimized for on-the-go workflow
+    const mobileOrderedItems: SidebarNavItem[] = [
+        { name: 'Dashboard', href: '/', icon: LayoutDashboard },
+        { name: 'My Tasks', href: '/mytasks', icon: CheckSquare, badge: bottleneckCount > 0 ? bottleneckCount : undefined, badgeColor: 'amber' },
+        { name: 'Calendar', href: '/calendar', icon: Calendar },
+        { name: 'Reports', href: '/reports', icon: FileText },
+        // Items below will go into the 'More' menu drawer on mobile
+        { name: 'Client Hold Tasks', href: '/client-hold-tasks', icon: PauseCircle, badge: clientHoldCount > 0 ? clientHoldCount : undefined, badgeColor: 'fuchsia' },
+        { name: 'Task Listing', href: '/tasks', icon: ListTodo },
         { name: 'My Profile', href: '/profile', icon: UserCircle }
     ];
 
     if (role === 'admin' || role === 'manager') {
-        //navItems.push({ name: 'Submissions', href: '/submissions', icon: Inbox });
-        navItems.push({ name: 'Analytics', href: '/analytics', icon: BarChart2 });
-        navItems.push({ name: 'Customers', href: '/customers', icon: Users });
-        navItems.push({ name: 'Blueprints', href: '/blueprints', icon: Bot });
+        mobileOrderedItems.push({ name: 'Submissions', href: '/submissions', icon: Inbox });
+        mobileOrderedItems.push({ name: 'Analytics', href: '/analytics', icon: BarChart2 });
+        mobileOrderedItems.push({ name: 'Customers', href: '/customers', icon: Users });
+        mobileOrderedItems.push({ name: 'Blueprints', href: '/blueprints', icon: Bot });
     }
 
     if (role === 'admin') {
-        navItems.push({ name: 'User Management', href: '/users', icon: UserCircle });
+        mobileOrderedItems.push({ name: 'User Management', href: '/users', icon: UserCircle });
     }
 
-    const navGroups = [
-        {
-            title: 'Menu',
-            items: navItems
-        }
-    ]
+    const visibleMobileItems = mobileOrderedItems.slice(0, 4)
+    const overflowMobileItems = mobileOrderedItems.slice(4)
+    const hasMore = overflowMobileItems.length > 0
 
     const handleLogout = async () => {
         setIsLoggingOut(true)
@@ -102,12 +157,6 @@ export default function Sidebar() {
         router.push('/login')
         router.refresh()
     }
-
-    // Mobile layout logic
-    const MAX_VISIBLE_MOBILE = 4
-    const visibleMobileItems = navItems.slice(0, MAX_VISIBLE_MOBILE)
-    const overflowMobileItems = navItems.slice(MAX_VISIBLE_MOBILE)
-    const hasMore = overflowMobileItems.length > 0
 
     return (
         <>
@@ -151,13 +200,41 @@ export default function Sidebar() {
                     ))}
                 </nav>
 
-                <div className="p-4 border-t border-gray-100">
+                {/* Premium User Profile Card */}
+                <div className="p-4 border-t border-gray-200 bg-gray-50/50 flex flex-col gap-3">
+                    {userProfile ? (
+                        <div className="flex items-center gap-3 px-2 py-1">
+                            <img
+                                src={userProfile.avatar_url || `https://ui-avatars.com/api/?name=${userProfile.full_name}&background=6366f1&color=fff`}
+                                className="w-9 h-9 rounded-full object-cover border border-gray-200 shadow-sm"
+                                alt={userProfile.full_name}
+                            />
+                            <div className="flex-1 min-w-0">
+                                <p className="text-sm font-semibold text-gray-900 truncate mb-0 leading-snug">
+                                    {userProfile.full_name}
+                                </p>
+                                <p className="text-xs text-gray-500 capitalize truncate mb-0 mt-0.5 font-medium">
+                                    {role || 'User'}
+                                </p>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="flex items-center gap-3 px-2 py-1 animate-pulse">
+                            <div className="w-9 h-9 rounded-full bg-gray-200" />
+                            <div className="flex-1 space-y-1.5">
+                                <div className="h-3 bg-gray-200 rounded w-3/4" />
+                                <div className="h-2 bg-gray-200 rounded w-1/2" />
+                            </div>
+                        </div>
+                    )}
+                    
                     <button
                         onClick={handleLogout}
-                        className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        disabled={isLoggingOut}
+                        className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-50 hover:text-red-700 rounded-lg border border-red-100 transition-all duration-200 bg-white shadow-sm mt-1 disabled:opacity-50"
                     >
-                        <LogOut className="h-5 w-5" />
-                        <span>Log Out</span>
+                        <LogOut className="h-4 w-4" />
+                        <span>{isLoggingOut ? 'Logging out...' : 'Log Out'}</span>
                     </button>
                 </div>
             </aside>
@@ -244,7 +321,7 @@ export default function Sidebar() {
                                 </button>
                             </div>
 
-                            <div className="grid grid-cols-1 gap-2 mb-6">
+                            <div className="grid grid-cols-1 gap-2 mb-6 max-h-[60vh] overflow-y-auto pr-1">
                                 {overflowMobileItems.map((item) => {
                                     const isActive = pathname === item.href
                                     const Icon = item.icon
@@ -263,6 +340,11 @@ export default function Sidebar() {
                                                 <Icon className={`h-6 w-6 ${isActive ? 'text-indigo-600' : 'text-gray-500'}`} />
                                             </div>
                                             <span className="text-base font-semibold">{item.name}</span>
+                                            {item.badge !== undefined && (
+                                                <span className={`flex items-center justify-center h-5 min-w-[20px] px-2 rounded-full text-white text-[10px] font-bold bg-amber-500 ml-auto`}>
+                                                    {item.badge}
+                                                </span>
+                                            )}
                                         </Link>
                                     )
                                 })}
