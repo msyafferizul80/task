@@ -656,7 +656,7 @@ export default function EisenhowerDashboard() {
                                 key: '1',
                                 label: 'Details',
                                 children: (
-                                    <Form form={editForm} layout="vertical" onFinish={handleUpdateTask}>
+                                    <Form form={editForm} layout="vertical" onFinish={handleUpdateTask} disabled={selectedTask?.status === 'DONE'}>
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                             <Form.Item name="customer_name" label="Customer Name" className="col-span-2 sm:col-span-1" rules={[{ required: true, message: 'Customer name is required' }]}>
                                                 <Select placeholder="Select Customer" size="large" showSearch optionFilterProp="children" disabled={role !== 'admin' && role !== 'manager'}>
@@ -735,8 +735,9 @@ export default function EisenhowerDashboard() {
                                                         <div key={checkItem.id} className="flex items-start gap-3">
                                                             <input 
                                                                 type="checkbox" 
-                                                                className="mt-1 flex-shrink-0 w-4 h-4 cursor-pointer accent-indigo-600" 
+                                                                className="mt-1 flex-shrink-0 w-4 h-4 cursor-pointer accent-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed" 
                                                                 checked={checkItem.is_completed}
+                                                                disabled={selectedTask?.status === 'DONE'}
                                                                 onChange={async (e) => {
                                                                     const newStatus = e.target.checked;
                                                                     setTaskChecklist(prev => prev.map(c => c.id === checkItem.id ? { ...c, is_completed: newStatus } : c));
@@ -768,7 +769,7 @@ export default function EisenhowerDashboard() {
                                             <div className="flex items-center justify-between w-full">
                                                 <div>
                                                     {((role === 'admin' || role === 'manager') || (selectedTask && (selectedTask.status !== 'DONE' || selectedTask.assignee_id === currentUserId))) && selectedTask && (
-                                                        <Button danger type="text" onClick={handleDeleteTask} size="large" icon={<DeleteOutlined />}>
+                                                        <Button danger type="text" onClick={handleDeleteTask} size="large" icon={<DeleteOutlined />} disabled={false}>
                                                             Delete
                                                         </Button>
                                                     )}
@@ -777,9 +778,9 @@ export default function EisenhowerDashboard() {
                                                     <Button onClick={() => {
                                                         setIsEditModalOpen(false);
                                                         setSelectedTask(null);
-                                                    }} size="large">Cancel</Button>
+                                                    }} size="large" disabled={false}>Cancel</Button>
 
-                                                    {selectedTask && (selectedTask.assignee_id === currentUserId || role === 'admin' || role === 'manager') && (
+                                                    {selectedTask?.status !== 'DONE' && selectedTask && (selectedTask.assignee_id === currentUserId || role === 'admin' || role === 'manager') && (
                                                         <Button 
                                                             type="default" 
                                                             size="large" 
@@ -790,7 +791,9 @@ export default function EisenhowerDashboard() {
                                                         </Button>
                                                     )}
 
-                                                    <Button type="primary" htmlType="submit" size="large" className="bg-indigo-600 shadow-md">Update Task</Button>
+                                                    {selectedTask?.status !== 'DONE' && (
+                                                        <Button type="primary" htmlType="submit" size="large" className="bg-indigo-600 shadow-md">Update Task</Button>
+                                                    )}
                                                 </div>
                                             </div>
                                         </Form.Item>

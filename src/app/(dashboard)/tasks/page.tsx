@@ -775,6 +775,7 @@ export default function TaskListingPage() {
                                     due_date: selectedTask.due_date ? dayjs(selectedTask.due_date) : null,
                                 }}
                                 onFinish={handleUpdateTask}
+                                disabled={selectedTask.status === 'DONE'}
                             >
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <Form.Item name="customer_name" label="Customer Name" className="col-span-2 sm:col-span-1" rules={[{ required: true, message: 'Customer name is required' }]}>
@@ -866,7 +867,7 @@ export default function TaskListingPage() {
                                     <div className="flex items-center justify-between w-full">
                                         <div>
                                             {((role === 'admin' || role === 'manager') || (selectedTask.status !== 'DONE' || selectedTask.assignee_id === currentUserId)) && (
-                                                <Button danger type="text" onClick={handleDeleteTask} size="large" icon={<DeleteOutlined />}>
+                                                <Button danger type="text" onClick={handleDeleteTask} size="large" icon={<DeleteOutlined />} disabled={false}>
                                                     Delete
                                                 </Button>
                                             )}
@@ -875,9 +876,9 @@ export default function TaskListingPage() {
                                             <Button onClick={() => {
                                                 setIsEditModalOpen(false);
                                                 setSelectedTask(null);
-                                            }} className="mr-3" size="large">Cancel</Button>
+                                            }} className="mr-3" size="large" disabled={false}>Cancel</Button>
 
-                                            {(role === 'admin' || role === 'manager' || selectedTask.assignee_id === currentUserId) && (
+                                            {selectedTask.status !== 'DONE' && (role === 'admin' || role === 'manager' || selectedTask.assignee_id === currentUserId) && (
                                                 <Button
                                                     type="default"
                                                     size="large"
@@ -888,7 +889,9 @@ export default function TaskListingPage() {
                                                 </Button>
                                             )}
 
-                                            <Button type="primary" htmlType="submit" size="large" className="bg-indigo-600 shadow-md">Update Task</Button>
+                                            {selectedTask.status !== 'DONE' && (
+                                                <Button type="primary" htmlType="submit" size="large" className="bg-indigo-600 shadow-md">Update Task</Button>
+                                            )}
                                         </div>
                                     </div>
                                 </Form.Item>
