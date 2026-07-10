@@ -659,7 +659,7 @@ export default function EisenhowerDashboard() {
                                     <Form form={editForm} layout="vertical" onFinish={handleUpdateTask} disabled={selectedTask?.status === 'DONE'}>
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                             <Form.Item name="customer_name" label="Customer Name" className="col-span-2 sm:col-span-1" rules={[{ required: true, message: 'Customer name is required' }]}>
-                                                <Select placeholder="Select Customer" size="large" showSearch optionFilterProp="children" disabled={role !== 'admin' && role !== 'manager'}>
+                                                <Select placeholder="Select Customer" size="large" showSearch optionFilterProp="children" disabled={selectedTask?.status === 'DONE' || (role !== 'admin' && role !== 'manager')}>
                                                     {customers.map(c => (
                                                         <Option key={c.id} value={c.name}>{c.name}</Option>
                                                     ))}
@@ -670,7 +670,7 @@ export default function EisenhowerDashboard() {
                                                 <Select 
                                                     placeholder="Select Department" 
                                                     size="large" 
-                                                    disabled={role !== 'admin' && role !== 'manager'}
+                                                    disabled={selectedTask?.status === 'DONE' || (role !== 'admin' && role !== 'manager')}
                                                     onChange={(val) => {
                                                         if (val === 'IT' || val === 'Marketing' || val === 'Management' || val === 'Account') {
                                                             editForm.setFieldsValue({ customer_name: 'SYAZNA WORLD (INTERNAL)' });
@@ -690,11 +690,11 @@ export default function EisenhowerDashboard() {
                                             </Form.Item>
 
                                             <Form.Item name="title" label="Task Title" className="col-span-2" rules={[{ required: true, message: 'Please enter a title' }]}>
-                                                <Input placeholder="Enter task title" size="large" disabled={role !== 'admin' && role !== 'manager'} />
+                                                <Input placeholder="Enter task title" size="large" disabled={selectedTask?.status === 'DONE' || (role !== 'admin' && role !== 'manager')} />
                                             </Form.Item>
 
                                             <Form.Item name="assignee_id" label="PIC / Assignee" rules={[{ required: true, message: 'Assignee is required' }]}>
-                                                <Select placeholder="Select Assignee" size="large" showSearch optionFilterProp="children" disabled={role !== 'admin' && role !== 'manager'}>
+                                                <Select placeholder="Select Assignee" size="large" showSearch optionFilterProp="children" disabled={selectedTask?.status === 'DONE' || (role !== 'admin' && role !== 'manager')}>
                                                     {profiles.map(p => (
                                                         <Option key={p.id} value={p.id}>{p.full_name}</Option>
                                                     ))}
@@ -702,7 +702,7 @@ export default function EisenhowerDashboard() {
                                             </Form.Item>
 
                                             <Form.Item name="priority_type" label="Eisenhower Priority" rules={[{ required: true, message: 'Please select a priority' }]}>
-                                                <Select placeholder="Select Priority" size="large" disabled={role !== 'admin' && role !== 'manager'}>
+                                                <Select placeholder="Select Priority" size="large" disabled={selectedTask?.status === 'DONE' || (role !== 'admin' && role !== 'manager')}>
                                                     <Option value="DO_FIRST"><span className="text-red-600 font-medium">🔴 DO FIRST (Urgent & Important)</span></Option>
                                                     <Option value="SCHEDULE"><span className="text-blue-600 font-medium">🔵 SCHEDULE (Not Urgent, Important)</span></Option>
                                                     <Option value="DELEGATE"><span className="text-yellow-600 font-medium">🟡 DELEGATE (Urgent, Not Important)</span></Option>
@@ -711,7 +711,7 @@ export default function EisenhowerDashboard() {
                                             </Form.Item>
 
                                             <Form.Item name="status" label="Task Status" rules={[{ required: true, message: 'Please select a status' }]}>
-                                                <Select placeholder="Select Status" size="large">
+                                                <Select placeholder="Select Status" size="large" disabled={selectedTask?.status === 'DONE'}>
                                                     <Option value="BACKLOG">Backlog</Option>
                                                     <Option value="CLIENT_HOLD">Client Hold</Option>
                                                     <Option value="IN_PROGRESS">In Progress</Option>
@@ -722,7 +722,7 @@ export default function EisenhowerDashboard() {
                                         </div>
 
                                         <Form.Item name="description" label="Description">
-                                            <Input.TextArea rows={4} placeholder="Detailed task requirements..." className="resize-y" disabled={role !== 'admin' && role !== 'manager'} />
+                                            <Input.TextArea rows={4} placeholder="Detailed task requirements..." className="resize-y" disabled={selectedTask?.status === 'DONE' || (role !== 'admin' && role !== 'manager')} />
                                         </Form.Item>
 
                                         {taskChecklist.length > 0 && (
@@ -755,13 +755,13 @@ export default function EisenhowerDashboard() {
 
                                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
                                              <Form.Item name="start_date" label="Start Date">
-                                                 <DatePicker className="w-full" size="large" showTime disabled={role !== 'admin' && role !== 'manager'} />
+                                                 <DatePicker className="w-full" size="large" showTime disabled={selectedTask?.status === 'DONE' || (role !== 'admin' && role !== 'manager')} />
                                              </Form.Item>
                                              <Form.Item name="due_date" label="Due Date" rules={[{ required: true, message: 'Due date is required' }]}>
-                                                 <DatePicker className="w-full" size="large" showTime disabled={role !== 'admin' && role !== 'manager'} />
+                                                 <DatePicker className="w-full" size="large" showTime disabled={selectedTask?.status === 'DONE' || (role !== 'admin' && role !== 'manager')} />
                                              </Form.Item>
                                              <Form.Item name="estimated_hours" label="Est. Hours">
-                                                 <InputNumber className="w-full" size="large" min={0} step={0.5} placeholder="e.g. 4.5" disabled={role !== 'admin' && role !== 'manager'} />
+                                                 <InputNumber className="w-full" size="large" min={0} step={0.5} placeholder="e.g. 4.5" disabled={selectedTask?.status === 'DONE' || (role !== 'admin' && role !== 'manager')} />
                                              </Form.Item>
                                          </div>
 
