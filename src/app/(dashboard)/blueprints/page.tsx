@@ -627,6 +627,8 @@ export default function BlueprintsPage() {
                             <Option value="Sales">Sales</Option>
                             <Option value="Marketing">Marketing</Option>
                             <Option value="Recruitment">Recruitment</Option>
+                            <Option value="Management">Management</Option>
+                            <Option value="Account">Account</Option>
                         </Select>
                     </Form.Item>
                     <div className="grid grid-cols-2 gap-4">

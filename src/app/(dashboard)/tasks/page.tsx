@@ -791,7 +791,7 @@ export default function TaskListingPage() {
                                             size="large" 
                                             disabled={role !== 'admin' && role !== 'manager'}
                                             onChange={(val) => {
-                                                if (val === 'IT' || val === 'Marketing') {
+                                                if (val === 'IT' || val === 'Marketing' || val === 'Management' || val === 'Account') {
                                                     editForm.setFieldsValue({ customer_name: 'SYAZNA WORLD (INTERNAL)' });
                                                 } else {
                                                     editForm.setFieldsValue({ customer_name: undefined });
@@ -803,6 +803,8 @@ export default function TaskListingPage() {
                                             <Option value="Sales">Sales</Option>
                                             <Option value="Marketing">Marketing</Option>
                                             <Option value="Recruitment">Recruitment</Option>
+                                            <Option value="Management">Management</Option>
+                                            <Option value="Account">Account</Option>
                                         </Select>
                                     </Form.Item>
 

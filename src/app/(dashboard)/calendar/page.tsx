@@ -671,12 +671,25 @@ export default function CalendarTimelinePage() {
                                     </Form.Item>
 
                                     <Form.Item name="department" label="Jabatan (Department)" className="col-span-2 sm:col-span-1" rules={[{ required: true, message: 'Please select a department' }]}>
-                                        <Select placeholder="Select Department" size="large" disabled={role !== 'admin' && role !== 'manager'}>
+                                        <Select 
+                                            placeholder="Select Department" 
+                                            size="large" 
+                                            disabled={role !== 'admin' && role !== 'manager'}
+                                            onChange={(val) => {
+                                                if (val === 'IT' || val === 'Marketing' || val === 'Management' || val === 'Account') {
+                                                    editForm.setFieldsValue({ customer_name: 'SYAZNA WORLD (INTERNAL)' });
+                                                } else {
+                                                    editForm.setFieldsValue({ customer_name: undefined });
+                                                }
+                                            }}
+                                        >
                                             <Option value="Outsourcing">Outsourcing</Option>
                                             <Option value="IT">IT</Option>
                                             <Option value="Sales">Sales</Option>
                                             <Option value="Marketing">Marketing</Option>
                                             <Option value="Recruitment">Recruitment</Option>
+                                            <Option value="Management">Management</Option>
+                                            <Option value="Account">Account</Option>
                                         </Select>
                                     </Form.Item>
 

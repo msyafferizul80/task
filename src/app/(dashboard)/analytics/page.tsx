@@ -1212,6 +1212,8 @@ export default function AnalyticsPage() {
                                     { value: 'Sales', label: 'Sales' },
                                     { value: 'Marketing', label: 'Marketing' },
                                     { value: 'Recruitment', label: 'Recruitment' },
+                                    { value: 'Management', label: 'Management' },
+                                    { value: 'Account', label: 'Account' },
                                 ]}
                             />
                         </div>
