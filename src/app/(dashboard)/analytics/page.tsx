@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { Card, Table, Tag, Typography, Spin, Badge, Tooltip, Modal, Button, Select, Input, message } from 'antd';
+import { Card, Table, Tag, Typography, Spin, Badge, Tooltip, Modal, Button, Select, Input, message, DatePicker } from 'antd';
 import { createClient } from '@/utils/supabase/client';
 import { Task, Profile } from '@/lib/types';
 import { useRole } from '@/components/layout/RoleProvider';
@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { differenceInDays, formatDistanceToNow, subWeeks, subMonths } from 'date-fns';
 import Link from 'next/link';
+import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
 
@@ -632,6 +633,7 @@ export default function AnalyticsPage() {
     const [filterTimerUser, setFilterTimerUser] = useState<string>('All');
     const [filterTimerCustomer, setFilterTimerCustomer] = useState<string>('All');
     const [timerSearchText, setTimerSearchText] = useState<string>('');
+    const [timerDateRange, setTimerDateRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null]>([null, null]);
 
     // Total task by PIC chart filters
     const [totalPicPeriod, setTotalPicPeriod] = useState<TimePeriod>('month');
@@ -746,9 +748,15 @@ export default function AnalyticsPage() {
                 const userName = log.user?.full_name?.toLowerCase() || '';
                 if (!taskTitle.includes(search) && !userName.includes(search)) return false;
             }
+            if (timerDateRange[0] && timerDateRange[1]) {
+                const logDate = dayjs(log.start_time);
+                const start = timerDateRange[0].startOf('day');
+                const end = timerDateRange[1].endOf('day');
+                if (logDate.isBefore(start) || logDate.isAfter(end)) return false;
+            }
             return true;
         });
-    }, [joinedLogs, filterDepartment, filterTimerUser, filterTimerCustomer, timerSearchText]);
+    }, [joinedLogs, filterDepartment, filterTimerUser, filterTimerCustomer, timerSearchText, timerDateRange]);
 
     const totalSecondsTracked = useMemo(() => {
         return filteredLogs.reduce((acc, log) => acc + (log.duration || 0), 0);
@@ -957,9 +965,19 @@ export default function AnalyticsPage() {
                 const assigneeName = (t.assignee as any)?.full_name?.toLowerCase() || '';
                 if (!title.includes(search) && !assigneeName.includes(search)) return false;
             }
+            if (timerDateRange[0] && timerDateRange[1]) {
+                const start = timerDateRange[0].startOf('day');
+                const end = timerDateRange[1].endOf('day');
+                const hasLogInRange = timeLogs.some(log => {
+                    if (log.task_id !== t.id || log.status !== 'COMPLETED') return false;
+                    const logDate = dayjs(log.start_time);
+                    return !logDate.isBefore(start) && !logDate.isAfter(end);
+                });
+                if (!hasLogInRange) return false;
+            }
             return true;
         });
-    }, [baseTasks, filterTimerUser, filterTimerCustomer, timerSearchText]);
+    }, [baseTasks, filterTimerUser, filterTimerCustomer, timerSearchText, timerDateRange, timeLogs]);
 
     const totalEstimatedHours = useMemo(() => {
         return filteredTasksForEstimation.reduce((acc, t) => acc + Number(t.estimated_hours || 0), 0);
@@ -968,15 +986,30 @@ export default function AnalyticsPage() {
     const totalActualHoursForEstTasks = useMemo(() => {
         const taskIds = new Set(filteredTasksForEstimation.map(t => t.id));
         const seconds = timeLogs
-            .filter(log => taskIds.has(log.task_id) && log.status === 'COMPLETED')
+            .filter(log => {
+                if (!taskIds.has(log.task_id) || log.status !== 'COMPLETED') return false;
+                if (timerDateRange[0] && timerDateRange[1]) {
+                    const logDate = dayjs(log.start_time);
+                    const start = timerDateRange[0].startOf('day');
+                    const end = timerDateRange[1].endOf('day');
+                    if (logDate.isBefore(start) || logDate.isAfter(end)) return false;
+                }
+                return true;
+            })
             .reduce((acc, log) => acc + (log.duration || 0), 0);
         return seconds / 3600;
-    }, [filteredTasksForEstimation, timeLogs]);
+    }, [filteredTasksForEstimation, timeLogs, timerDateRange]);
 
     const estimatedVsActualData = useMemo(() => {
         const taskDurationMap: Record<string, number> = {};
         timeLogs.forEach(log => {
             if (log.status === 'COMPLETED') {
+                if (timerDateRange[0] && timerDateRange[1]) {
+                    const logDate = dayjs(log.start_time);
+                    const start = timerDateRange[0].startOf('day');
+                    const end = timerDateRange[1].endOf('day');
+                    if (logDate.isBefore(start) || logDate.isAfter(end)) return;
+                }
                 taskDurationMap[log.task_id] = (taskDurationMap[log.task_id] || 0) + (log.duration || 0);
             }
         });
@@ -1015,7 +1048,7 @@ export default function AnalyticsPage() {
             if (a.estimatedHours === null && b.estimatedHours !== null) return 1;
             return b.actualHours - a.actualHours;
         });
-    }, [filteredTasksForEstimation, timeLogs]);
+    }, [filteredTasksForEstimation, timeLogs, timerDateRange]);
 
     const estimationAccuracyStr = useMemo(() => {
         const tasksWithEstimates = estimatedVsActualData.filter(d => d.estimatedHours !== null);
@@ -1200,6 +1233,10 @@ export default function AnalyticsPage() {
                 ? 'Semua PIC' 
                 : (profiles.find(p => p.id === filterTimerUser)?.full_name || filterTimerUser);
             
+            const dateRangeLabel = timerDateRange[0] && timerDateRange[1]
+                ? `${timerDateRange[0].format('YYYY-MM-DD')} hingga ${timerDateRange[1].format('YYYY-MM-DD')}`
+                : 'Semua (Lalai)';
+
             const infoExportData = [
                 { 'Parameter Eksport': 'Tarikh & Masa Penjanaan', 'Nilai': generatedAt.toLocaleString('ms-MY') },
                 { 'Parameter Eksport': 'Dijana Oleh', 'Nilai': currentUserProfile?.full_name || 'Pengguna Aktif' },
@@ -1207,7 +1244,7 @@ export default function AnalyticsPage() {
                 { 'Parameter Eksport': 'Filter Pekerja (PIC)', 'Nilai': picFilterLabel },
                 { 'Parameter Eksport': 'Filter Pelanggan', 'Nilai': filterTimerCustomer === 'All' ? 'Semua Customer' : filterTimerCustomer },
                 { 'Parameter Eksport': 'Kata Kunci Carian', 'Nilai': timerSearchText || '—' },
-                { 'Parameter Eksport': 'Filter Julat Tarikh', 'Nilai': 'Semua (Lalai)' }
+                { 'Parameter Eksport': 'Filter Julat Tarikh', 'Nilai': dateRangeLabel }
             ];
 
             // Create workbook and append sheets
@@ -1233,13 +1270,14 @@ export default function AnalyticsPage() {
             const isPicActive = filterTimerUser !== 'All';
             const isCustomerActive = filterTimerCustomer !== 'All';
             const isSearchActive = !!timerSearchText;
+            const isDateActive = !!(timerDateRange[0] && timerDateRange[1]);
 
-            if (isPicActive && !isCustomerActive && !isSearchActive) {
+            if (isPicActive && !isCustomerActive && !isSearchActive && !isDateActive) {
                 const rawName = profiles.find(p => p.id === filterTimerUser)?.full_name || 'Worker';
                 filterName = rawName.replace(/[^a-zA-Z0-9]/g, '_');
-            } else if (!isPicActive && isCustomerActive && !isSearchActive) {
+            } else if (!isPicActive && isCustomerActive && !isSearchActive && !isDateActive) {
                 filterName = filterTimerCustomer.replace(/[^a-zA-Z0-9]/g, '_');
-            } else if (isPicActive || isCustomerActive || isSearchActive) {
+            } else if (isPicActive || isCustomerActive || isSearchActive || isDateActive) {
                 filterName = 'Filtered';
             }
 
@@ -1261,6 +1299,7 @@ export default function AnalyticsPage() {
         filterTimerUser,
         filterTimerCustomer,
         timerSearchText,
+        timerDateRange,
         profiles,
         currentUserProfile
     ]);
@@ -1846,6 +1885,23 @@ export default function AnalyticsPage() {
                                         { value: 'All', label: 'Semua Customer' },
                                         ...uniqueCustomerNames.map(c => ({ value: c, label: c }))
                                     ]}
+                                />
+                            </div>
+
+                            <div className="flex flex-col gap-1.5">
+                                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Filter Tarikh (Date Range)</span>
+                                <DatePicker.RangePicker
+                                    value={timerDateRange}
+                                    onChange={(dates) => {
+                                        if (!dates) {
+                                            setTimerDateRange([null, null]);
+                                        } else {
+                                            setTimerDateRange([dates[0], dates[1]]);
+                                        }
+                                    }}
+                                    className="w-[260px] rounded-lg"
+                                    placeholder={['Mula', 'Tamat']}
+                                    allowClear
                                 />
                             </div>
 
