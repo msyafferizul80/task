@@ -655,27 +655,66 @@ export default function AnalyticsPage() {
 
     const fetchData = useCallback(async () => {
         try {
-            const [tasksRes, profilesRes, authRes, logsRes] = await Promise.all([
-                supabase.from('tsk_tasks').select(`
-                    *,
-                    assignee:lv_profiles!tsk_tasks_assignee_id_fkey (
-                        id,
-                        full_name,
-                        avatar_url
-                    )
-                `).order('created_at', { ascending: false }),
+            // Helper to fetch all tasks in batches of 1000 to bypass default API limits
+            const fetchAllTasks = async () => {
+                let allTasks: Task[] = [];
+                let from = 0;
+                const limit = 1000;
+                while (true) {
+                    const { data, error } = await supabase
+                        .from('tsk_tasks')
+                        .select(`
+                            *,
+                            assignee:lv_profiles!tsk_tasks_assignee_id_fkey (
+                                id,
+                                full_name,
+                                avatar_url
+                            )
+                        `)
+                        .order('created_at', { ascending: false })
+                        .range(from, from + limit - 1);
+                    if (error) throw error;
+                    if (!data || data.length === 0) break;
+                    allTasks = allTasks.concat(data as Task[]);
+                    if (data.length < limit) break;
+                    from += limit;
+                }
+                return allTasks;
+            };
+
+            // Helper to fetch all completed time logs in batches of 1000
+            const fetchAllLogs = async () => {
+                let allLogs: any[] = [];
+                let from = 0;
+                const limit = 1000;
+                while (true) {
+                    const { data, error } = await supabase
+                        .from('tsk_time_logs')
+                        .select('*')
+                        .eq('status', 'COMPLETED')
+                        .order('start_time', { ascending: false })
+                        .range(from, from + limit - 1);
+                    if (error) throw error;
+                    if (!data || data.length === 0) break;
+                    allLogs = allLogs.concat(data);
+                    if (data.length < limit) break;
+                    from += limit;
+                }
+                return allLogs;
+            };
+
+            const [tasksData, profilesRes, authRes, logsData] = await Promise.all([
+                fetchAllTasks(),
                 supabase.from('lv_profiles').select('id, full_name, avatar_url, department').eq('status', 'active').order('full_name'),
                 supabase.auth.getUser(),
-                supabase.from('tsk_time_logs').select('*').eq('status', 'COMPLETED').order('start_time', { ascending: false })
+                fetchAllLogs()
             ]);
 
-            if (tasksRes.error) throw tasksRes.error;
             if (profilesRes.error) throw profilesRes.error;
-            if (logsRes.error) throw logsRes.error;
 
-            setTasks((tasksRes.data as Task[]) || []);
+            setTasks(tasksData);
             setProfiles(profilesRes.data || []);
-            setTimeLogs(logsRes.data || []);
+            setTimeLogs(logsData);
             
             const userId = authRes.data?.user?.id;
             let myDept: string | null = null;
