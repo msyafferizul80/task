@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { Card, Table, Tag, Typography, Spin, Badge, Tooltip, Modal, Button, Select, Input, message, DatePicker } from 'antd';
+import { Card, Table, Tag, Typography, Spin, Badge, Tooltip, Modal, Button, Select, Input, message, DatePicker, Segmented, Collapse, InputNumber } from 'antd';
 import { createClient } from '@/utils/supabase/client';
 import { Task, Profile } from '@/lib/types';
 import { useRole } from '@/components/layout/RoleProvider';
@@ -649,6 +649,43 @@ export default function AnalyticsPage() {
     const [drillTitle, setDrillTitle] = useState('');
     const [drillTasks, setDrillTasks] = useState<Task[]>([]);
 
+    // Task Duration Monitor States
+    const [durationViewMode, setDurationViewMode] = useState<'instance' | 'type'>('instance');
+    const [durationSearchInput, setDurationSearchInput] = useState<string>('');
+    const [durationSearch, setDurationSearch] = useState<string>('');
+    const [durationPICs, setDurationPICs] = useState<string[]>([]);
+    const [durationCustomers, setDurationCustomers] = useState<string[]>([]);
+    
+    // Pagination state
+    const [durationPagination, setDurationPagination] = useState({
+        current: 1,
+        pageSize: 25,
+        total: 0
+    });
+    
+    // Sorting state (default: actual_hours descending)
+    const [durationSorter, setDurationSorter] = useState<{
+        field: string;
+        order: 'ascend' | 'descend' | null;
+    }>({
+        field: 'actual_hours',
+        order: 'descend'
+    });
+
+    // Configuration thresholds for Data Quality Warning
+    const [durationThresholdSeconds, setDurationThresholdSeconds] = useState<number>(30);
+    const [durationThresholdPercent, setDurationThresholdPercent] = useState<number>(20);
+
+    // Table data and loading states
+    const [durationTableData, setDurationTableData] = useState<any[]>([]);
+    const [durationTableLoading, setDurationTableLoading] = useState<boolean>(false);
+
+    // Row expansion states (for detailed session logs drill-down)
+    const [expandedRowKeys, setExpandedRowKeys] = useState<React.Key[]>([]);
+    const [expandedLogs, setExpandedLogs] = useState<Record<string, any[]>>({});
+    const [expandedLoading, setExpandedLoading] = useState<Record<string, boolean>>({});
+    const [isDurationExporting, setIsDurationExporting] = useState<boolean>(false);
+
     const supabase = createClient();
     const { role } = useRole();
     const hasFullAccess = role === 'admin' || role === 'manager';
@@ -754,6 +791,197 @@ export default function AnalyticsPage() {
             supabase.removeChannel(channelLogs);
         };
     }, [fetchData]);
+
+    // Debounce search input for Task Duration Monitor
+    useEffect(() => {
+        const handler = setTimeout(() => {
+            setDurationSearch(durationSearchInput);
+            setDurationPagination(prev => ({ ...prev, current: 1 }));
+        }, 300);
+        return () => clearTimeout(handler);
+    }, [durationSearchInput]);
+
+    // Fetch Task Durations from Supabase RPC
+    const fetchDurationData = useCallback(async () => {
+        setDurationTableLoading(true);
+        try {
+            const offset = (durationPagination.current - 1) * durationPagination.pageSize;
+            
+            let sortCol = 'actual_hours';
+            if (durationSorter.field === 'task_title') sortCol = 'task_title';
+            else if (durationSorter.field === 'customer') sortCol = 'customer';
+            else if (durationSorter.field === 'pic_name') sortCol = 'pic_name';
+            else if (durationSorter.field === 'session_count') sortCol = 'session_count';
+            else if (durationSorter.field === 'estimated_hours') sortCol = 'estimated_hours';
+            else if (durationSorter.field === 'variance') sortCol = 'variance';
+            else if (durationSorter.field === 'customer_count') sortCol = 'customer_count';
+            else if (durationSorter.field === 'pic_count') sortCol = 'pic_count';
+
+            const isDesc = durationSorter.order === 'descend';
+            const startDate = timerDateRange[0] ? timerDateRange[0].startOf('day').toISOString() : null;
+            const endDate = timerDateRange[1] ? timerDateRange[1].endOf('day').toISOString() : null;
+
+            const { data, error } = await supabase.rpc('get_task_durations', {
+                p_view_mode: durationViewMode,
+                p_search: durationSearch,
+                p_pics: durationPICs,
+                p_customers: durationCustomers,
+                p_dept: filterDepartment,
+                p_sort_column: sortCol,
+                p_sort_desc: isDesc,
+                p_limit: durationPagination.pageSize,
+                p_offset: offset,
+                p_start_date: startDate,
+                p_end_date: endDate
+            });
+
+            if (error) throw error;
+
+            const result = data || [];
+            setDurationTableData(result);
+            
+            const total = result.length > 0 ? Number(result[0].total_records) : 0;
+            setDurationPagination(prev => ({ ...prev, total }));
+        } catch (err: any) {
+            console.error('Fetch duration data error:', err.message);
+            message.error('Gagal mengambil data durasi tugasan');
+        } finally {
+            setDurationTableLoading(false);
+        }
+    }, [
+        durationViewMode,
+        durationSearch,
+        durationPICs,
+        durationCustomers,
+        filterDepartment,
+        durationSorter,
+        durationPagination.current,
+        durationPagination.pageSize,
+        timerDateRange
+    ]);
+
+    useEffect(() => {
+        if (activeTab === 'duration-monitor') {
+            fetchDurationData();
+        }
+    }, [fetchDurationData, activeTab]);
+
+    // Scoped PIC and Customer filters based on active department and roles
+    const filteredProfilesForDuration = useMemo(() => {
+        if (!hasFullAccess) {
+            return profiles.filter(p => p.id === currentUserProfile?.id);
+        }
+        if (filterDepartment === 'All') return profiles;
+        return profiles.filter(p => p.department === filterDepartment);
+    }, [profiles, filterDepartment, hasFullAccess, currentUserProfile]);
+
+    const filteredCustomersForDuration = useMemo(() => {
+        const deptTasks = filterDepartment === 'All' ? tasks : tasks.filter(t => t.department === filterDepartment);
+        const names = new Set(deptTasks.map(t => t.customer_name).filter(Boolean));
+        return Array.from(names).sort();
+    }, [tasks, filterDepartment]);
+
+    // Dynamic row expansion session logs fetcher
+    const fetchSessionLogsForTask = useCallback(async (taskId: string) => {
+        setExpandedLoading(prev => ({ ...prev, [taskId]: true }));
+        try {
+            const { data, error } = await supabase
+                .from('tsk_time_logs')
+                .select('*, user:lv_profiles(full_name, avatar_url), task:tsk_tasks(title, customer_name)')
+                .eq('task_id', taskId)
+                .eq('status', 'COMPLETED')
+                .order('start_time', { ascending: false });
+            if (error) throw error;
+            setExpandedLogs(prev => ({ ...prev, [taskId]: data || [] }));
+        } catch (err: any) {
+            console.error('Fetch session logs error:', err.message);
+            message.error('Gagal mengambil maklumat log sesi kerja');
+        } finally {
+            setExpandedLoading(prev => ({ ...prev, [taskId]: false }));
+        }
+    }, []);
+
+    // Handle Table Pagination/Sorting changes for Task Duration Monitor
+    const handleDurationTableChange = (
+        pagination: any,
+        filters: any,
+        sorter: any
+    ) => {
+        setDurationPagination(prev => ({
+            ...prev,
+            current: pagination.current || 1,
+            pageSize: pagination.pageSize || 25
+        }));
+        
+        setDurationSorter({
+            field: sorter.field || 'actual_hours',
+            order: sorter.order || 'descend'
+        });
+    };
+
+    // Render expanded sub-table showing work sessions detail
+    const renderExpandedLogsTable = (record: any) => {
+        const logs = expandedLogs[record.task_id] || [];
+        const isLoading = expandedLoading[record.task_id];
+
+        return (
+            <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-100/80 shadow-inner">
+                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-indigo-500" />
+                    Perincian Sesi Kerja (Work Sessions Detail)
+                </p>
+                <Table
+                    dataSource={logs}
+                    loading={isLoading}
+                    rowKey="id"
+                    pagination={false}
+                    size="small"
+                    locale={{ emptyText: 'Tiada sesi kerja dikesan.' }}
+                    columns={[
+                        {
+                            title: 'Pekerja (PIC)',
+                            key: 'user',
+                            render: (_, log) => (
+                                <div className="flex items-center gap-2">
+                                    <img
+                                        src={log.user?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(log.user?.full_name || 'U')}&background=6366f1&color=fff`}
+                                        className="w-5 h-5 rounded-full border border-slate-100"
+                                        alt=""
+                                    />
+                                    <span className="text-xs font-semibold text-slate-700">{log.user?.full_name || '—'}</span>
+                                </div>
+                            )
+                        },
+                        {
+                            title: 'Mula Bekerja',
+                            dataIndex: 'start_time',
+                            key: 'start_time',
+                            render: (val) => <span className="text-slate-500 text-xs">{val ? new Date(val).toLocaleString('ms-MY') : '—'}</span>
+                        },
+                        {
+                            title: 'Tamat Bekerja',
+                            dataIndex: 'end_time',
+                            key: 'end_time',
+                            render: (val) => <span className="text-slate-500 text-xs">{val ? new Date(val).toLocaleString('ms-MY') : '—'}</span>
+                        },
+                        {
+                            title: 'Tempoh Sesi',
+                            dataIndex: 'duration',
+                            key: 'duration',
+                            render: (val: number) => {
+                                const hrs = Math.floor(val / 3600);
+                                const mins = Math.floor((val % 3600) / 60);
+                                const secs = val % 60;
+                                if (hrs > 0) return <span className="font-mono font-bold text-xs text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">{hrs}h {mins}m</span>;
+                                if (mins > 0) return <span className="font-mono font-bold text-xs text-slate-600 bg-slate-50 px-2 py-0.5 rounded">{mins}m</span>;
+                                return <span className="font-mono text-slate-400 text-xs">{secs}s</span>;
+                            }
+                        }
+                    ]}
+                />
+            </div>
+        );
+    };
 
     const openDrill = useCallback((title: string, filtered: Task[]) => {
         setDrillTitle(title);
@@ -1343,6 +1571,156 @@ export default function AnalyticsPage() {
         currentUserProfile
     ]);
 
+    // Export Task Durations to Excel using SheetJS
+    const exportDurationToExcel = useCallback(async () => {
+        setIsDurationExporting(true);
+        try {
+            const XLSX = await import('xlsx');
+
+            const startDate = timerDateRange[0] ? timerDateRange[0].startOf('day').toISOString() : null;
+            const endDate = timerDateRange[1] ? timerDateRange[1].endOf('day').toISOString() : null;
+
+            let sortCol = 'actual_hours';
+            if (durationSorter.field === 'task_title') sortCol = 'task_title';
+            else if (durationSorter.field === 'customer') sortCol = 'customer';
+            else if (durationSorter.field === 'pic_name') sortCol = 'pic_name';
+            else if (durationSorter.field === 'session_count') sortCol = 'session_count';
+            else if (durationSorter.field === 'estimated_hours') sortCol = 'estimated_hours';
+            else if (durationSorter.field === 'variance') sortCol = 'variance';
+            else if (durationSorter.field === 'customer_count') sortCol = 'customer_count';
+            else if (durationSorter.field === 'pic_count') sortCol = 'pic_count';
+
+            const isDesc = durationSorter.order === 'descend';
+
+            const { data, error } = await supabase.rpc('get_task_durations', {
+                p_view_mode: durationViewMode,
+                p_search: durationSearch,
+                p_pics: durationPICs,
+                p_customers: durationCustomers,
+                p_dept: filterDepartment,
+                p_sort_column: sortCol,
+                p_sort_desc: isDesc,
+                p_limit: 100000,
+                p_offset: 0,
+                p_start_date: startDate,
+                p_end_date: endDate
+            });
+
+            if (error) throw error;
+
+            const rawData = data || [];
+            if (rawData.length === 0) {
+                message.warning('Tiada data untuk dieksport');
+                return;
+            }
+
+            let sheetData = [];
+            if (durationViewMode === 'instance') {
+                sheetData = rawData.map((row: any) => {
+                    const durationsArr = (row.durations as number[]) || [];
+                    const totalSess = durationsArr.length;
+                    const shortSess = durationsArr.filter(d => d < durationThresholdSeconds).length;
+                    const warningPct = totalSess > 0 ? (shortSess / totalSess) * 100 : 0;
+                    const hasWarning = warningPct > durationThresholdPercent;
+                    const warningLabel = hasWarning ? `AMARAN: ${shortSess} drpd ${totalSess} sesi bawah ${durationThresholdSeconds}s` : 'OK';
+
+                    return {
+                        'Tajuk Tugasan (Task Title)': row.task_title,
+                        'Pelanggan (Customer)': row.customer,
+                        'Pekerja (PIC)': row.pic_name,
+                        'Bilangan Sesi': Number(row.session_count),
+                        'Masa Sebenar (Actual Hours)': Number(Number(row.actual_hours).toFixed(2)),
+                        'Masa Anggaran (Estimated Hours)': row.estimated_hours !== null ? Number(Number(row.estimated_hours).toFixed(1)) : '—',
+                        'Varians (Estimated - Actual)': row.variance !== null ? Number(Number(row.variance).toFixed(2)) : '—',
+                        'Kualiti Data (Data Quality)': warningLabel
+                    };
+                });
+            } else {
+                sheetData = rawData.map((row: any) => {
+                    const durationsArr = (row.durations as number[]) || [];
+                    const totalSess = durationsArr.length;
+                    const shortSess = durationsArr.filter(d => d < durationThresholdSeconds).length;
+                    const warningPct = totalSess > 0 ? (shortSess / totalSess) * 100 : 0;
+                    const hasWarning = warningPct > durationThresholdPercent;
+                    const warningLabel = hasWarning ? `AMARAN: ${shortSess} drpd ${totalSess} sesi bawah ${durationThresholdSeconds}s` : 'OK';
+
+                    return {
+                        'Tajuk Tugasan (Task Title)': row.task_title,
+                        'Bilangan Pelanggan Terlibat': Number(row.customer_count),
+                        'Bilangan PIC Terlibat': Number(row.pic_count),
+                        'Bilangan Sesi': Number(row.session_count),
+                        'Masa Sebenar (Actual Hours)': Number(Number(row.actual_hours).toFixed(2)),
+                        'Masa Anggaran (Estimated Hours)': row.estimated_hours !== null ? Number(Number(row.estimated_hours).toFixed(1)) : '—',
+                        'Varians (Estimated - Actual)': row.variance !== null ? Number(Number(row.variance).toFixed(2)) : '—',
+                        'Kualiti Data (Data Quality)': warningLabel
+                    };
+                });
+            }
+
+            const ws = XLSX.utils.json_to_sheet(sheetData);
+
+            const generatedAt = new Date();
+            const dateRangeLabel = timerDateRange[0] && timerDateRange[1]
+                ? `${timerDateRange[0].format('YYYY-MM-DD')} hingga ${timerDateRange[1].format('YYYY-MM-DD')}`
+                : 'Semua (Lalai)';
+
+            const infoExportData = [
+                { 'Parameter Eksport': 'Tarikh & Masa Penjanaan', 'Nilai': generatedAt.toLocaleString('ms-MY') },
+                { 'Parameter Eksport': 'Dijana Oleh', 'Nilai': currentUserProfile?.full_name || 'Pengguna Aktif' },
+                { 'Parameter Eksport': 'Mod Paparan (View Mode)', 'Nilai': durationViewMode === 'instance' ? 'Per Instance (Tugasan Terperinci)' : 'Per Task Type (Agregasi Tajuk)' },
+                { 'Parameter Eksport': 'Filter Jabatan', 'Nilai': filterDepartment === 'All' ? 'Semua Jabatan' : filterDepartment },
+                { 'Parameter Eksport': 'Filter Pekerja (PIC)', 'Nilai': durationPICs.length > 0 ? durationPICs.join(', ') : 'Semua PIC' },
+                { 'Parameter Eksport': 'Filter Pelanggan', 'Nilai': durationCustomers.length > 0 ? durationCustomers.join(', ') : 'Semua Customer' },
+                { 'Parameter Eksport': 'Kata Kunci Carian', 'Nilai': durationSearch || '—' },
+                { 'Parameter Eksport': 'Filter Julat Tarikh', 'Nilai': dateRangeLabel },
+                { 'Parameter Eksport': 'Tetapan Sesi Pendek (Threshold)', 'Nilai': `${durationThresholdSeconds} saat` },
+                { 'Parameter Eksport': 'Tetapan Had Amaran (Percent)', 'Nilai': `${durationThresholdPercent}%` }
+            ];
+            const wsInfo = XLSX.utils.json_to_sheet(infoExportData);
+
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Laporan Durasi");
+            XLSX.utils.book_append_sheet(wb, wsInfo, "Info Eksport");
+
+            const dateStr = generatedAt.toISOString().slice(0, 10);
+            const timeStr = generatedAt.toTimeString().slice(0, 5).replace(':', '');
+            
+            let filterName = 'All';
+            const isPicActive = durationPICs.length > 0;
+            const isCustomerActive = durationCustomers.length > 0;
+            const isSearchActive = !!durationSearch;
+            const isDateActive = !!(timerDateRange[0] && timerDateRange[1]);
+
+            if (isPicActive && !isCustomerActive && !isSearchActive && !isDateActive && durationPICs.length === 1) {
+                filterName = durationPICs[0].replace(/[^a-zA-Z0-9]/g, '_');
+            } else if (!isPicActive && isCustomerActive && !isSearchActive && !isDateActive && durationCustomers.length === 1) {
+                filterName = durationCustomers[0].replace(/[^a-zA-Z0-9]/g, '_');
+            } else if (isPicActive || isCustomerActive || isSearchActive || isDateActive) {
+                filterName = 'Filtered';
+            }
+
+            const filename = `Task_Duration_Report_${durationViewMode}_${dateStr}_${timeStr}_${filterName}.xlsx`;
+            XLSX.writeFile(wb, filename);
+            message.success(`Berjaya memuat turun fail ${filename}`);
+        } catch (err: any) {
+            console.error('Export error:', err.message);
+            message.error('Gagal mengeksport data ke Excel');
+        } finally {
+            setIsDurationExporting(false);
+        }
+    }, [
+        durationViewMode,
+        durationSearch,
+        durationPICs,
+        durationCustomers,
+        filterDepartment,
+        durationSorter,
+        timerDateRange,
+        currentUserProfile,
+        durationThresholdSeconds,
+        durationThresholdPercent
+    ]);
+
     // ── Chart click handlers ──────────────────────────────────────────────────
 
     const handleBarClick = useCallback((pic: string) => {
@@ -1475,9 +1853,20 @@ export default function AnalyticsPage() {
                     <Clock className="w-4 h-4" />
                     Time Tracking Reports
                 </button>
+                <button
+                    onClick={() => setActiveTab('duration-monitor')}
+                    className={`px-6 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+                        activeTab === 'duration-monitor'
+                            ? 'bg-white text-indigo-700 shadow-sm border border-slate-200/30'
+                            : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                >
+                    <Hourglass className="w-4 h-4" />
+                    Task Duration Monitor
+                </button>
             </div>
 
-            {activeTab === 'overview' ? (
+            {activeTab === 'overview' && (
                 <>
                     {/* ── KPI Cards ── */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
@@ -1844,7 +2233,9 @@ export default function AnalyticsPage() {
                         />
                     </Card>
                 </>
-            ) : (
+            )}
+
+            {activeTab === 'timers' && (
                 <>
                     {/* ── Time Tracking KPI Cards ── */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -2241,6 +2632,309 @@ export default function AnalyticsPage() {
                                         if (hrs > 0) return <span className="font-mono font-bold text-xs text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">{hrs}h {mins}m</span>;
                                         if (mins > 0) return <span className="font-mono font-bold text-xs text-slate-600 bg-slate-50 px-2 py-0.5 rounded">{mins}m</span>;
                                         return <span className="font-mono font-medium text-xs text-slate-400">{secs}s</span>;
+                                    }
+                                }
+                            ]}
+                        />
+                    </Card>
+                </>
+            )}
+
+            {activeTab === 'duration-monitor' && (
+                <>
+                    {/* Collapsible Settings Panel */}
+                    <Collapse 
+                        ghost 
+                        className="bg-white rounded-2xl border border-slate-100/80 shadow-sm overflow-hidden mb-6"
+                        expandIconPosition="end"
+                    >
+                        <Collapse.Panel 
+                            header={
+                                <div className="flex items-center gap-2 py-1">
+                                    <TrendingUp className="w-4 h-4 text-indigo-600" />
+                                    <span className="font-bold text-slate-700">Tetapan Data Quality (Data Quality Settings)</span>
+                                </div>
+                            } 
+                            key="settings"
+                        >
+                            <div className="p-1 flex flex-wrap gap-6 items-center">
+                                <div className="flex items-center gap-3">
+                                    <span className="text-xs text-slate-500 font-semibold">Had Sesi Singkat:</span>
+                                    <InputNumber
+                                        min={5}
+                                        max={3600}
+                                        value={durationThresholdSeconds}
+                                        onChange={(val) => setDurationThresholdSeconds(val || 30)}
+                                        addonAfter="saat"
+                                        size="middle"
+                                        className="w-[140px]"
+                                    />
+                                    <Tooltip title="Sesi kerja dengan durasi kurang daripada had ini akan dianggap sebagai ralat ketukan (accidental click).">
+                                        <span className="text-xs text-slate-400 cursor-help bg-slate-50 hover:bg-slate-100 border px-2 py-1 rounded-md">?</span>
+                                    </Tooltip>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <span className="text-xs text-slate-500 font-semibold">Had Peratusan Amaran:</span>
+                                    <InputNumber
+                                        min={1}
+                                        max={100}
+                                        value={durationThresholdPercent}
+                                        onChange={(val) => setDurationThresholdPercent(val || 20)}
+                                        addonAfter="%"
+                                        size="middle"
+                                        className="w-[130px]"
+                                    />
+                                    <Tooltip title="Amaran kualiti data akan dipaparkan jika peratusan sesi pendek melepasi had peratusan ini.">
+                                        <span className="text-xs text-slate-400 cursor-help bg-slate-50 hover:bg-slate-100 border px-2 py-1 rounded-md">?</span>
+                                    </Tooltip>
+                                </div>
+                            </div>
+                        </Collapse.Panel>
+                    </Collapse>
+
+                    {/* Filter Card */}
+                    <Card
+                        className="rounded-2xl shadow-sm border border-slate-100 mb-6"
+                        variant="borderless"
+                    >
+                        <div className="flex flex-col gap-4">
+                            <div className="flex flex-wrap items-center justify-between gap-4">
+                                <div className="flex flex-wrap items-center gap-3 flex-1 min-w-[280px]">
+                                    {/* Search Input */}
+                                    <Input
+                                        placeholder="Cari tajuk tugasan..."
+                                        value={durationSearchInput}
+                                        onChange={(e) => setDurationSearchInput(e.target.value)}
+                                        className="w-full sm:w-[260px] rounded-xl"
+                                        allowClear
+                                        size="middle"
+                                    />
+                                    
+                                    {/* PIC multi-select */}
+                                    <Select
+                                        mode="multiple"
+                                        placeholder="Pilih Pekerja (PIC)"
+                                        value={durationPICs}
+                                        onChange={(val) => {
+                                            setDurationPICs(val);
+                                            setDurationPagination(prev => ({ ...prev, current: 1 }));
+                                        }}
+                                        maxTagCount="responsive"
+                                        className="w-full sm:w-[220px]"
+                                        allowClear
+                                        disabled={!hasFullAccess}
+                                        options={filteredProfilesForDuration.map(p => ({
+                                            value: p.full_name,
+                                            label: p.full_name
+                                        }))}
+                                    />
+
+                                    {/* Customer multi-select */}
+                                    <Select
+                                        mode="multiple"
+                                        placeholder="Pilih Pelanggan"
+                                        value={durationCustomers}
+                                        onChange={(val) => {
+                                            setDurationCustomers(val);
+                                            setDurationPagination(prev => ({ ...prev, current: 1 }));
+                                        }}
+                                        maxTagCount="responsive"
+                                        className="w-full sm:w-[220px]"
+                                        allowClear
+                                        options={filteredCustomersForDuration.map(name => ({
+                                            value: name,
+                                            label: name
+                                        }))}
+                                    />
+                                </div>
+
+                                <div className="flex items-center gap-3">
+                                    <Button
+                                        type="primary"
+                                        icon={<FileSpreadsheet className="w-4 h-4" />}
+                                        onClick={exportDurationToExcel}
+                                        loading={isDurationExporting}
+                                        className="bg-indigo-600 hover:bg-indigo-700 border-none rounded-xl font-bold flex items-center gap-1.5 h-10"
+                                    >
+                                        Eksport ke Excel
+                                    </Button>
+                                </div>
+                            </div>
+
+                            {/* Info Helper for filter behaviors in Per Task Type mode */}
+                            {durationViewMode === 'type' && (
+                                <div className="text-xs text-slate-400 bg-slate-50 border border-slate-100 rounded-lg p-2.5 flex items-center gap-2">
+                                    <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                                    <span>
+                                        <strong>Nota:</strong> Penapis Pekerja (PIC) & Pelanggan di atas bertindak ke atas sesi kerja asal sebelum proses agregasi dijalankan. Baris yang dipaparkan adalah mengikut Tajuk Tugasan sahaja.
+                                    </span>
+                                </div>
+                            )}
+                        </div>
+                    </Card>
+
+                    {/* View Switcher and Main Table Card */}
+                    <Card
+                        className="rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100"
+                        variant="borderless"
+                        title={
+                            <div className="flex items-center justify-between flex-wrap gap-4 py-2">
+                                <div className="flex items-center gap-2">
+                                    <Hourglass className="w-5 h-5 text-indigo-600" />
+                                    <span className="font-extrabold text-slate-800 text-lg">Prestasi Jam Tugasan</span>
+                                </div>
+                                <Segmented
+                                    value={durationViewMode}
+                                    onChange={(val) => {
+                                        setDurationViewMode(val as any);
+                                        setDurationSorter({ field: 'actual_hours', order: 'descend' });
+                                        setDurationPagination(prev => ({ ...prev, current: 1 }));
+                                    }}
+                                    options={[
+                                        { label: 'Per Instance (Tugasan)', value: 'instance' },
+                                        { label: 'Per Task Type (Tajuk)', value: 'type' }
+                                    ]}
+                                    className="bg-slate-100 p-0.5 rounded-lg border border-slate-200/40"
+                                />
+                            </div>
+                        }
+                    >
+                        <Table
+                            dataSource={durationTableData}
+                            loading={durationTableLoading}
+                            rowKey={(record) => durationViewMode === 'instance' ? record.task_id : record.task_title}
+                            pagination={{
+                                ...durationPagination,
+                                showSizeChanger: true,
+                                pageSizeOptions: ['10', '25', '50', '100'],
+                                className: "my-4"
+                            }}
+                            onChange={handleDurationTableChange}
+                            size="middle"
+                            locale={{ emptyText: 'Tiada rekod prestasi tugasan dikesan.' }}
+                            expandable={durationViewMode === 'instance' ? {
+                                expandedRowRender: renderExpandedLogsTable,
+                                expandedRowKeys,
+                                onExpandedRowsChange: (keys) => setExpandedRowKeys(keys as any),
+                                onExpand: (expanded, record) => {
+                                    if (expanded && !expandedLogs[record.task_id]) {
+                                        fetchSessionLogsForTask(record.task_id);
+                                    }
+                                }
+                            } : undefined}
+                            columns={[
+                                {
+                                    title: 'Tajuk Tugasan (Task Title)',
+                                    dataIndex: 'task_title',
+                                    key: 'task_title',
+                                    sorter: true,
+                                    sortOrder: durationSorter.field === 'task_title' ? durationSorter.order : null,
+                                    render: (text: string, record: any) => {
+                                        // Compute data quality warning flag client-side
+                                        const durationsArr = (record.durations as number[]) || [];
+                                        const totalSess = durationsArr.length;
+                                        const shortSess = durationsArr.filter(d => d < durationThresholdSeconds).length;
+                                        const warningPct = totalSess > 0 ? (shortSess / totalSess) * 100 : 0;
+                                        const hasWarning = warningPct >= durationThresholdPercent;
+
+                                        return (
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-bold text-slate-700 text-sm max-w-[340px] break-words leading-snug">
+                                                    {text}
+                                                </span>
+                                                {hasWarning && (
+                                                    <Tooltip title={`Kualiti Data Rendah: ${shortSess} daripada ${totalSess} sesi adalah lebih singkat daripada ${durationThresholdSeconds} saat (${warningPct.toFixed(0)}%)`}>
+                                                        <AlertTriangle className="w-4 h-4 text-rose-500 cursor-help flex-shrink-0 animate-pulse" />
+                                                    </Tooltip>
+                                                )}
+                                            </div>
+                                        );
+                                    }
+                                },
+                                ...(durationViewMode === 'instance' ? [
+                                    {
+                                        title: 'Pelanggan',
+                                        dataIndex: 'customer',
+                                        key: 'customer',
+                                        sorter: true,
+                                        sortOrder: durationSorter.field === 'customer' ? durationSorter.order : null,
+                                        render: (text: string) => <span className="text-slate-500 text-xs font-semibold">{text}</span>
+                                    },
+                                    {
+                                        title: 'PIC / Assignee',
+                                        dataIndex: 'pic_name',
+                                        key: 'pic_name',
+                                        sorter: true,
+                                        sortOrder: durationSorter.field === 'pic_name' ? durationSorter.order : null,
+                                        render: (text: string) => (
+                                            <div className="flex items-center gap-2">
+                                                <img
+                                                    src={`https://ui-avatars.com/api/?name=${encodeURIComponent(text)}&background=6366f1&color=fff`}
+                                                    className="w-5 h-5 rounded-full border border-slate-100"
+                                                    alt=""
+                                                />
+                                                <span className="text-xs font-bold text-slate-700">{text}</span>
+                                            </div>
+                                        )
+                                    }
+                                ] : [
+                                    {
+                                        title: 'Bil. Pelanggan',
+                                        dataIndex: 'customer_count',
+                                        key: 'customer_count',
+                                        sorter: true,
+                                        sortOrder: durationSorter.field === 'customer_count' ? durationSorter.order : null,
+                                        render: (val: number) => <span className="font-semibold text-slate-700">{val} pelanggan</span>
+                                    },
+                                    {
+                                        title: 'Bil. Pekerja (PIC)',
+                                        dataIndex: 'pic_count',
+                                        key: 'pic_count',
+                                        sorter: true,
+                                        sortOrder: durationSorter.field === 'pic_count' ? durationSorter.order : null,
+                                        render: (val: number) => <span className="font-semibold text-slate-700">{val} PIC</span>
+                                    }
+                                ]),
+                                {
+                                    title: 'Sesi Selesai',
+                                    dataIndex: 'session_count',
+                                    key: 'session_count',
+                                    sorter: true,
+                                    sortOrder: durationSorter.field === 'session_count' ? durationSorter.order : null,
+                                    render: (val: number) => <span className="font-mono text-xs font-semibold text-slate-600 bg-slate-50 px-2 py-0.5 border border-slate-100 rounded">{val} sesi</span>
+                                },
+                                {
+                                    title: 'Masa Sebenar',
+                                    dataIndex: 'actual_hours',
+                                    key: 'actual_hours',
+                                    sorter: true,
+                                    sortOrder: durationSorter.field === 'actual_hours' ? durationSorter.order : null,
+                                    render: (val: number) => <span className="font-extrabold text-slate-700 text-sm">{val.toFixed(2)} hrs</span>
+                                },
+                                {
+                                    title: 'Anggaran Masa',
+                                    dataIndex: 'estimated_hours',
+                                    key: 'estimated_hours',
+                                    sorter: true,
+                                    sortOrder: durationSorter.field === 'estimated_hours' ? durationSorter.order : null,
+                                    render: (val: number | null) => val !== null ? <span className="font-semibold text-slate-600">{val.toFixed(1)} hrs</span> : <span className="text-slate-400 italic">—</span>
+                                },
+                                {
+                                    title: 'Varians',
+                                    dataIndex: 'variance',
+                                    key: 'variance',
+                                    sorter: true,
+                                    sortOrder: durationSorter.field === 'variance' ? durationSorter.order : null,
+                                    render: (val: number | null) => {
+                                        if (val === null) return <span className="text-slate-400 italic">—</span>;
+                                        const isPositive = val >= 0;
+                                        const colorClass = isPositive ? 'text-emerald-600 bg-emerald-50 border-emerald-100' : 'text-rose-600 bg-rose-50 border-rose-100';
+                                        const prefix = isPositive ? '+' : '';
+                                        return (
+                                            <span className={`font-bold font-mono text-xs border px-2 py-0.5 rounded-md ${colorClass}`}>
+                                                {prefix}{val.toFixed(2)} hrs
+                                            </span>
+                                        );
                                     }
                                 }
                             ]}
