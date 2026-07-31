@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { Card, Table, Tag, Typography, Spin, Badge, Tooltip, Modal, Button, Select, Input } from 'antd';
+import { Card, Table, Tag, Typography, Spin, Badge, Tooltip, Modal, Button, Select, Input, message } from 'antd';
 import { createClient } from '@/utils/supabase/client';
 import { Task, Profile } from '@/lib/types';
 import { useRole } from '@/components/layout/RoleProvider';
@@ -15,7 +15,8 @@ import {
     RefreshCw,
     ExternalLink,
     Calendar,
-    Hourglass
+    Hourglass,
+    FileSpreadsheet
 } from 'lucide-react';
 import { differenceInDays, formatDistanceToNow, subWeeks, subMonths } from 'date-fns';
 import Link from 'next/link';
@@ -620,7 +621,9 @@ export default function AnalyticsPage() {
     const [loading, setLoading] = useState(true);
     const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
     const [currentUserDepartment, setCurrentUserDepartment] = useState<string | null>(null);
+    const [currentUserProfile, setCurrentUserProfile] = useState<Profile | null>(null);
     const [filterDepartment, setFilterDepartment] = useState<string>('All');
+    const [isExporting, setIsExporting] = useState(false);
     
     // Tab switching state
     const [activeTab, setActiveTab] = useState<string>('overview');
@@ -676,9 +679,12 @@ export default function AnalyticsPage() {
             let myDept: string | null = null;
             if (userId) {
                 const me = profilesRes.data?.find(p => p.id === userId);
-                if (me?.department) {
-                    myDept = me.department;
-                    setCurrentUserDepartment(me.department);
+                if (me) {
+                    setCurrentUserProfile(me);
+                    if (me.department) {
+                        myDept = me.department;
+                        setCurrentUserDepartment(me.department);
+                    }
                 }
             }
             
@@ -1118,6 +1124,146 @@ export default function AnalyticsPage() {
             },
         },
     ];
+
+    const exportAllToExcel = useCallback(async () => {
+        if (filteredLogs.length === 0) {
+            message.warning("Tiada data untuk dieksport mengikut penapis semasa");
+            return;
+        }
+
+        setIsExporting(true);
+        try {
+            // Lazy load xlsx
+            const XLSX = await import('xlsx');
+
+            // 1. Log Sesi Kerja
+            const detailedLogsSheetData = filteredLogs.map((log) => {
+                const totalSecs = log.duration || 0;
+                const hrs = Math.floor(totalSecs / 3600);
+                const mins = Math.floor((totalSecs % 3600) / 60);
+                const secs = totalSecs % 60;
+                
+                // Formatted hh:mm:ss
+                const pad = (num: number) => String(num).padStart(2, '0');
+                const timeString = `${pad(hrs)}:${pad(mins)}:${pad(secs)}`;
+                
+                // Decimal hours
+                const decimalHours = Number((totalSecs / 3600).toFixed(2));
+
+                return {
+                    'Pekerja (PIC)': log.user?.full_name || '—',
+                    'Tugasan (Task Title)': log.task?.title || '—',
+                    'Pelanggan (Customer)': log.task?.customer_name || '—',
+                    'Mula Bekerja': log.start_time ? new Date(log.start_time).toLocaleString('ms-MY') : '—',
+                    'Tamat Bekerja': log.end_time ? new Date(log.end_time).toLocaleString('ms-MY') : '—',
+                    'Durasi (hh:mm:ss)': timeString,
+                    'Durasi (Jam Perpuluhan)': decimalHours
+                };
+            });
+
+            // 2. Anggaran vs Sebenar
+            const estVsActSheetData = estimatedVsActualData.map((t) => {
+                const estHours = t.estimatedHours !== null ? Number(t.estimatedHours.toFixed(1)) : null;
+                const actHours = Number(t.actualHours.toFixed(2));
+                
+                // Variance = Estimated - Actual
+                // Positive = Under budget (saved hours)
+                // Negative = Over budget (exceeded hours)
+                const varHours = t.variance !== null ? Number(t.variance.toFixed(2)) : null;
+
+                return {
+                    'Nama Tugasan (Task Title)': t.title,
+                    'Pelanggan': t.customer_name,
+                    'PIC Utama': t.assignee_name,
+                    'Estimated Hours': estHours !== null ? estHours : '—',
+                    'Actual Hours': actHours,
+                    'Variance (Estimated - Actual)': varHours !== null ? varHours : '—',
+                    'Status': t.status === 'Within Estimate' ? 'On Track' : t.status === 'Exceeded' ? 'Exceeded' : 'No Estimate'
+                };
+            });
+
+            // 3. Rumusan PIC
+            const picSummarySheetData = timerEmployeeDurations.map((d) => ({
+                'Nama Pekerja (PIC)': d.name,
+                'Jumlah Masa (Jam)': Number((d.duration / 3600).toFixed(2))
+            }));
+
+            // 4. Rumusan Pelanggan
+            const customerSummarySheetData = timerClientDurations.map((d) => ({
+                'Nama Pelanggan (Customer)': d.name,
+                'Jumlah Masa (Jam)': Number((d.duration / 3600).toFixed(2))
+            }));
+
+            // 5. Info Eksport
+            const generatedAt = new Date();
+            const picFilterLabel = filterTimerUser === 'All' 
+                ? 'Semua PIC' 
+                : (profiles.find(p => p.id === filterTimerUser)?.full_name || filterTimerUser);
+            
+            const infoExportData = [
+                { 'Parameter Eksport': 'Tarikh & Masa Penjanaan', 'Nilai': generatedAt.toLocaleString('ms-MY') },
+                { 'Parameter Eksport': 'Dijana Oleh', 'Nilai': currentUserProfile?.full_name || 'Pengguna Aktif' },
+                { 'Parameter Eksport': 'Filter Jabatan', 'Nilai': filterDepartment === 'All' ? 'Semua Jabatan' : filterDepartment },
+                { 'Parameter Eksport': 'Filter Pekerja (PIC)', 'Nilai': picFilterLabel },
+                { 'Parameter Eksport': 'Filter Pelanggan', 'Nilai': filterTimerCustomer === 'All' ? 'Semua Customer' : filterTimerCustomer },
+                { 'Parameter Eksport': 'Kata Kunci Carian', 'Nilai': timerSearchText || '—' },
+                { 'Parameter Eksport': 'Filter Julat Tarikh', 'Nilai': 'Semua (Lalai)' }
+            ];
+
+            // Create workbook and append sheets
+            const wb = XLSX.utils.book_new();
+
+            const wsDetailed = XLSX.utils.json_to_sheet(detailedLogsSheetData);
+            const wsEstVsAct = XLSX.utils.json_to_sheet(estVsActSheetData);
+            const wsPicSummary = XLSX.utils.json_to_sheet(picSummarySheetData);
+            const wsCustomerSummary = XLSX.utils.json_to_sheet(customerSummarySheetData);
+            const wsInfo = XLSX.utils.json_to_sheet(infoExportData);
+
+            XLSX.utils.book_append_sheet(wb, wsDetailed, "Log Sesi Kerja");
+            XLSX.utils.book_append_sheet(wb, wsEstVsAct, "Anggaran vs Sebenar");
+            XLSX.utils.book_append_sheet(wb, wsPicSummary, "Rumusan PIC");
+            XLSX.utils.book_append_sheet(wb, wsCustomerSummary, "Rumusan Pelanggan");
+            XLSX.utils.book_append_sheet(wb, wsInfo, "Info Eksport");
+
+            // Construct dynamic filename
+            const dateStr = generatedAt.toISOString().slice(0, 10); // YYYY-MM-DD
+            const timeStr = generatedAt.toTimeString().slice(0, 5).replace(':', ''); // HHMM
+            
+            let filterName = 'All';
+            const isPicActive = filterTimerUser !== 'All';
+            const isCustomerActive = filterTimerCustomer !== 'All';
+            const isSearchActive = !!timerSearchText;
+
+            if (isPicActive && !isCustomerActive && !isSearchActive) {
+                const rawName = profiles.find(p => p.id === filterTimerUser)?.full_name || 'Worker';
+                filterName = rawName.replace(/[^a-zA-Z0-9]/g, '_');
+            } else if (!isPicActive && isCustomerActive && !isSearchActive) {
+                filterName = filterTimerCustomer.replace(/[^a-zA-Z0-9]/g, '_');
+            } else if (isPicActive || isCustomerActive || isSearchActive) {
+                filterName = 'Filtered';
+            }
+
+            const filename = `Time_Tracking_Report_${dateStr}_${timeStr}_${filterName}.xlsx`;
+            XLSX.writeFile(wb, filename);
+            message.success(`Berjaya memuat turun fail ${filename}`);
+        } catch (err: any) {
+            console.error('Export Excel error:', err);
+            message.error(`Gagal memuat turun Excel: ${err.message || err}`);
+        } finally {
+            setIsExporting(false);
+        }
+    }, [
+        filteredLogs,
+        estimatedVsActualData,
+        timerEmployeeDurations,
+        timerClientDurations,
+        filterDepartment,
+        filterTimerUser,
+        filterTimerCustomer,
+        timerSearchText,
+        profiles,
+        currentUserProfile
+    ]);
 
     // ── Chart click handlers ──────────────────────────────────────────────────
 
@@ -1712,6 +1858,19 @@ export default function AnalyticsPage() {
                                     className="w-full md:w-[260px] rounded-lg"
                                     allowClear
                                 />
+                            </div>
+
+                            <div className="flex flex-col gap-1.5 pt-[18px]">
+                                <Button
+                                    type="primary"
+                                    disabled={isExporting}
+                                    loading={isExporting}
+                                    icon={<FileSpreadsheet className="w-4 h-4" />}
+                                    className="bg-emerald-600 border-emerald-600 hover:bg-emerald-700 font-semibold rounded-lg h-9 shadow-sm"
+                                    onClick={exportAllToExcel}
+                                >
+                                    {isExporting ? 'Mengeksport...' : 'Muat Turun Excel'}
+                                </Button>
                             </div>
                         </div>
                     </Card>
