@@ -12,9 +12,12 @@ interface SortableTaskItemProps {
     currentUserId?: string | null;
 }
 
+import { useRole } from '@/components/layout/RoleProvider';
+
 export default function SortableTaskItem({ task, role, isDone = false, currentUserId }: SortableTaskItemProps) {
+    const { department: currentUserDept } = useRole();
     const isAdminOrManager = role === 'admin' || role === 'manager';
-    const canDrag = isAdminOrManager || task.assignee_id === currentUserId;
+    const canDrag = isAdminOrManager || (role === 'supervisor' && task.department === currentUserDept) || task.assignee_id === currentUserId;
     
     const {
         attributes,

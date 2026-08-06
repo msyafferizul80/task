@@ -37,7 +37,7 @@ export default function EisenhowerDashboard() {
 
     const [form] = Form.useForm();
     const [editForm] = Form.useForm();
-    const { role } = useRole();
+    const { role, department: currentUserDept } = useRole();
     const supabase = createClient();
 
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -60,15 +60,17 @@ export default function EisenhowerDashboard() {
                 )
             `).order('created_at', { ascending: false });
 
-            // If an assignee is looking at the dashboard, default to their tasks
-            if (role !== 'admin' && role !== 'manager' && userId) {
+            // If user is supervisor, fetch all tasks in department. If employee, fetch their own tasks.
+            if (role === 'supervisor' && currentUserDept) {
+                query = query.eq('department', currentUserDept);
+            } else if (role !== 'admin' && role !== 'manager' && userId) {
                 query = query.eq('assignee_id', userId);
             }
 
             const [tasksRes, profilesRes, customersRes] = await Promise.all([
                 query,
-                supabase.from('lv_profiles').select('id, full_name').eq('status', 'active').order('full_name'),
-                supabase.from('tsk_customers').select('id, name').eq('status', 'active').order('name')
+                supabase.from('lv_profiles').select('id, full_name, department').eq('status', 'active').order('full_name'),
+                supabase.from('tsk_customers').select('id, name, is_internal').eq('status', 'active').order('name')
             ]);
 
             if (tasksRes.error) throw tasksRes.error;
@@ -144,8 +146,8 @@ export default function EisenhowerDashboard() {
                 estimated_hours: estimated_hours || null,
                 status: 'IN_PROGRESS',
                 created_by: currentUserId,
-                is_internal: customer_name === 'SYAZNA WORLD (INTERNAL)',
-                department: department || 'Outsourcing',
+                // is_internal is auto-set by trg_sync_task_is_internal trigger
+                department: role === 'supervisor' ? currentUserDept : (department || 'Outsourcing'),
             }]).select('id, created_at').single();
 
             if (error) throw error;
@@ -263,7 +265,7 @@ export default function EisenhowerDashboard() {
                 start_date: values.start_date?.toISOString() || null,
                 due_date: values.due_date?.toISOString() || null,
                 status: values.status,
-                is_internal: values.customer_name === 'SYAZNA WORLD (INTERNAL)',
+                // is_internal is auto-set by trg_sync_task_is_internal trigger
                 department: values.department || 'Outsourcing',
                 estimated_hours: values.estimated_hours || null,
             }).eq('id', selectedTask.id);
@@ -354,6 +356,15 @@ export default function EisenhowerDashboard() {
             default: return 'border-gray-100';
         }
     };
+
+    const assignableProfiles = React.useMemo(() => {
+        if (role === 'supervisor' && currentUserDept) {
+            return profiles.filter(p => p.department === currentUserDept);
+        }
+        return profiles;
+    }, [profiles, role, currentUserDept]);
+
+    const canEditTaskFields = role === 'admin' || role === 'manager' || (role === 'supervisor' && selectedTask?.department === currentUserDept);
 
     if (loading) return <div className="flex justify-center items-center h-full min-h-[500px]"><Spin size="large" /></div>;
 
@@ -560,33 +571,46 @@ export default function EisenhowerDashboard() {
                 <Form form={form} layout="vertical" onFinish={handleCreateTask}>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <Form.Item name="customer_name" label="Customer Name" className="col-span-2 sm:col-span-1" rules={[{ required: true, message: 'Customer name is required' }]}>
-                            <Select placeholder="Select Customer" size="large" showSearch optionFilterProp="children">
+                            <Select placeholder="Select Customer" size="large" showSearch optionFilterProp="children"
+                                onChange={() => {
+                                    // Reset department when customer changes so Outsourcing isn't kept for internal customers
+                                    if (role !== 'supervisor') form.setFieldsValue({ department: undefined });
+                                }}
+                            >
                                 {customers.map(c => (
                                     <Option key={c.id} value={c.name}>{c.name}</Option>
                                 ))}
                             </Select>
                         </Form.Item>
 
-                        <Form.Item name="department" label="Jabatan (Department)" className="col-span-2 sm:col-span-1" rules={[{ required: true, message: 'Please select a department' }]} initialValue="Outsourcing">
-                            <Select 
-                                placeholder="Select Department" 
-                                size="large"
-                                onChange={(val) => {
-                                    if (val === 'IT' || val === 'Marketing' || val === 'Management' || val === 'Account') {
-                                        form.setFieldsValue({ customer_name: 'SYAZNA WORLD (INTERNAL)' });
-                                    } else {
-                                        form.setFieldsValue({ customer_name: undefined });
-                                    }
-                                }}
-                            >
-                                <Option value="Outsourcing">Outsourcing</Option>
-                                <Option value="IT">IT</Option>
-                                <Option value="Sales">Sales</Option>
-                                <Option value="Marketing">Marketing</Option>
-                                <Option value="Recruitment">Recruitment</Option>
-                                <Option value="Management">Management</Option>
-                                <Option value="Account">Account</Option>
-                            </Select>
+                        <Form.Item noStyle shouldUpdate={(prev, cur) => prev.customer_name !== cur.customer_name}>
+                            {({ getFieldValue }) => {
+                                const selCustomer = customers.find((c: any) => c.name === getFieldValue('customer_name'));
+                                const isInternal = selCustomer?.is_internal ?? false;
+                                return (
+                                    <Form.Item
+                                        name="department"
+                                        label="Jabatan (Department)"
+                                        className="col-span-2 sm:col-span-1"
+                                        rules={[{ required: true, message: 'Please select a department' }]}
+                                        initialValue={role === 'supervisor' ? currentUserDept : 'Outsourcing'}
+                                    >
+                                        <Select
+                                            placeholder="Select Department"
+                                            size="large"
+                                            disabled={role === 'supervisor'}
+                                        >
+                                            {!isInternal && <Option value="Outsourcing">Outsourcing</Option>}
+                                            <Option value="IT">IT</Option>
+                                            <Option value="Sales">Sales</Option>
+                                            <Option value="Marketing">Marketing</Option>
+                                            <Option value="Recruitment">Recruitment</Option>
+                                            <Option value="Management">Management</Option>
+                                            <Option value="Account">Account</Option>
+                                        </Select>
+                                    </Form.Item>
+                                );
+                            }}
                         </Form.Item>
 
                         <Form.Item name="title" label="Task Title" className="col-span-2" rules={[{ required: true, message: 'Please enter a title' }]}>
@@ -595,7 +619,7 @@ export default function EisenhowerDashboard() {
 
                         <Form.Item name="assignee_id" label="PIC / Assignee" rules={[{ required: true, message: 'Assignee is required' }]}>
                             <Select placeholder="Select Assignee" size="large" showSearch optionFilterProp="children">
-                                {profiles.map(p => (
+                                {assignableProfiles.map(p => (
                                     <Option key={p.id} value={p.id}>{p.full_name}</Option>
                                 ))}
                             </Select>
@@ -659,50 +683,60 @@ export default function EisenhowerDashboard() {
                                     <Form form={editForm} layout="vertical" onFinish={handleUpdateTask} disabled={selectedTask?.status === 'DONE'}>
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                             <Form.Item name="customer_name" label="Customer Name" className="col-span-2 sm:col-span-1" rules={[{ required: true, message: 'Customer name is required' }]}>
-                                                <Select placeholder="Select Customer" size="large" showSearch optionFilterProp="children" disabled={selectedTask?.status === 'DONE' || (role !== 'admin' && role !== 'manager')}>
+                                                <Select placeholder="Select Customer" size="large" showSearch optionFilterProp="children" disabled={selectedTask?.status === 'DONE' || !canEditTaskFields}>
                                                     {customers.map(c => (
                                                         <Option key={c.id} value={c.name}>{c.name}</Option>
                                                     ))}
                                                 </Select>
                                             </Form.Item>
 
-                                            <Form.Item name="department" label="Jabatan (Department)" className="col-span-2 sm:col-span-1" rules={[{ required: true, message: 'Please select a department' }]}>
-                                                <Select 
-                                                    placeholder="Select Department" 
-                                                    size="large" 
-                                                    disabled={selectedTask?.status === 'DONE' || (role !== 'admin' && role !== 'manager')}
-                                                    onChange={(val) => {
-                                                        if (val === 'IT' || val === 'Marketing' || val === 'Management' || val === 'Account') {
-                                                            editForm.setFieldsValue({ customer_name: 'SYAZNA WORLD (INTERNAL)' });
-                                                        } else {
-                                                            editForm.setFieldsValue({ customer_name: undefined });
-                                                        }
-                                                    }}
-                                                >
-                                                    <Option value="Outsourcing">Outsourcing</Option>
-                                                    <Option value="IT">IT</Option>
-                                                    <Option value="Sales">Sales</Option>
-                                                    <Option value="Marketing">Marketing</Option>
-                                                    <Option value="Recruitment">Recruitment</Option>
-                                                    <Option value="Management">Management</Option>
-                                                    <Option value="Account">Account</Option>
-                                                </Select>
+                                            <Form.Item noStyle shouldUpdate={(prev, cur) => prev.customer_name !== cur.customer_name}>
+                                                {({ getFieldValue }) => {
+                                                    const selCustomer = customers.find((c: any) => c.name === getFieldValue('customer_name'));
+                                                    const isInternal = selCustomer?.is_internal ?? false;
+                                                    const hasBadCombo = isInternal && getFieldValue('department') === 'Outsourcing';
+                                                    return (
+                                                        <>
+                                                            <Form.Item
+                                                                name="department"
+                                                                label="Jabatan (Department)"
+                                                                className="col-span-2 sm:col-span-1"
+                                                                rules={[{ required: true, message: 'Please select a department' }]}
+                                                                extra={hasBadCombo ? <span className="text-amber-600 text-xs">⚠️ This task\'s department may need review</span> : undefined}
+                                                            >
+                                                                <Select
+                                                                    placeholder="Select Department"
+                                                                    size="large"
+                                                                    disabled={selectedTask?.status === 'DONE' || !canEditTaskFields || role === 'supervisor'}
+                                                                >
+                                                                    {(!isInternal || getFieldValue('department') === 'Outsourcing') && <Option value="Outsourcing">Outsourcing</Option>}
+                                                                    <Option value="IT">IT</Option>
+                                                                    <Option value="Sales">Sales</Option>
+                                                                    <Option value="Marketing">Marketing</Option>
+                                                                    <Option value="Recruitment">Recruitment</Option>
+                                                                    <Option value="Management">Management</Option>
+                                                                    <Option value="Account">Account</Option>
+                                                                </Select>
+                                                            </Form.Item>
+                                                        </>
+                                                    );
+                                                }}
                                             </Form.Item>
 
                                             <Form.Item name="title" label="Task Title" className="col-span-2" rules={[{ required: true, message: 'Please enter a title' }]}>
-                                                <Input placeholder="Enter task title" size="large" disabled={selectedTask?.status === 'DONE' || (role !== 'admin' && role !== 'manager')} />
+                                                <Input placeholder="Enter task title" size="large" disabled={selectedTask?.status === 'DONE' || !canEditTaskFields} />
                                             </Form.Item>
 
                                             <Form.Item name="assignee_id" label="PIC / Assignee" rules={[{ required: true, message: 'Assignee is required' }]}>
-                                                <Select placeholder="Select Assignee" size="large" showSearch optionFilterProp="children" disabled={selectedTask?.status === 'DONE' || (role !== 'admin' && role !== 'manager')}>
-                                                    {profiles.map(p => (
+                                                <Select placeholder="Select Assignee" size="large" showSearch optionFilterProp="children" disabled={selectedTask?.status === 'DONE' || !canEditTaskFields}>
+                                                    {assignableProfiles.map(p => (
                                                         <Option key={p.id} value={p.id}>{p.full_name}</Option>
                                                     ))}
                                                 </Select>
                                             </Form.Item>
 
                                             <Form.Item name="priority_type" label="Eisenhower Priority" rules={[{ required: true, message: 'Please select a priority' }]}>
-                                                <Select placeholder="Select Priority" size="large" disabled={selectedTask?.status === 'DONE' || (role !== 'admin' && role !== 'manager')}>
+                                                <Select placeholder="Select Priority" size="large" disabled={selectedTask?.status === 'DONE' || !canEditTaskFields}>
                                                     <Option value="DO_FIRST"><span className="text-red-600 font-medium">🔴 DO FIRST (Urgent & Important)</span></Option>
                                                     <Option value="SCHEDULE"><span className="text-blue-600 font-medium">🔵 SCHEDULE (Not Urgent, Important)</span></Option>
                                                     <Option value="DELEGATE"><span className="text-yellow-600 font-medium">🟡 DELEGATE (Urgent, Not Important)</span></Option>
@@ -722,7 +756,7 @@ export default function EisenhowerDashboard() {
                                         </div>
 
                                         <Form.Item name="description" label="Description">
-                                            <Input.TextArea rows={4} placeholder="Detailed task requirements..." className="resize-y" disabled={selectedTask?.status === 'DONE' || (role !== 'admin' && role !== 'manager')} />
+                                            <Input.TextArea rows={4} placeholder="Detailed task requirements..." className="resize-y" disabled={selectedTask?.status === 'DONE' || !canEditTaskFields} />
                                         </Form.Item>
 
                                         {taskChecklist.length > 0 && (
@@ -755,20 +789,20 @@ export default function EisenhowerDashboard() {
 
                                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
                                              <Form.Item name="start_date" label="Start Date">
-                                                 <DatePicker className="w-full" size="large" showTime disabled={selectedTask?.status === 'DONE' || (role !== 'admin' && role !== 'manager')} />
+                                                 <DatePicker className="w-full" size="large" showTime disabled={selectedTask?.status === 'DONE' || !canEditTaskFields} />
                                              </Form.Item>
                                              <Form.Item name="due_date" label="Due Date" rules={[{ required: true, message: 'Due date is required' }]}>
-                                                 <DatePicker className="w-full" size="large" showTime disabled={selectedTask?.status === 'DONE' || (role !== 'admin' && role !== 'manager')} />
+                                                 <DatePicker className="w-full" size="large" showTime disabled={selectedTask?.status === 'DONE' || !canEditTaskFields} />
                                              </Form.Item>
                                              <Form.Item name="estimated_hours" label="Est. Hours">
-                                                 <InputNumber className="w-full" size="large" min={0} step={0.5} placeholder="e.g. 4.5" disabled={selectedTask?.status === 'DONE' || (role !== 'admin' && role !== 'manager')} />
+                                                 <InputNumber className="w-full" size="large" min={0} step={0.5} placeholder="e.g. 4.5" disabled={selectedTask?.status === 'DONE' || !canEditTaskFields} />
                                              </Form.Item>
                                          </div>
 
                                         <Form.Item className="mb-0 mt-6 pt-4 border-t">
                                             <div className="flex items-center justify-between w-full">
                                                 <div>
-                                                    {((role === 'admin' || role === 'manager') || (selectedTask && (selectedTask.status !== 'DONE' || selectedTask.assignee_id === currentUserId))) && selectedTask && (
+                                                    {(role === 'admin' || role === 'manager' || (role === 'employee' && selectedTask && (selectedTask.status !== 'DONE' || selectedTask.assignee_id === currentUserId))) && selectedTask && (
                                                         <Button danger type="text" onClick={handleDeleteTask} size="large" icon={<DeleteOutlined />} disabled={false}>
                                                             Delete
                                                         </Button>
@@ -780,11 +814,11 @@ export default function EisenhowerDashboard() {
                                                         setSelectedTask(null);
                                                     }} size="large" disabled={false}>Cancel</Button>
 
-                                                    {selectedTask?.status !== 'DONE' && selectedTask && (selectedTask.assignee_id === currentUserId || role === 'admin' || role === 'manager') && (
+                                                    {selectedTask?.status !== 'DONE' && selectedTask && (selectedTask.assignee_id === currentUserId || role === 'admin' || role === 'manager' || (role === 'supervisor' && selectedTask.department === currentUserDept)) && (
                                                         <Button 
                                                             type="default" 
                                                             size="large" 
-                                                            className="border-orange-500 text-orange-600 hover:bg-orange-50 bg-white"
+                                                            className="border-orange-500 text-orange-600 hover:bg-orange-50 bg-white mr-3"
                                                             onClick={() => setIsEscalateModalOpen(true)}
                                                         >
                                                             🚩 Escalate

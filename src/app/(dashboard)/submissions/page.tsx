@@ -109,7 +109,7 @@ export default function SubmissionsPage() {
                     return res.json();
                 }),
                 supabase.from('lv_profiles').select('id, full_name').eq('status', 'active').order('full_name'),
-                supabase.from('tsk_customers').select('id, name').order('name'),
+                supabase.from('tsk_customers').select('id, name, is_internal').order('name'),
                 fetchAllSubmissions()
             ]);
 
@@ -306,7 +306,7 @@ export default function SubmissionsPage() {
                 due_date: due_date?.toISOString(),
                 status: 'IN_PROGRESS',
                 created_by: currentUserId,
-                is_internal: customer_name === 'SYAZNA WORLD (INTERNAL)',
+                // is_internal is auto-set by trg_sync_task_is_internal trigger
                 department: department || 'Outsourcing',
                 start_date: start_date?.toISOString(),
                 estimated_hours: estimated_hours,
@@ -657,26 +657,24 @@ export default function SubmissionsPage() {
                             </Select>
                         </Form.Item>
 
-                        <Form.Item name="department" label="Jabatan (Department)" className="col-span-2 sm:col-span-1" rules={[{ required: true, message: 'Please select a department' }]} initialValue="Outsourcing">
-                            <Select
-                                placeholder="Select Department"
-                                size="large"
-                                onChange={(val) => {
-                                    if (val === 'IT' || val === 'Marketing' || val === 'Management' || val === 'Account') {
-                                        form.setFieldsValue({ customer_name: 'SYAZNA WORLD (INTERNAL)' });
-                                    } else {
-                                        form.setFieldsValue({ customer_name: undefined });
-                                    }
-                                }}
-                            >
-                                <Option value="Outsourcing">Outsourcing</Option>
-                                <Option value="IT">IT</Option>
-                                <Option value="Sales">Sales</Option>
-                                <Option value="Marketing">Marketing</Option>
-                                <Option value="Recruitment">Recruitment</Option>
-                                <Option value="Management">Management</Option>
-                                <Option value="Account">Account</Option>
-                            </Select>
+                        <Form.Item noStyle shouldUpdate={(prev, cur) => prev.customer_name !== cur.customer_name}>
+                            {({ getFieldValue }) => {
+                                const selCustomer = customers.find((c: any) => c.name === getFieldValue('customer_name'));
+                                const isInternal = selCustomer?.is_internal ?? false;
+                                return (
+                                    <Form.Item name="department" label="Jabatan (Department)" className="col-span-2 sm:col-span-1" rules={[{ required: true, message: 'Please select a department' }]} initialValue="Outsourcing">
+                                        <Select placeholder="Select Department" size="large">
+                                            {!isInternal && <Option value="Outsourcing">Outsourcing</Option>}
+                                            <Option value="IT">IT</Option>
+                                            <Option value="Sales">Sales</Option>
+                                            <Option value="Marketing">Marketing</Option>
+                                            <Option value="Recruitment">Recruitment</Option>
+                                            <Option value="Management">Management</Option>
+                                            <Option value="Account">Account</Option>
+                                        </Select>
+                                    </Form.Item>
+                                );
+                            }}
                         </Form.Item>
 
                         <Form.Item name="title" label="Task Title" className="col-span-2" rules={[{ required: true, message: 'Please enter a title' }]}>

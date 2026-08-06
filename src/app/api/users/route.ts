@@ -24,7 +24,7 @@ export async function POST(req: Request) {
         }
 
         // Parse the request body
-        const { email, password, full_name, role } = await req.json();
+        const { email, password, full_name, role, department } = await req.json();
 
         if (!email || !password || !full_name || !role) {
             return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -76,6 +76,7 @@ export async function POST(req: Request) {
                 full_name: full_name,
                 role: role,
                 status: 'active',
+                department: department || null,
                 organization_id: profile.organization_id || null
             }, {
                 onConflict: 'id'

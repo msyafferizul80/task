@@ -104,9 +104,11 @@ export default function Sidebar() {
     ];
 
     const managementItems: SidebarNavItem[] = [];
+    if (role === 'admin' || role === 'manager' || role === 'supervisor') {
+        managementItems.push({ name: 'Analytics', href: '/analytics', icon: BarChart2 });
+    }
     if (role === 'admin' || role === 'manager') {
         managementItems.push({ name: 'Submissions', href: '/submissions', icon: Inbox });
-        managementItems.push({ name: 'Analytics', href: '/analytics', icon: BarChart2 });
         managementItems.push({ name: 'Customers', href: '/customers', icon: Users });
         managementItems.push({ name: 'Blueprints', href: '/blueprints', icon: Bot });
     }
@@ -136,9 +138,11 @@ export default function Sidebar() {
         { name: 'My Profile', href: '/profile', icon: UserCircle }
     ];
 
+    if (role === 'admin' || role === 'manager' || role === 'supervisor') {
+        mobileOrderedItems.push({ name: 'Analytics', href: '/analytics', icon: BarChart2 });
+    }
     if (role === 'admin' || role === 'manager') {
         mobileOrderedItems.push({ name: 'Submissions', href: '/submissions', icon: Inbox });
-        mobileOrderedItems.push({ name: 'Analytics', href: '/analytics', icon: BarChart2 });
         mobileOrderedItems.push({ name: 'Customers', href: '/customers', icon: Users });
         mobileOrderedItems.push({ name: 'Blueprints', href: '/blueprints', icon: Bot });
     }

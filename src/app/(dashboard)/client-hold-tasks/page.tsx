@@ -37,7 +37,7 @@ export default function ClientHoldTasksPage() {
     const [pendingUpdateValues, setPendingUpdateValues] = useState<any>(null);
 
     const supabase = createClient();
-    const { role } = useRole();
+    const { role, department: currentUserDept } = useRole();
 
     const fetchData = useCallback(async () => {
         try {
@@ -64,14 +64,17 @@ export default function ClientHoldTasksPage() {
             // Always only fetch their tasks regardless of role
             // if (userId) {
             // Only fetch their own tasks if not admin/manager
-            if (role !== 'admin' && role !== 'manager' && userId) {
+            // If user is supervisor, fetch all tasks in department. If employee, fetch their own tasks.
+            if (role === 'supervisor' && currentUserDept) {
+                query = query.eq('department', currentUserDept);
+            } else if (role !== 'admin' && role !== 'manager' && userId) {
                 query = query.eq('assignee_id', userId);
             }
 
             const [tasksRes, profilesRes, customersRes] = await Promise.all([
                 query,
-                supabase.from('lv_profiles').select('id, full_name').eq('status', 'active').order('full_name'),
-                supabase.from('tsk_customers').select('id, name').eq('status', 'active').order('name')
+                supabase.from('lv_profiles').select('id, full_name, department').eq('status', 'active').order('full_name'),
+                supabase.from('tsk_customers').select('id, name, is_internal').eq('status', 'active').order('name')
             ]);
 
             if (tasksRes.error) throw tasksRes.error;
@@ -448,6 +451,15 @@ export default function ClientHoldTasksPage() {
         }
     ];
 
+    const assignableProfiles = React.useMemo(() => {
+        if (role === 'supervisor' && currentUserDept) {
+            return profiles.filter(p => p.department === currentUserDept);
+        }
+        return profiles;
+    }, [profiles, role, currentUserDept]);
+
+    const canEditTaskFields = role === 'admin' || role === 'manager' || (role === 'supervisor' && selectedTask?.department === currentUserDept);
+
     if (loading) return <div className="flex justify-center items-center h-[calc(100vh-100px)]"><Spin size="large" /></div>;
 
     return (
@@ -635,50 +647,54 @@ export default function ClientHoldTasksPage() {
                             >
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <Form.Item name="customer_name" label="Customer Name" className="col-span-2 sm:col-span-1" rules={[{ required: true, message: 'Customer name is required' }]}>
-                                        <Select placeholder="Select Customer" size="large" showSearch optionFilterProp="children" disabled={selectedTask?.status === 'DONE' || (role !== 'admin' && role !== 'manager')}>
+                                        <Select placeholder="Select Customer" size="large" showSearch optionFilterProp="children" disabled={selectedTask?.status === 'DONE' || !canEditTaskFields}>
                                             {customers.map(c => (
                                                 <Option key={c.id} value={c.name}>{c.name}</Option>
                                             ))}
                                         </Select>
                                     </Form.Item>
 
-                                    <Form.Item name="department" label="Jabatan (Department)" className="col-span-2 sm:col-span-1" rules={[{ required: true, message: 'Please select a department' }]}>
-                                        <Select 
-                                            placeholder="Select Department" 
-                                            size="large" 
-                                            disabled={selectedTask?.status === 'DONE' || (role !== 'admin' && role !== 'manager')}
-                                            onChange={(val) => {
-                                                if (val === 'IT' || val === 'Marketing' || val === 'Management' || val === 'Account') {
-                                                    editForm.setFieldsValue({ customer_name: 'SYAZNA WORLD (INTERNAL)' });
-                                                } else {
-                                                    editForm.setFieldsValue({ customer_name: undefined });
-                                                }
-                                            }}
-                                        >
-                                            <Option value="Outsourcing">Outsourcing</Option>
-                                            <Option value="IT">IT</Option>
-                                            <Option value="Sales">Sales</Option>
-                                            <Option value="Marketing">Marketing</Option>
-                                            <Option value="Recruitment">Recruitment</Option>
-                                            <Option value="Management">Management</Option>
-                                            <Option value="Account">Account</Option>
-                                        </Select>
+                                    <Form.Item noStyle shouldUpdate={(prev, cur) => prev.customer_name !== cur.customer_name}>
+                                        {({ getFieldValue }) => {
+                                            const selCustomer = customers.find((c: any) => c.name === getFieldValue('customer_name'));
+                                            const isInternal = selCustomer?.is_internal ?? false;
+                                            const hasBadCombo = isInternal && getFieldValue('department') === 'Outsourcing';
+                                            return (
+                                                <Form.Item name="department" label="Jabatan (Department)" className="col-span-2 sm:col-span-1" rules={[{ required: true, message: 'Please select a department' }]}
+                                                    extra={hasBadCombo ? <span className="text-amber-600 text-xs">⚠️ This task's department may need review</span> : undefined}
+                                                >
+                                                    <Select
+                                                        placeholder="Select Department"
+                                                        size="large"
+                                                        disabled={selectedTask?.status === 'DONE' || !canEditTaskFields}
+                                                    >
+                                                        {(!isInternal || getFieldValue('department') === 'Outsourcing') && <Option value="Outsourcing">Outsourcing</Option>}
+                                                        <Option value="IT">IT</Option>
+                                                        <Option value="Sales">Sales</Option>
+                                                        <Option value="Marketing">Marketing</Option>
+                                                        <Option value="Recruitment">Recruitment</Option>
+                                                        <Option value="Management">Management</Option>
+                                                        <Option value="Account">Account</Option>
+                                                    </Select>
+                                                </Form.Item>
+                                            );
+                                        }}
                                     </Form.Item>
 
                                     <Form.Item name="title" label="Task Title" className="col-span-2" rules={[{ required: true, message: 'Please enter a title' }]}>
-                                        <Input placeholder="Enter task title" size="large" disabled={selectedTask?.status === 'DONE'} />
+                                        <Input placeholder="Enter task title" size="large" disabled={selectedTask?.status === 'DONE' || !canEditTaskFields} />
                                     </Form.Item>
 
                                     <Form.Item name="assignee_id" label="PIC / Assignee" rules={[{ required: true, message: 'Assignee is required' }]}>
-                                        <Select placeholder="Select Assignee" size="large" showSearch optionFilterProp="children" disabled={selectedTask?.status === 'DONE' || (role !== 'admin' && role !== 'manager')}>
-                                            {profiles.map(p => (
+                                        <Select placeholder="Select Assignee" size="large" showSearch optionFilterProp="children" disabled={selectedTask?.status === 'DONE' || !canEditTaskFields}>
+                                            {assignableProfiles.map(p => (
                                                 <Option key={p.id} value={p.id}>{p.full_name}</Option>
                                             ))}
                                         </Select>
                                     </Form.Item>
 
                                     <Form.Item name="priority_type" label="Eisenhower Priority" rules={[{ required: true, message: 'Please select a priority' }]}>
-                                        <Select placeholder="Select Priority" size="large" disabled={selectedTask?.status === 'DONE' || (role !== 'admin' && role !== 'manager')}>
+                                        <Select placeholder="Select Priority" size="large" disabled={selectedTask?.status === 'DONE' || !canEditTaskFields}>
                                             <Option value="DO_FIRST"><span className="text-red-600 font-medium">🔴 DO FIRST (Urgent & Important)</span></Option>
                                             <Option value="SCHEDULE"><span className="text-blue-600 font-medium">🔵 SCHEDULE (Not Urgent, Important)</span></Option>
                                             <Option value="DELEGATE"><span className="text-yellow-600 font-medium">🟡 DELEGATE (Urgent, Not Important)</span></Option>
@@ -698,7 +714,7 @@ export default function ClientHoldTasksPage() {
                                 </div>
 
                                 <Form.Item name="description" label="Description">
-                                    <Input.TextArea rows={4} placeholder="Detailed task requirements..." className="resize-y" />
+                                    <Input.TextArea rows={4} placeholder="Detailed task requirements..." className="resize-y" disabled={selectedTask?.status === 'DONE' || !canEditTaskFields} />
                                 </Form.Item>
 
                                 {selectedTask.created_at && (
@@ -713,13 +729,13 @@ export default function ClientHoldTasksPage() {
 
                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
                                      <Form.Item name="start_date" label="Start Date">
-                                         <DatePicker className="w-full" size="large" showTime disabled={selectedTask?.status === 'DONE' || (role !== 'admin' && role !== 'manager')} />
+                                         <DatePicker className="w-full" size="large" showTime disabled={selectedTask?.status === 'DONE' || !canEditTaskFields} />
                                      </Form.Item>
                                      <Form.Item name="due_date" label="Due Date" rules={[{ required: true, message: 'Due date is required' }]}>
-                                         <DatePicker className="w-full" size="large" showTime disabled={selectedTask?.status === 'DONE' || (role !== 'admin' && role !== 'manager')} />
+                                         <DatePicker className="w-full" size="large" showTime disabled={selectedTask?.status === 'DONE' || !canEditTaskFields} />
                                      </Form.Item>
                                      <Form.Item name="estimated_hours" label="Est. Hours">
-                                         <InputNumber className="w-full" size="large" min={0} step={0.5} placeholder="e.g. 4.5" disabled={selectedTask?.status === 'DONE' || (role !== 'admin' && role !== 'manager')} />
+                                         <InputNumber className="w-full" size="large" min={0} step={0.5} placeholder="e.g. 4.5" disabled={selectedTask?.status === 'DONE' || !canEditTaskFields} />
                                      </Form.Item>
                                  </div>
 
@@ -732,7 +748,7 @@ export default function ClientHoldTasksPage() {
                                 <Form.Item className="mb-0 mt-6 pt-4 border-t">
                                     <div className="flex items-center justify-between w-full">
                                         <div>
-                                            {((role === 'admin' || role === 'manager') || (selectedTask.status !== 'DONE' || selectedTask.assignee_id === currentUserId)) && (
+                                            {(role === 'admin' || role === 'manager' || (role === 'employee' && (selectedTask.status !== 'DONE' || selectedTask.assignee_id === currentUserId))) && (
                                                 <Button danger type="text" onClick={handleDeleteTask} size="large" icon={<DeleteOutlined />} disabled={false}>
                                                     Delete
                                                 </Button>
@@ -744,7 +760,7 @@ export default function ClientHoldTasksPage() {
                                                 setSelectedTask(null);
                                             }} className="mr-3" size="large" disabled={false}>Cancel</Button>
 
-                                            {selectedTask.status !== 'DONE' && (role === 'admin' || role === 'manager' || selectedTask.assignee_id === currentUserId) && (
+                                            {selectedTask.status !== 'DONE' && (role === 'admin' || role === 'manager' || (role === 'supervisor' && selectedTask?.department === currentUserDept) || selectedTask.assignee_id === currentUserId) && (
                                                 <Button
                                                     type="default"
                                                     size="large"

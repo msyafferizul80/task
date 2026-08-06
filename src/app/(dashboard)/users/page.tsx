@@ -25,6 +25,16 @@ export default function UsersPage() {
                 .select('*')
                 .order('full_name');
 
+            if (!error && data) {
+                // Sort: active first, then inactive/suspended — alphabetically within each group
+                data.sort((a: any, b: any) => {
+                    const statusOrder = (s: string) => (s === 'active' ? 0 : 1);
+                    const diff = statusOrder(a.status) - statusOrder(b.status);
+                    if (diff !== 0) return diff;
+                    return (a.full_name || '').localeCompare(b.full_name || '');
+                });
+            }
+
             if (error) throw error;
             setUsers(data || []);
         } catch (error: any) {
@@ -46,7 +56,12 @@ export default function UsersPage() {
                 // Update existing user profile
                 const { error } = await supabase
                     .from('lv_profiles')
-                    .update({ full_name: values.full_name, role: values.role, status: values.status })
+                    .update({ 
+                        full_name: values.full_name, 
+                        role: values.role, 
+                        status: values.status,
+                        department: values.department || null
+                    })
                     .eq('id', editingId);
 
                 if (error) throw error;
@@ -129,10 +144,15 @@ export default function UsersPage() {
             title: 'Role',
             dataIndex: 'role',
             key: 'role',
-            render: (role: string) => (
-                <Tag color={role === 'admin' ? 'purple' : 'blue'}>{role?.toUpperCase() || 'USER'}</Tag>
-            )
+            render: (role: string) => {
+                let color = 'blue';
+                if (role === 'admin') color = 'purple';
+                if (role === 'manager') color = 'orange';
+                if (role === 'supervisor') color = 'green';
+                return <Tag color={color}>{role?.toUpperCase() || 'USER'}</Tag>;
+            }
         },
+        { title: 'Department', dataIndex: 'department', key: 'department', render: (dept: string) => dept || '—' },
         { title: 'Status', dataIndex: 'status', key: 'status' },
         {
             title: 'Action',
@@ -175,6 +195,9 @@ export default function UsersPage() {
                 rowKey="id"
                 loading={loading}
                 pagination={{ pageSize: 10 }}
+                rowClassName={(record: any) =>
+                    record.status !== 'active' ? 'opacity-50' : ''
+                }
             />
 
             <Modal
@@ -207,8 +230,53 @@ export default function UsersPage() {
                         <Select placeholder="Select a role">
                             <Option value="admin">Admin</Option>
                             <Option value="manager">Manager</Option>
+                            <Option value="supervisor">Supervisor</Option>
                             <Option value="employee">Employee</Option>
                         </Select>
+                    </Form.Item>
+
+                    <Form.Item 
+                        noStyle 
+                        shouldUpdate={(prevValues, currentValues) => prevValues.role !== currentValues.role}
+                    >
+                        {({ getFieldValue }) => {
+                            const selectedRole = getFieldValue('role');
+                            if (selectedRole === 'supervisor') {
+                                return (
+                                    <Form.Item 
+                                        name="department" 
+                                        label="Department" 
+                                        rules={[{ required: true, message: 'Please select a department for the supervisor' }]}
+                                    >
+                                        <Select placeholder="Select a department">
+                                            <Option value="Outsourcing">Outsourcing</Option>
+                                            <Option value="IT">IT</Option>
+                                            <Option value="Sales">Sales</Option>
+                                            <Option value="Marketing">Marketing</Option>
+                                            <Option value="Recruitment">Recruitment</Option>
+                                            <Option value="Management">Management</Option>
+                                            <Option value="Account">Account</Option>
+                                        </Select>
+                                    </Form.Item>
+                                );
+                            }
+                            return (
+                                <Form.Item 
+                                    name="department" 
+                                    label="Department (Optional)"
+                                >
+                                    <Select placeholder="Select a department" allowClear>
+                                        <Option value="Outsourcing">Outsourcing</Option>
+                                        <Option value="IT">IT</Option>
+                                        <Option value="Sales">Sales</Option>
+                                        <Option value="Marketing">Marketing</Option>
+                                        <Option value="Recruitment">Recruitment</Option>
+                                        <Option value="Management">Management</Option>
+                                        <Option value="Account">Account</Option>
+                                    </Select>
+                                </Form.Item>
+                            );
+                        }}
                     </Form.Item>
 
                     <Form.Item name="status" label="Status" rules={[{ required: true, message: 'Please select a status' }]}>

@@ -689,6 +689,7 @@ export default function AnalyticsPage() {
     const supabase = createClient();
     const { role } = useRole();
     const hasFullAccess = role === 'admin' || role === 'manager';
+    const canDrillDown = hasFullAccess || role === 'supervisor';
 
     const fetchData = useCallback(async () => {
         try {
@@ -868,12 +869,15 @@ export default function AnalyticsPage() {
 
     // Scoped PIC and Customer filters based on active department and roles
     const filteredProfilesForDuration = useMemo(() => {
+        if (role === 'supervisor') {
+            return profiles.filter(p => p.department === currentUserDepartment);
+        }
         if (!hasFullAccess) {
             return profiles.filter(p => p.id === currentUserProfile?.id);
         }
         if (filterDepartment === 'All') return profiles;
         return profiles.filter(p => p.department === filterDepartment);
-    }, [profiles, filterDepartment, hasFullAccess, currentUserProfile]);
+    }, [profiles, filterDepartment, hasFullAccess, currentUserProfile, role, currentUserDepartment]);
 
     const filteredCustomersForDuration = useMemo(() => {
         const deptTasks = filterDepartment === 'All' ? tasks : tasks.filter(t => t.department === filterDepartment);
@@ -1877,8 +1881,8 @@ export default function AnalyticsPage() {
                             icon={CheckSquare}
                             color="bg-indigo-600"
                             bg="bg-indigo-50"
-                            clickable={hasFullAccess}
-                            onClick={() => hasFullAccess && openDrill(`Semua Task Aktif (${activeTasks.length})`, activeTasks)}
+                            clickable={canDrillDown}
+                            onClick={() => canDrillDown && openDrill(`Semua Task Aktif (${activeTasks.length})`, activeTasks)}
                         />
                         <KpiCard
                             title="Overdue Tasks"
@@ -1887,8 +1891,8 @@ export default function AnalyticsPage() {
                             icon={AlertTriangle}
                             color="bg-red-500"
                             bg="bg-red-50"
-                            clickable={hasFullAccess && overdueTasks.length > 0}
-                            onClick={() => hasFullAccess && openDrill(`⚠️ Task Overdue (${overdueTasks.length})`, overdueTasks)}
+                            clickable={canDrillDown && overdueTasks.length > 0}
+                            onClick={() => canDrillDown && openDrill(`⚠️ Task Overdue (${overdueTasks.length})`, overdueTasks)}
                         />
                         <KpiCard
                             title="Bottleneck Tasks"
@@ -1897,8 +1901,8 @@ export default function AnalyticsPage() {
                             icon={Clock}
                             color="bg-amber-500"
                             bg="bg-amber-50"
-                            clickable={hasFullAccess && bottleneckTasks.length > 0}
-                            onClick={() => hasFullAccess && openDrill(`🕐 Bottleneck Tasks (${bottleneckTasks.length})`, bottleneckTasks)}
+                            clickable={canDrillDown && bottleneckTasks.length > 0}
+                            onClick={() => canDrillDown && openDrill(`🕐 Bottleneck Tasks (${bottleneckTasks.length})`, bottleneckTasks)}
                         />
                         <KpiCard
                             title="Klien Aktif"
@@ -1936,7 +1940,7 @@ export default function AnalyticsPage() {
                                 <WorkloadBarChart
                                     data={workloadData}
                                     onBarClick={handleBarClick}
-                                    isAdmin={hasFullAccess}
+                                    isAdmin={canDrillDown}
                                 />
                             )}
                         </Card>
@@ -1966,7 +1970,7 @@ export default function AnalyticsPage() {
                                     data={customerData}
                                     total={tasks.length}
                                     onSegmentClick={handleCustomerClick}
-                                    isAdmin={hasFullAccess}
+                                    isAdmin={canDrillDown}
                                 />
                             )}
                         </Card>
@@ -1992,7 +1996,7 @@ export default function AnalyticsPage() {
                         <TotalTaskBarChart
                             data={totalTaskByPicData}
                             onBarClick={handleTotalPicBarClick}
-                            isAdmin={hasFullAccess}
+                            isAdmin={canDrillDown}
                             period={totalPicPeriod}
                             onPeriodChange={setTotalPicPeriod}
                             customStart={totalPicCustomStart}
@@ -2023,20 +2027,20 @@ export default function AnalyticsPage() {
                                 ) : (
                                     <>
                                         <div
-                                            className={`bg-red-50 border border-red-100 rounded-xl p-4 text-center transition-all ${hasFullAccess ? 'cursor-pointer hover:bg-red-100' : ''}`}
-                                            onClick={() => hasFullAccess && openDrill(`⚠️ Task Overdue (${overdueTasks.length})`, overdueTasks)}
+                                            className={`bg-red-50 border border-red-100 rounded-xl p-4 text-center transition-all ${canDrillDown ? 'cursor-pointer hover:bg-red-100' : ''}`}
+                                            onClick={() => canDrillDown && openDrill(`⚠️ Task Overdue (${overdueTasks.length})`, overdueTasks)}
                                         >
                                             <p className="text-4xl font-black text-red-500">{overdueTasks.length}</p>
                                             <p className="text-xs text-red-400 font-semibold mt-1">JUMLAH OVERDUE</p>
-                                            {hasFullAccess && <p className="text-xs text-red-300 mt-0.5">Klik untuk lihat senarai ↗</p>}
+                                            {canDrillDown && <p className="text-xs text-red-300 mt-0.5">Klik untuk lihat senarai ↗</p>}
                                         </div>
 
                                         {Object.entries(overdueByStatus).filter(([, v]) => v > 0).map(([status, count]) => (
                                             <div
                                                 key={status}
-                                                className={`flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100 transition-all ${hasFullAccess ? 'cursor-pointer hover:bg-slate-100' : ''}`}
+                                                className={`flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100 transition-all ${canDrillDown ? 'cursor-pointer hover:bg-slate-100' : ''}`}
                                                 onClick={() => {
-                                                    if (!hasFullAccess) return;
+                                                    if (!canDrillDown) return;
                                                     const filtered = overdueTasks.filter(t => t.status === status);
                                                     openDrill(`Overdue — ${STATUS_LABELS[status]} (${filtered.length})`, filtered);
                                                 }}
@@ -2047,7 +2051,7 @@ export default function AnalyticsPage() {
                                                 </div>
                                                 <div className="flex items-center gap-1">
                                                     <Badge count={count} style={{ backgroundColor: STATUS_COLORS[status] }} />
-                                                    {hasFullAccess && <span className="text-xs text-slate-300 ml-1">↗</span>}
+                                                    {canDrillDown && <span className="text-xs text-slate-300 ml-1">↗</span>}
                                                 </div>
                                             </div>
                                         ))}
@@ -2722,7 +2726,7 @@ export default function AnalyticsPage() {
                                         maxTagCount="responsive"
                                         className="w-full sm:w-[220px]"
                                         allowClear
-                                        disabled={!hasFullAccess}
+                                        disabled={!canDrillDown}
                                         options={filteredProfilesForDuration.map(p => ({
                                             value: p.full_name,
                                             label: p.full_name

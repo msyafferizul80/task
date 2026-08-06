@@ -160,7 +160,7 @@ export default function MyTasksPage() {
             const [tasksRes, profilesRes, customersRes] = await Promise.all([
                 query,
                 supabase.from('lv_profiles').select('id, full_name').eq('status', 'active').order('full_name'),
-                supabase.from('tsk_customers').select('id, name').eq('status', 'active').order('name')
+                supabase.from('tsk_customers').select('id, name, is_internal').eq('status', 'active').order('name')
             ]);
 
             if (tasksRes.error) throw tasksRes.error;
@@ -832,27 +832,31 @@ export default function MyTasksPage() {
                                         </Select>
                                     </Form.Item>
 
-                                    <Form.Item name="department" label="Jabatan (Department)" className="col-span-2 sm:col-span-1" rules={[{ required: true, message: 'Please select a department' }]}>
-                                        <Select 
-                                            placeholder="Select Department" 
-                                            size="large" 
-                                            disabled={selectedTask?.status === 'DONE' || (role !== 'admin' && role !== 'manager')}
-                                            onChange={(val) => {
-                                                if (val === 'IT' || val === 'Marketing' || val === 'Management' || val === 'Account') {
-                                                    editForm.setFieldsValue({ customer_name: 'SYAZNA WORLD (INTERNAL)' });
-                                                } else {
-                                                    editForm.setFieldsValue({ customer_name: undefined });
-                                                }
-                                            }}
-                                        >
-                                            <Option value="Outsourcing">Outsourcing</Option>
-                                            <Option value="IT">IT</Option>
-                                            <Option value="Sales">Sales</Option>
-                                            <Option value="Marketing">Marketing</Option>
-                                            <Option value="Recruitment">Recruitment</Option>
-                                            <Option value="Management">Management</Option>
-                                            <Option value="Account">Account</Option>
-                                        </Select>
+                                    <Form.Item noStyle shouldUpdate={(prev, cur) => prev.customer_name !== cur.customer_name}>
+                                        {({ getFieldValue }) => {
+                                            const selCustomer = customers.find((c: any) => c.name === getFieldValue('customer_name'));
+                                            const isInternal = selCustomer?.is_internal ?? false;
+                                            const hasBadCombo = isInternal && getFieldValue('department') === 'Outsourcing';
+                                            return (
+                                                <Form.Item name="department" label="Jabatan (Department)" className="col-span-2 sm:col-span-1" rules={[{ required: true, message: 'Please select a department' }]}
+                                                    extra={hasBadCombo ? <span className="text-amber-600 text-xs">⚠️ This task's department may need review</span> : undefined}
+                                                >
+                                                    <Select
+                                                        placeholder="Select Department"
+                                                        size="large"
+                                                        disabled={selectedTask?.status === 'DONE' || (role !== 'admin' && role !== 'manager')}
+                                                    >
+                                                        {(!isInternal || getFieldValue('department') === 'Outsourcing') && <Option value="Outsourcing">Outsourcing</Option>}
+                                                        <Option value="IT">IT</Option>
+                                                        <Option value="Sales">Sales</Option>
+                                                        <Option value="Marketing">Marketing</Option>
+                                                        <Option value="Recruitment">Recruitment</Option>
+                                                        <Option value="Management">Management</Option>
+                                                        <Option value="Account">Account</Option>
+                                                    </Select>
+                                                </Form.Item>
+                                            );
+                                        }}
                                     </Form.Item>
 
                                     <Form.Item name="title" label="Task Title" className="col-span-2" rules={[{ required: true, message: 'Please enter a title' }]}>
