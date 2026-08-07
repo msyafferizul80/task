@@ -643,11 +643,11 @@ export default function ClientHoldTasksPage() {
                                     due_date: selectedTask.due_date ? dayjs(selectedTask.due_date) : null,
                                 }}
                                 onFinish={handleUpdateTask}
-                                disabled={selectedTask.status === 'DONE'}
+                                disabled={selectedTask.status === 'DONE' && role !== 'admin' && role !== 'manager'}
                             >
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <Form.Item name="customer_name" label="Customer Name" className="col-span-2 sm:col-span-1" rules={[{ required: true, message: 'Customer name is required' }]}>
-                                        <Select placeholder="Select Customer" size="large" showSearch optionFilterProp="children" disabled={selectedTask?.status === 'DONE' || !canEditTaskFields}>
+                                        <Select placeholder="Select Customer" size="large" showSearch optionFilterProp="children" disabled={(selectedTask?.status === 'DONE' && role !== 'admin' && role !== 'manager') || !canEditTaskFields}>
                                             {customers.map(c => (
                                                 <Option key={c.id} value={c.name}>{c.name}</Option>
                                             ))}
@@ -666,7 +666,7 @@ export default function ClientHoldTasksPage() {
                                                     <Select
                                                         placeholder="Select Department"
                                                         size="large"
-                                                        disabled={selectedTask?.status === 'DONE' || !canEditTaskFields}
+                                                        disabled={(selectedTask?.status === 'DONE' && role !== 'admin' && role !== 'manager') || !canEditTaskFields}
                                                     >
                                                         {(!isInternal || getFieldValue('department') === 'Outsourcing') && <Option value="Outsourcing">Outsourcing</Option>}
                                                         <Option value="IT">IT</Option>
@@ -682,11 +682,11 @@ export default function ClientHoldTasksPage() {
                                     </Form.Item>
 
                                     <Form.Item name="title" label="Task Title" className="col-span-2" rules={[{ required: true, message: 'Please enter a title' }]}>
-                                        <Input placeholder="Enter task title" size="large" disabled={selectedTask?.status === 'DONE' || !canEditTaskFields} />
+                                        <Input placeholder="Enter task title" size="large" disabled={(selectedTask?.status === 'DONE' && role !== 'admin' && role !== 'manager') || !canEditTaskFields} />
                                     </Form.Item>
 
                                     <Form.Item name="assignee_id" label="PIC / Assignee" rules={[{ required: true, message: 'Assignee is required' }]}>
-                                        <Select placeholder="Select Assignee" size="large" showSearch optionFilterProp="children" disabled={selectedTask?.status === 'DONE' || !canEditTaskFields}>
+                                        <Select placeholder="Select Assignee" size="large" showSearch optionFilterProp="children" disabled={(selectedTask?.status === 'DONE' && role !== 'admin' && role !== 'manager') || !canEditTaskFields}>
                                             {assignableProfiles.map(p => (
                                                 <Option key={p.id} value={p.id}>{p.full_name}</Option>
                                             ))}
@@ -694,7 +694,7 @@ export default function ClientHoldTasksPage() {
                                     </Form.Item>
 
                                     <Form.Item name="priority_type" label="Eisenhower Priority" rules={[{ required: true, message: 'Please select a priority' }]}>
-                                        <Select placeholder="Select Priority" size="large" disabled={selectedTask?.status === 'DONE' || !canEditTaskFields}>
+                                        <Select placeholder="Select Priority" size="large" disabled={(selectedTask?.status === 'DONE' && role !== 'admin' && role !== 'manager') || !canEditTaskFields}>
                                             <Option value="DO_FIRST"><span className="text-red-600 font-medium">🔴 DO FIRST (Urgent & Important)</span></Option>
                                             <Option value="SCHEDULE"><span className="text-blue-600 font-medium">🔵 SCHEDULE (Not Urgent, Important)</span></Option>
                                             <Option value="DELEGATE"><span className="text-yellow-600 font-medium">🟡 DELEGATE (Urgent, Not Important)</span></Option>
@@ -703,7 +703,7 @@ export default function ClientHoldTasksPage() {
                                     </Form.Item>
 
                                     <Form.Item name="status" label="Task Status" rules={[{ required: true, message: 'Please select a status' }]}>
-                                        <Select placeholder="Select Status" size="large" disabled={selectedTask?.status === 'DONE'}>
+                                        <Select placeholder="Select Status" size="large" disabled={selectedTask?.status === 'DONE' && role !== 'admin' && role !== 'manager'}>
                                             <Option value="BACKLOG">Backlog</Option>
                                             <Option value="CLIENT_HOLD">Client Hold</Option>
                                             <Option value="IN_PROGRESS">In Progress</Option>
@@ -714,7 +714,7 @@ export default function ClientHoldTasksPage() {
                                 </div>
 
                                 <Form.Item name="description" label="Description">
-                                    <Input.TextArea rows={4} placeholder="Detailed task requirements..." className="resize-y" disabled={selectedTask?.status === 'DONE' || !canEditTaskFields} />
+                                    <Input.TextArea rows={4} placeholder="Detailed task requirements..." className="resize-y" disabled={(selectedTask?.status === 'DONE' && role !== 'admin' && role !== 'manager') || !canEditTaskFields} />
                                 </Form.Item>
 
                                 {selectedTask.created_at && (
@@ -729,13 +729,13 @@ export default function ClientHoldTasksPage() {
 
                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
                                      <Form.Item name="start_date" label="Start Date">
-                                         <DatePicker className="w-full" size="large" showTime disabled={selectedTask?.status === 'DONE' || !canEditTaskFields} />
+                                         <DatePicker className="w-full" size="large" showTime disabled={(selectedTask?.status === 'DONE' && role !== 'admin' && role !== 'manager') || !canEditTaskFields} />
                                      </Form.Item>
                                      <Form.Item name="due_date" label="Due Date" rules={[{ required: true, message: 'Due date is required' }]}>
-                                         <DatePicker className="w-full" size="large" showTime disabled={selectedTask?.status === 'DONE' || !canEditTaskFields} />
+                                         <DatePicker className="w-full" size="large" showTime disabled={(selectedTask?.status === 'DONE' && role !== 'admin' && role !== 'manager') || !canEditTaskFields} />
                                      </Form.Item>
                                      <Form.Item name="estimated_hours" label="Est. Hours">
-                                         <InputNumber className="w-full" size="large" min={0} step={0.5} placeholder="e.g. 4.5" disabled={selectedTask?.status === 'DONE' || !canEditTaskFields} />
+                                         <InputNumber className="w-full" size="large" min={0} step={0.5} placeholder="e.g. 4.5" disabled={(selectedTask?.status === 'DONE' && role !== 'admin' && role !== 'manager') || !canEditTaskFields} />
                                      </Form.Item>
                                  </div>
 
@@ -771,7 +771,7 @@ export default function ClientHoldTasksPage() {
                                                 </Button>
                                             )}
 
-                                            {selectedTask.status !== 'DONE' && (
+                                            {(selectedTask.status !== 'DONE' || role === 'admin' || role === 'manager') && (
                                                 <Button type="primary" htmlType="submit" size="large" className="bg-fuchsia-600 shadow-md">Update Task</Button>
                                             )}
                                         </div>

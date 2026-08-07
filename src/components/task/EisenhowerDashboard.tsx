@@ -680,10 +680,10 @@ export default function EisenhowerDashboard() {
                                 key: '1',
                                 label: 'Details',
                                 children: (
-                                    <Form form={editForm} layout="vertical" onFinish={handleUpdateTask} disabled={selectedTask?.status === 'DONE'}>
+                                    <Form form={editForm} layout="vertical" onFinish={handleUpdateTask} disabled={selectedTask?.status === 'DONE' && role !== 'admin' && role !== 'manager'}>
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                             <Form.Item name="customer_name" label="Customer Name" className="col-span-2 sm:col-span-1" rules={[{ required: true, message: 'Customer name is required' }]}>
-                                                <Select placeholder="Select Customer" size="large" showSearch optionFilterProp="children" disabled={selectedTask?.status === 'DONE' || !canEditTaskFields}>
+                                                <Select placeholder="Select Customer" size="large" showSearch optionFilterProp="children" disabled={(selectedTask?.status === 'DONE' && role !== 'admin' && role !== 'manager') || !canEditTaskFields}>
                                                     {customers.map(c => (
                                                         <Option key={c.id} value={c.name}>{c.name}</Option>
                                                     ))}
@@ -707,7 +707,7 @@ export default function EisenhowerDashboard() {
                                                                 <Select
                                                                     placeholder="Select Department"
                                                                     size="large"
-                                                                    disabled={selectedTask?.status === 'DONE' || !canEditTaskFields || role === 'supervisor'}
+                                                                    disabled={(selectedTask?.status === 'DONE' && role !== 'admin' && role !== 'manager') || !canEditTaskFields || role === 'supervisor'}
                                                                 >
                                                                     {(!isInternal || getFieldValue('department') === 'Outsourcing') && <Option value="Outsourcing">Outsourcing</Option>}
                                                                     <Option value="IT">IT</Option>
@@ -724,11 +724,11 @@ export default function EisenhowerDashboard() {
                                             </Form.Item>
 
                                             <Form.Item name="title" label="Task Title" className="col-span-2" rules={[{ required: true, message: 'Please enter a title' }]}>
-                                                <Input placeholder="Enter task title" size="large" disabled={selectedTask?.status === 'DONE' || !canEditTaskFields} />
+                                                <Input placeholder="Enter task title" size="large" disabled={(selectedTask?.status === 'DONE' && role !== 'admin' && role !== 'manager') || !canEditTaskFields} />
                                             </Form.Item>
 
                                             <Form.Item name="assignee_id" label="PIC / Assignee" rules={[{ required: true, message: 'Assignee is required' }]}>
-                                                <Select placeholder="Select Assignee" size="large" showSearch optionFilterProp="children" disabled={selectedTask?.status === 'DONE' || !canEditTaskFields}>
+                                                <Select placeholder="Select Assignee" size="large" showSearch optionFilterProp="children" disabled={(selectedTask?.status === 'DONE' && role !== 'admin' && role !== 'manager') || !canEditTaskFields}>
                                                     {assignableProfiles.map(p => (
                                                         <Option key={p.id} value={p.id}>{p.full_name}</Option>
                                                     ))}
@@ -736,7 +736,7 @@ export default function EisenhowerDashboard() {
                                             </Form.Item>
 
                                             <Form.Item name="priority_type" label="Eisenhower Priority" rules={[{ required: true, message: 'Please select a priority' }]}>
-                                                <Select placeholder="Select Priority" size="large" disabled={selectedTask?.status === 'DONE' || !canEditTaskFields}>
+                                                <Select placeholder="Select Priority" size="large" disabled={(selectedTask?.status === 'DONE' && role !== 'admin' && role !== 'manager') || !canEditTaskFields}>
                                                     <Option value="DO_FIRST"><span className="text-red-600 font-medium">🔴 DO FIRST (Urgent & Important)</span></Option>
                                                     <Option value="SCHEDULE"><span className="text-blue-600 font-medium">🔵 SCHEDULE (Not Urgent, Important)</span></Option>
                                                     <Option value="DELEGATE"><span className="text-yellow-600 font-medium">🟡 DELEGATE (Urgent, Not Important)</span></Option>
@@ -745,7 +745,7 @@ export default function EisenhowerDashboard() {
                                             </Form.Item>
 
                                             <Form.Item name="status" label="Task Status" rules={[{ required: true, message: 'Please select a status' }]}>
-                                                <Select placeholder="Select Status" size="large" disabled={selectedTask?.status === 'DONE'}>
+                                                <Select placeholder="Select Status" size="large" disabled={selectedTask?.status === 'DONE' && role !== 'admin' && role !== 'manager'}>
                                                     <Option value="BACKLOG">Backlog</Option>
                                                     <Option value="CLIENT_HOLD">Client Hold</Option>
                                                     <Option value="IN_PROGRESS">In Progress</Option>
@@ -756,7 +756,7 @@ export default function EisenhowerDashboard() {
                                         </div>
 
                                         <Form.Item name="description" label="Description">
-                                            <Input.TextArea rows={4} placeholder="Detailed task requirements..." className="resize-y" disabled={selectedTask?.status === 'DONE' || !canEditTaskFields} />
+                                            <Input.TextArea rows={4} placeholder="Detailed task requirements..." className="resize-y" disabled={(selectedTask?.status === 'DONE' && role !== 'admin' && role !== 'manager') || !canEditTaskFields} />
                                         </Form.Item>
 
                                         {taskChecklist.length > 0 && (
@@ -771,7 +771,7 @@ export default function EisenhowerDashboard() {
                                                                 type="checkbox" 
                                                                 className="mt-1 flex-shrink-0 w-4 h-4 cursor-pointer accent-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed" 
                                                                 checked={checkItem.is_completed}
-                                                                disabled={selectedTask?.status === 'DONE'}
+                                                                disabled={selectedTask?.status === 'DONE' && role !== 'admin' && role !== 'manager'}
                                                                 onChange={async (e) => {
                                                                     const newStatus = e.target.checked;
                                                                     setTaskChecklist(prev => prev.map(c => c.id === checkItem.id ? { ...c, is_completed: newStatus } : c));
@@ -789,13 +789,13 @@ export default function EisenhowerDashboard() {
 
                                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
                                              <Form.Item name="start_date" label="Start Date">
-                                                 <DatePicker className="w-full" size="large" showTime disabled={selectedTask?.status === 'DONE' || !canEditTaskFields} />
+                                                 <DatePicker className="w-full" size="large" showTime disabled={(selectedTask?.status === 'DONE' && role !== 'admin' && role !== 'manager') || !canEditTaskFields} />
                                              </Form.Item>
                                              <Form.Item name="due_date" label="Due Date" rules={[{ required: true, message: 'Due date is required' }]}>
-                                                 <DatePicker className="w-full" size="large" showTime disabled={selectedTask?.status === 'DONE' || !canEditTaskFields} />
+                                                 <DatePicker className="w-full" size="large" showTime disabled={(selectedTask?.status === 'DONE' && role !== 'admin' && role !== 'manager') || !canEditTaskFields} />
                                              </Form.Item>
                                              <Form.Item name="estimated_hours" label="Est. Hours">
-                                                 <InputNumber className="w-full" size="large" min={0} step={0.5} placeholder="e.g. 4.5" disabled={selectedTask?.status === 'DONE' || !canEditTaskFields} />
+                                                 <InputNumber className="w-full" size="large" min={0} step={0.5} placeholder="e.g. 4.5" disabled={(selectedTask?.status === 'DONE' && role !== 'admin' && role !== 'manager') || !canEditTaskFields} />
                                              </Form.Item>
                                          </div>
 
@@ -825,7 +825,7 @@ export default function EisenhowerDashboard() {
                                                         </Button>
                                                     )}
 
-                                                    {selectedTask?.status !== 'DONE' && (
+                                                    {(selectedTask?.status !== 'DONE' || role === 'admin' || role === 'manager') && (
                                                         <Button type="primary" htmlType="submit" size="large" className="bg-indigo-600 shadow-md">Update Task</Button>
                                                     )}
                                                 </div>
