@@ -54,7 +54,7 @@ Deno.serve(async (req) => {
         let targetChatId = chatId;
         // Reroute specific customer + department combination
         if (record.customer_name === 'SYAZNA WORLD (INTERNAL)' && record.department === 'Recruitment') {
-            targetChatId = '-1005594086031';
+            targetChatId = '-1004461542862';
         } else if (record.department) {
             const { data: deptData } = await supabase
                 .from('tsk_department_settings')
@@ -92,7 +92,7 @@ Deno.serve(async (req) => {
         let targetChatId = chatId;
         // Reroute specific customer + department combination
         if (record.customer_name === 'SYAZNA WORLD (INTERNAL)' && record.department === 'Recruitment') {
-            targetChatId = '-1005594086031';
+            targetChatId = '-1004461542862';
         } else if (record.department) {
             const { data: deptData } = await supabase
                 .from('tsk_department_settings')
@@ -178,7 +178,7 @@ Deno.serve(async (req) => {
         let targetChatId = chatId;
         // Reroute specific customer + department combination
         if (task.customer_name === 'SYAZNA WORLD (INTERNAL)' && task.department === 'Recruitment') {
-            targetChatId = '-1005594086031';
+            targetChatId = '-1004461542862';
         } else if (task.department) {
             const { data: deptData } = await supabase
                 .from('tsk_department_settings')
