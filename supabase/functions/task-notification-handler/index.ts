@@ -52,7 +52,10 @@ Deno.serve(async (req) => {
         }
 
         let targetChatId = chatId;
-        if (record.department) {
+        // Reroute specific customer + department combination
+        if (record.customer_name === 'SYAZNA WORLD (INTERNAL)' && record.department === 'Recruitment') {
+            targetChatId = '-1005594086031';
+        } else if (record.department) {
             const { data: deptData } = await supabase
                 .from('tsk_department_settings')
                 .select('telegram_group_id')
@@ -87,7 +90,10 @@ Deno.serve(async (req) => {
         }
 
         let targetChatId = chatId;
-        if (record.department) {
+        // Reroute specific customer + department combination
+        if (record.customer_name === 'SYAZNA WORLD (INTERNAL)' && record.department === 'Recruitment') {
+            targetChatId = '-1005594086031';
+        } else if (record.department) {
             const { data: deptData } = await supabase
                 .from('tsk_department_settings')
                 .select('telegram_group_id')
@@ -170,7 +176,10 @@ Deno.serve(async (req) => {
         }
 
         let targetChatId = chatId;
-        if (task.department) {
+        // Reroute specific customer + department combination
+        if (task.customer_name === 'SYAZNA WORLD (INTERNAL)' && task.department === 'Recruitment') {
+            targetChatId = '-1005594086031';
+        } else if (task.department) {
             const { data: deptData } = await supabase
                 .from('tsk_department_settings')
                 .select('telegram_group_id')
