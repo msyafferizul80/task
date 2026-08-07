@@ -148,7 +148,13 @@ export default function TimerProvider({ children }: { children: React.ReactNode 
                 return;
             }
 
-            // Start the new timer (leaving other running timers active)
+            // Reject if there is any other active timer running (strict single timer enforcement)
+            if (activeLogs.length > 0) {
+                message.warning('Sila hentikan timer tugasan lain yang sedang berjalan sebelum memulakan yang baru.');
+                return;
+            }
+
+            // Start the new timer
             const { error: startErr } = await supabase
                 .from('tsk_time_logs')
                 .insert({
@@ -162,7 +168,11 @@ export default function TimerProvider({ children }: { children: React.ReactNode 
             await refreshTimerData();
         } catch (err: any) {
             console.error('Error starting timer:', err.message);
-            message.error('Failed to start timer');
+            if (err.code === '23505' || err.message?.includes('idx_one_active_timer_per_user')) {
+                message.warning('Sila hentikan timer tugasan lain yang sedang berjalan sebelum memulakan yang baru.');
+            } else {
+                message.error('Failed to start timer');
+            }
         }
     };
 

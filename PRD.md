@@ -39,6 +39,7 @@ The system segregates users into four main roles, each with strict row-level sec
 ### Core Validation Rules:
 1. **Department Restrictions**: Employees and Supervisors are bound to a single department. Supervisors can only view, create, edit, or assign tasks within their department.
 2. **Supervisor Assignment Policy**: Supervisors are restricted from assigning tasks to users outside their department. (Note: Admin and Manager roles have a `NULL` department and are bypassed from this restriction).
+3. **Strict Cross-Department Visibility & Action**: A Supervisor must NOT see, edit, or log time against a task from another department under any circumstances, even if that task is personally assigned to them (Option A strict mode).
 
 ---
 
@@ -47,7 +48,7 @@ The system segregates users into four main roles, each with strict row-level sec
 ### 4.1 Task Timer & Work Logging Module (`tsk_time_logs`)
 Designed to capture actual developer effort. Each task can have multiple work logging sessions.
 
-* **Single-Timer Enforcement**: A user can only have **one active timer** running across the entire system. Starting a timer on Task B will automatically stop or reject any active timer on Task A.
+* **Single-Timer Enforcement**: A user can only have **one active timer** running across the entire system. Starting a timer on Task B is blocked (rejected with a warning) until the user manually stops Task A's timer. This is enforced at the database level by a partial unique index `idx_one_active_timer_per_user` on `tsk_time_logs` (where `status = 'RUNNING'`).
 * **State Persistence**: The timer state is derived directly from the database (`start_time` where `end_time IS NULL`), ensuring that page refreshes or tab closures do not reset or lose active timers.
 * **Live Counter**: The UI uses a local React interval hook synced with real-time database changes. It displays:
   $$\text{Total Duration} = \text{Sum of Completed Sessions} + (\text{Current Time} - \text{Active Session Start Time})$$
@@ -96,10 +97,8 @@ A centralized notification router that formats and pushes system alerts to Teleg
 * `lv_profiles`: Auth-synced profiles containing user roles and departments.
 
 ### 5.2 PostgreSQL Triggers
-1. `trg_sync_task_is_internal`: Syncs the task's `is_internal` flag from the customer table on insert/update.
-2. `trg_no_internal_outsourcing`: Enforces department-customer validation rules before write.
-3. `task_webhook`: POSTs task creation/update payloads to the Telegram notification handler Edge Function.
-4. `tsk_tasks_supervisor_enforcement`: Restricts supervisors to editing/assigning tasks within their department, bypassing Admins/Managers.
+1. `trg_sync_and_validate_task`: Consolidates `is_internal` syncing, supervisor department-forcing, internal outsourcing validation, and universal assignee department consistency validation. Runs `BEFORE INSERT OR UPDATE` on `tsk_tasks`.
+2. `task_webhook`: POSTs task creation/update payloads to the Telegram notification handler Edge Function. Runs `AFTER INSERT OR UPDATE` on `tsk_tasks`.
 
 ---
 
@@ -108,8 +107,7 @@ A centralized notification router that formats and pushes system alerts to Teleg
 During review, the senior developer should evaluate the following structural improvements:
 
 1. **Transactional Locking on Timers**:
-   * *Problem*: In high-concurrency environments, a user might double-click the timer button and create duplicate active logs.
-   * *Recommendation*: Implement a unique constraint `UNIQUE (user_id, status)` where `status = 'RUNNING'` (using a partial index) to guarantee at the database level that no user can have more than one running timer.
+   * *Status*: **Implemented**. Enforced via a partial unique index `idx_one_active_timer_per_user` on `tsk_time_logs` where `status = 'RUNNING'`, preventing concurrent active timers at the database layer.
 2. **Optimize Webhook Performance**:
    * *Problem*: `pg_net` makes raw HTTP POST calls from the DB. If the Edge Function endpoint is slow, or database triggers execute frequently, it could lead to transaction delays.
    * *Recommendation*: Use Supabase Database Webhooks which queue calls out-of-process via Supabase’s internal replication listener, decoupling DB transaction execution from network latency.
