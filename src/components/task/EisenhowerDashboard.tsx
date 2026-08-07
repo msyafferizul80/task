@@ -605,7 +605,7 @@ export default function EisenhowerDashboard() {
                                             <Option value="Sales">Sales</Option>
                                             <Option value="Marketing">Marketing</Option>
                                             <Option value="Recruitment">Recruitment</Option>
-                                            <Option value="Management">Management</Option>
+                                            <Option value="Human Resources">Human Resources</Option>
                                             <Option value="Account">Account</Option>
                                         </Select>
                                     </Form.Item>
@@ -714,7 +714,7 @@ export default function EisenhowerDashboard() {
                                                                     <Option value="Sales">Sales</Option>
                                                                     <Option value="Marketing">Marketing</Option>
                                                                     <Option value="Recruitment">Recruitment</Option>
-                                                                    <Option value="Management">Management</Option>
+                                                                    <Option value="Human Resources">Human Resources</Option>
                                                                     <Option value="Account">Account</Option>
                                                                 </Select>
                                                             </Form.Item>

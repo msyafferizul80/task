@@ -1818,7 +1818,7 @@ export default function AnalyticsPage() {
                                     { value: 'Sales', label: 'Sales' },
                                     { value: 'Marketing', label: 'Marketing' },
                                     { value: 'Recruitment', label: 'Recruitment' },
-                                    { value: 'Management', label: 'Management' },
+                                    { value: 'Human Resources', label: 'Human Resources' },
                                     { value: 'Account', label: 'Account' },
                                 ]}
                             />

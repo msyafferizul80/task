@@ -11,6 +11,21 @@ function escapeHtml(text: string): string {
         .replace(/>/g, '&gt;');
 }
 
+async function sendTelegramMessage(token: string, targetChatId: string, message: string) {
+    try {
+        const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chat_id: targetChatId, text: message, parse_mode: 'HTML' })
+        });
+        if (!res.ok) {
+            console.error('Failed to send telegram msg', await res.text());
+        }
+    } catch (err) {
+        console.error('Error sending telegram message:', err);
+    }
+}
+
 Deno.serve(async (req) => {
     if (!botToken || !chatId) {
         return new Response("Missing telegram secrets", { status: 500 });
@@ -24,34 +39,72 @@ Deno.serve(async (req) => {
         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // ── 1. Task DONE Notification ─────────────────────────────────────────────
+    // ── 1. New Task Created (INSERT on tsk_tasks) ───────────────────────────
+    if (type === 'INSERT' && record && table === 'tsk_tasks') {
+        let assigneeName = 'Unknown Assignee';
+        if (record.assignee_id) {
+            const { data } = await supabase
+                .from('lv_profiles')
+                .select('full_name')
+                .eq('id', record.assignee_id)
+                .single();
+            if (data) assigneeName = data.full_name;
+        }
+
+        let targetChatId = chatId;
+        if (record.department) {
+            const { data: deptData } = await supabase
+                .from('tsk_department_settings')
+                .select('telegram_group_id')
+                .eq('department_name', record.department)
+                .single();
+            if (deptData?.telegram_group_id) {
+                targetChatId = deptData.telegram_group_id;
+            }
+        }
+
+        const safeDept = escapeHtml(record.department || 'Outsourcing');
+        const safeCust = escapeHtml(record.customer_name || '-');
+        const safeTitle = escapeHtml(record.title || '-');
+        const safePIC = escapeHtml(assigneeName);
+        const safePriority = escapeHtml(record.priority_type || '-');
+
+        const message = `🆕 <b>Task Baru Dicipta!</b>\n\n<b>Department:</b> ${safeDept}\n<b>Customer:</b> ${safeCust}\n<b>Task:</b> ${safeTitle}\n<b>PIC:</b> ${safePIC}\n<b>Priority:</b> ${safePriority}`;
+
+        await sendTelegramMessage(botToken, targetChatId, message);
+    }
+
+    // ── 2. Task Updated (UPDATE on tsk_tasks) ───────────────────────────────
     if (type === 'UPDATE' && record && old_record && table === 'tsk_tasks') {
+        let assigneeName = 'Unknown Assignee';
+        if (record.assignee_id) {
+            const { data } = await supabase
+                .from('lv_profiles')
+                .select('full_name')
+                .eq('id', record.assignee_id)
+                .single();
+            if (data) assigneeName = data.full_name;
+        }
+
+        let targetChatId = chatId;
+        if (record.department) {
+            const { data: deptData } = await supabase
+                .from('tsk_department_settings')
+                .select('telegram_group_id')
+                .eq('department_name', record.department)
+                .single();
+            if (deptData?.telegram_group_id) {
+                targetChatId = deptData.telegram_group_id;
+            }
+        }
+
+        const safeDept = escapeHtml(record.department || 'Outsourcing');
+        const safeCust = escapeHtml(record.customer_name || '-');
+        const safeTitle = escapeHtml(record.title || '-');
+        const safePIC = escapeHtml(assigneeName);
+
+        // Case A: Status changed to DONE
         if (old_record.status !== 'DONE' && record.status === 'DONE') {
-
-            let assigneeName = 'Unknown Assignee';
-            if (record.assignee_id) {
-                const { data } = await supabase
-                    .from('lv_profiles')
-                    .select('full_name')
-                    .eq('id', record.assignee_id)
-                    .single();
-                if (data) assigneeName = data.full_name;
-            }
-
-            // Department-based Telegram Routing
-            let targetChatId = chatId;
-            if (record.department) {
-                const { data: deptData } = await supabase
-                    .from('tsk_department_settings')
-                    .select('telegram_group_id')
-                    .eq('department_name', record.department)
-                    .single();
-                if (deptData?.telegram_group_id) {
-                    targetChatId = deptData.telegram_group_id;
-                }
-            }
-
-            // Fetch total time logged
             let totalTimeStr = '-';
             const { data: logs } = await supabase
                 .from('tsk_time_logs')
@@ -70,27 +123,34 @@ Deno.serve(async (req) => {
                 if (secs > 0 || parts.length === 0) parts.push(`${secs} ${secs === 1 ? 'Second' : 'Seconds'}`);
                 totalTimeStr = parts.join(', ');
             }
-
-            const safeDept = escapeHtml(record.department || 'Outsourcing');
-            const safeCust = escapeHtml(record.customer_name || '-');
-            const safeTitle = escapeHtml(record.title || '-');
-            const safePIC = escapeHtml(assigneeName);
             const safeTime = escapeHtml(totalTimeStr);
-
             const message = `✅ <b>Task Completed!</b>\n\n<b>Department:</b> ${safeDept}\n<b>Customer:</b> ${safeCust}\n<b>Task:</b> ${safeTitle}\n<b>PIC:</b> ${safePIC}\n<b>Time Spent:</b> ${safeTime}`;
 
-            await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ chat_id: targetChatId, text: message, parse_mode: 'HTML' })
-            });
+            await sendTelegramMessage(botToken, targetChatId, message);
+        }
+        // Case B: Status changed (but not to DONE)
+        else if (old_record.status !== record.status) {
+            const message = `🔄 <b>Status Task Dikemaskini</b>\n\n<b>Task:</b> ${safeTitle}\n<b>Customer:</b> ${safeCust}\n<b>Status:</b> ${escapeHtml(old_record.status)} ➡️ <b>${escapeHtml(record.status)}</b>\n<b>PIC:</b> ${safePIC}`;
+            await sendTelegramMessage(botToken, targetChatId, message);
+        }
+        // Case C: Assignee changed
+        else if (old_record.assignee_id !== record.assignee_id) {
+            let oldAssigneeName = 'Unknown Assignee';
+            if (old_record.assignee_id) {
+                const { data } = await supabase
+                    .from('lv_profiles')
+                    .select('full_name')
+                    .eq('id', old_record.assignee_id)
+                    .single();
+                if (data) oldAssigneeName = data.full_name;
+            }
+            const message = `👤 <b>PIC Task Ditukar</b>\n\n<b>Task:</b> ${safeTitle}\n<b>Customer:</b> ${safeCust}\n<b>PIC Baru:</b> <b>${safePIC}</b>\n<b>PIC Lama:</b> ${escapeHtml(oldAssigneeName)}`;
+            await sendTelegramMessage(botToken, targetChatId, message);
         }
     }
 
-    // ── 2. New Comment Notification ───────────────────────────────────────────
+    // ── 3. New Comment Notification (INSERT on tsk_comments) ────────────────
     if (type === 'INSERT' && record && table === 'tsk_comments') {
-
-        // Fetch task details (title, customer, department, assignee_id)
         const { data: task } = await supabase
             .from('tsk_tasks')
             .select('id, title, customer_name, department, assignee_id')
@@ -99,7 +159,6 @@ Deno.serve(async (req) => {
 
         if (!task) return new Response("OK", { status: 200 });
 
-        // Fetch commenter name
         let commenterName = 'Seseorang';
         if (record.user_id) {
             const { data: commenter } = await supabase
@@ -110,7 +169,6 @@ Deno.serve(async (req) => {
             if (commenter) commenterName = commenter.full_name;
         }
 
-        // Department-based Telegram Routing
         let targetChatId = chatId;
         if (task.department) {
             const { data: deptData } = await supabase
@@ -123,7 +181,6 @@ Deno.serve(async (req) => {
             }
         }
 
-        // Truncate comment content to 200 chars for preview
         const contentPreview = record.content?.length > 200
             ? record.content.substring(0, 200) + '...'
             : (record.content || '');
@@ -135,15 +192,7 @@ Deno.serve(async (req) => {
 
         const message = `💬 <b>Komen Baru pada Task</b>\n\n<b>Task:</b> ${safeTitle}\n<b>Customer:</b> ${safeCust}\n<b>Dari:</b> ${safeCommenter}\n\n<i>"${safeContent}"</i>`;
 
-        const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ chat_id: targetChatId, text: message, parse_mode: 'HTML' })
-        });
-
-        if (!res.ok) {
-            console.error('Failed to send comment telegram msg', await res.text());
-        }
+        await sendTelegramMessage(botToken, targetChatId, message);
     }
 
     return new Response("OK", { status: 200 });
