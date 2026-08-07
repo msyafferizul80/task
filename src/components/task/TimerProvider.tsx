@@ -50,7 +50,8 @@ export default function TimerProvider({ children }: { children: React.ReactNode 
 
     // Manual Log Modal States (Enforcing time logs before DONE)
     const [showManualLogModal, setShowManualLogModal] = useState(false);
-    const [manualDuration, setManualDuration] = useState<number | null>(1.0);
+    const [manualStartTime, setManualStartTime] = useState<dayjs.Dayjs | null>(null);
+    const [manualEndTime, setManualEndTime] = useState<dayjs.Dayjs | null>(null);
     const [manualReason, setManualReason] = useState<string>('');
     const [manualReasonError, setManualReasonError] = useState(false);
     const [pendingTaskId, setPendingTaskId] = useState<string | null>(null);
@@ -267,8 +268,21 @@ export default function TimerProvider({ children }: { children: React.ReactNode 
 
     const handleSubmitManualLog = async () => {
         if (!userId || !pendingTaskId || !pendingOnProceed) return;
-        if (!manualDuration || manualDuration <= 0) {
-            message.error('Sila masukkan tempoh masa yang sah.');
+        if (!manualStartTime || !manualEndTime) {
+            message.error('Sila pilih waktu mula dan waktu selesai.');
+            return;
+        }
+        if (manualEndTime.isBefore(manualStartTime)) {
+            message.error('Waktu selesai tidak boleh sebelum waktu mula.');
+            return;
+        }
+        const durationSeconds = manualEndTime.diff(manualStartTime, 'second');
+        if (durationSeconds <= 0) {
+            message.error('Tempoh masa mestilah melebihi 0 saat.');
+            return;
+        }
+        if (durationSeconds > 86400) {
+            message.error('Tempoh masa tidak boleh melebihi 24 jam.');
             return;
         }
         if (!manualReason || manualReason.trim().length < 5) {
@@ -282,17 +296,13 @@ export default function TimerProvider({ children }: { children: React.ReactNode 
 
         try {
             // Save manual log into database
-            const durationSeconds = Math.round(manualDuration * 3600);
-            const endTime = new Date();
-            const startTime = new Date(endTime.getTime() - durationSeconds * 1000);
-
             const { error: insertErr } = await supabase
                 .from('tsk_time_logs')
                 .insert({
                     task_id: pendingTaskId,
                     user_id: userId,
-                    start_time: startTime.toISOString(),
-                    end_time: endTime.toISOString(),
+                    start_time: manualStartTime.toISOString(),
+                    end_time: manualEndTime.toISOString(),
                     duration: durationSeconds,
                     status: 'COMPLETED',
                     is_manual: true,
@@ -367,7 +377,8 @@ export default function TimerProvider({ children }: { children: React.ReactNode 
                 } else {
                     setPendingTaskId(taskId);
                     setPendingOnProceed(() => onProceed);
-                    setManualDuration(1.0);
+                    setManualStartTime(dayjs().subtract(1, 'hour'));
+                    setManualEndTime(dayjs());
                     setManualReason('');
                     setManualReasonError(false);
                     setShowManualLogModal(true);
@@ -517,17 +528,49 @@ export default function TimerProvider({ children }: { children: React.ReactNode 
                         Tugasan ini tidak mempunyai sebarang rekod jam kerja. Sila masukkan tempoh masa dan sebab secara manual untuk menandakannya sebagai selesai:
                     </Paragraph>
 
-                    <div className="flex flex-col gap-1">
-                        <Text strong className="text-xs text-slate-500 uppercase tracking-wider mb-1">Tempoh Masa Bekerja (Jam)</Text>
-                        <InputNumber
-                            min={0.1}
-                            max={24}
-                            step={0.5}
-                            value={manualDuration}
-                            onChange={(val) => setManualDuration(val)}
-                            className="w-full h-10 flex items-center rounded-lg"
-                            placeholder="Contoh: 1.5"
-                        />
+                    <div className="flex gap-4">
+                        <div className="flex flex-col gap-1 flex-1">
+                            <Text strong className="text-xs text-slate-500 uppercase tracking-wider mb-1">Waktu Mula</Text>
+                            <DatePicker
+                                showTime
+                                format="DD/MM/YYYY HH:mm"
+                                value={manualStartTime}
+                                onChange={(val) => setManualStartTime(val)}
+                                className="w-full h-10 flex items-center rounded-lg"
+                                placeholder="Pilih Waktu Mula"
+                                disabledDate={(current) => current && current.isAfter(dayjs())}
+                            />
+                        </div>
+
+                        <div className="flex flex-col gap-1 flex-1">
+                            <Text strong className="text-xs text-slate-500 uppercase tracking-wider mb-1">Waktu Selesai</Text>
+                            <DatePicker
+                                showTime
+                                format="DD/MM/YYYY HH:mm"
+                                value={manualEndTime}
+                                onChange={(val) => setManualEndTime(val)}
+                                className="w-full h-10 flex items-center rounded-lg"
+                                placeholder="Pilih Waktu Selesai"
+                                disabledDate={(current) => current && current.isAfter(dayjs())}
+                            />
+                        </div>
+                    </div>
+
+                    <div className="bg-indigo-50/50 border border-indigo-100 p-3 rounded-xl flex items-center justify-between text-xs text-indigo-700">
+                        <span className="font-medium">Tempoh masa dikira:</span>
+                        <span className="font-bold text-sm font-mono">
+                            {(() => {
+                                if (!manualStartTime || !manualEndTime) return '0 jam';
+                                const diffSeconds = manualEndTime.diff(manualStartTime, 'second');
+                                if (diffSeconds <= 0) return 'Ralat waktu selesai';
+                                const hrs = Math.floor(diffSeconds / 3600);
+                                const mins = Math.floor((diffSeconds % 3600) / 60);
+                                const parts = [];
+                                if (hrs > 0) parts.push(`${hrs}j`);
+                                if (mins > 0) parts.push(`${mins}m`);
+                                return parts.length > 0 ? parts.join(' ') : '0m';
+                            })()}
+                        </span>
                     </div>
 
                     <div className="flex flex-col gap-1">

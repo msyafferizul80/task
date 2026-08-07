@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Task } from '@/lib/types';
@@ -13,6 +13,7 @@ interface SortableTaskItemProps {
 }
 
 import { useRole } from '@/components/layout/RoleProvider';
+import { useTimer } from '@/components/task/TimerProvider';
 
 export default function SortableTaskItem({ task, role, isDone = false, currentUserId }: SortableTaskItemProps) {
     const { department: currentUserDept } = useRole();
@@ -27,6 +28,53 @@ export default function SortableTaskItem({ task, role, isDone = false, currentUs
         transition,
         isDragging,
     } = useSortable({ id: task.id, disabled: !canDrag });
+
+    const { activeLogs, startTimer, stopTimer } = useTimer();
+    const activeLogForTask = activeLogs.find(log => log.task_id === task.id);
+    const isCurrentActive = !!activeLogForTask;
+    const [elapsed, setElapsed] = useState(0);
+
+    useEffect(() => {
+        if (!isCurrentActive || !activeLogForTask) {
+            setElapsed(0);
+            return;
+        }
+
+        const calculateElapsed = () => {
+            const start = new Date(activeLogForTask.start_time).getTime();
+            const now = new Date().getTime();
+            return Math.max(0, Math.round((now - start) / 1000));
+        };
+
+        setElapsed(calculateElapsed());
+
+        const interval = setInterval(() => {
+            setElapsed(calculateElapsed());
+        }, 1000);
+
+        return () => clearInterval(interval);
+    }, [isCurrentActive, activeLogForTask]);
+
+    const formatTime = (totalSeconds: number) => {
+        const hrs = Math.floor(totalSeconds / 3600);
+        const mins = Math.floor((totalSeconds % 3600) / 60);
+        const secs = totalSeconds % 60;
+        return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    };
+
+    const handleTimerClick = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        e.preventDefault();
+        if (isCurrentActive) {
+            stopTimer(task.id);
+        } else {
+            startTimer(task.id);
+        }
+    };
+
+    const handleButtonMouseDown = (e: React.MouseEvent) => {
+        e.stopPropagation();
+    };
 
     const style = {
         transform: CSS.Transform.toString(transform),
@@ -82,11 +130,34 @@ export default function SortableTaskItem({ task, role, isDone = false, currentUs
                 )}
             </div>
 
-            {task.due_date && (
-                <div className="text-xs text-red-500 mt-2">
-                    Due: {new Date(task.due_date).toLocaleDateString()}
+            <div className="flex items-center justify-between mt-3 pt-2 border-t border-gray-100">
+                <div className={`text-[10px] font-medium ${task.due_date && new Date(task.due_date).getTime() < Date.now() ? 'text-red-500' : 'text-slate-400'}`}>
+                    {task.due_date ? `Due: ${new Date(task.due_date).toLocaleDateString()}` : ''}
                 </div>
-            )}
+                {!isDone && (
+                    <div
+                        onClick={handleTimerClick}
+                        onMouseDown={handleButtonMouseDown}
+                        onTouchStart={(e) => e.stopPropagation()}
+                        className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold cursor-pointer transition-all duration-200 border select-none
+                            ${isCurrentActive
+                                ? 'bg-rose-50 border-rose-200 text-rose-600 font-mono animate-pulse shadow-sm shadow-rose-100'
+                                : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-indigo-50 hover:border-indigo-200 hover:text-indigo-600 hover:shadow-sm'
+                            }`}
+                    >
+                        {isCurrentActive ? (
+                            <>
+                                <span className="w-1 h-1 rounded-full bg-rose-500 animate-ping" />
+                                <span>⏸️ {formatTime(elapsed)}</span>
+                            </>
+                        ) : (
+                            <>
+                                <span>▶️ Mulai</span>
+                            </>
+                        )}
+                    </div>
+                )}
+            </div>
         </div>
     );
 }
