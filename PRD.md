@@ -67,7 +67,7 @@ Handles client records and segregates external billable workflows from internal 
 * **Outsourcing Restriction**: Tasks assigned to internal customers (specifically `SYAZNA WORLD (INTERNAL)`) are strictly forbidden from being set to the `Outsourcing` department.
 * **Multi-Layer Validation**:
   * **Frontend**: The "Outsourcing" option is hidden dynamically from dropdowns if an internal customer is selected. An inline warning flag is shown for legacy tasks.
-  * **Database Layer**: A `BEFORE INSERT OR UPDATE` trigger `trg_no_internal_outsourcing` queries the customer record directly to reject invalid combos at the SQL execution layer.
+  * **Database Layer**: A `BEFORE INSERT OR UPDATE` trigger `trg_sync_and_validate_task` queries the customer record directly to reject invalid combos at the SQL execution layer.
 
 ### 4.4 Automated Telegram Webhook Handler (`task-notification-handler`)
 A centralized notification router that formats and pushes system alerts to Telegram groups.
@@ -117,3 +117,11 @@ During review, the senior developer should evaluate the following structural imp
 4. **Offline Timer Handling**:
    * *Problem*: Users who lose internet connection while working might have their timers drift or fail to stop.
    * *Recommendation*: Implement local storage sync with a client-side network listener to queue timer start/stop events offline and sync them back once connectivity is restored.
+5. **Telegram Routing Customer Hardcoding (Backlog)**:
+   * *Problem*: Section 4.4's routing override rule currently checks for the literal string `SYAZNA WORLD (INTERNAL)` to decide Telegram group routing. This should use the `is_internal` flag or a stable identifier instead of a hardcoded name match.
+6. **Auto-Closed Timer Session Flags (Backlog)**:
+   * *Problem*: When the Forgotten Timer Daemon auto-closes a session after 12+ hours, the resulting `tsk_time_logs` row has no indicator distinguishing it from genuine work time, polluting duration-based reporting.
+   * *Recommendation*: Add an `auto_closed` boolean column (default `false`) to `tsk_time_logs` to be set to `true` by the daemon when it force-closes a session.
+7. **`tsk_comments` RLS Scope for Supervisor (Backlog)**:
+   * *Problem*: The permission matrix and RLS policies cover `tsk_tasks` and `tsk_time_logs` for Supervisor department-scoping, but `tsk_comments` visibility boundary hasn't been explicitly documented or verified.
+   * *Recommendation*: Audit and explicitly implement/verify RLS policies for `tsk_comments` to ensure comments on tasks outside the supervisor's department are not accessible.
