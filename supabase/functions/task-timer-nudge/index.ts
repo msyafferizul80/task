@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { resolveTaskTelegramGroup, getDepartmentGroupMap } from "../_shared/routing.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -56,13 +57,15 @@ Deno.serve(async (req: Request) => {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   try {
-    // 1. Fetch all IN_PROGRESS tasks with assignees
+    // 1. Fetch all IN_PROGRESS tasks with assignees and customer/internal metadata
     const { data: tasks, error: tasksErr } = await supabase
       .from("tsk_tasks")
       .select(`
         id,
         title,
         department,
+        customer_name,
+        is_internal,
         assignee_id,
         assignee:lv_profiles!tsk_tasks_assignee_id_fkey (
           id,
@@ -95,54 +98,45 @@ Deno.serve(async (req: Request) => {
     }
 
     // 4. Fetch department settings for Telegram group routing
-    const { data: deptSettings, error: deptErr } = await supabase
-      .from("tsk_department_settings")
-      .select("department_name, telegram_group_id");
+    const deptGroupMap = await getDepartmentGroupMap(supabase);
 
-    if (deptErr) throw deptErr;
-
-    const deptGroupMap: Record<string, string> = {};
-    for (const row of (deptSettings ?? [])) {
-      if (row.department_name && row.telegram_group_id) {
-        deptGroupMap[row.department_name] = row.telegram_group_id;
-      }
-    }
-
-    // 5. Group untracked tasks by department, and within each department by assignee
-    const departmentsData: Record<string, Record<string, string[]>> = {};
+    // 5. Group untracked tasks by resolved destination Telegram chat ID (using shared resolver)
+    const groupsData: Record<string, { pics: Record<string, string[]>; departments: Set<string> }> = {};
 
     untrackedTasks.forEach(task => {
-      const dept = task.department || "Unassigned";
+      const targetChatId = resolveTaskTelegramGroup(task, deptGroupMap, TELEGRAM_CHAT_ID);
+      if (!targetChatId) {
+        console.warn(`No telegram chat ID resolved for task ID: ${task.id} (dept: ${task.department}, is_internal: ${task.is_internal})`);
+        return;
+      }
+
       const pic = task.assignee?.full_name || "Unassigned";
       const title = task.title;
 
-      if (!departmentsData[dept]) {
-        departmentsData[dept] = {};
+      if (!groupsData[targetChatId]) {
+        groupsData[targetChatId] = { pics: {}, departments: new Set() };
       }
-      if (!departmentsData[dept][pic]) {
-        departmentsData[dept][pic] = [];
+      if (task.department) {
+        groupsData[targetChatId].departments.add(task.department);
       }
-      departmentsData[dept][pic].push(title);
+      if (!groupsData[targetChatId].pics[pic]) {
+        groupsData[targetChatId].pics[pic] = [];
+      }
+      groupsData[targetChatId].pics[pic].push(title);
     });
 
     const deliveries: any[] = [];
 
-    // 6. Deliver digests per department
-    for (const [dept, picGroup] of Object.entries(departmentsData)) {
-      const targetChatId = deptGroupMap[dept] ?? TELEGRAM_CHAT_ID;
-      if (!targetChatId) {
-        console.warn(`No telegram chat ID mapped for department: ${dept}`);
-        continue;
-      }
-
-      const totalPics = Object.keys(picGroup).length;
-      const totalTasks = Object.values(picGroup).reduce((acc, list) => acc + list.length, 0);
+    // 6. Deliver digests per resolved Telegram group
+    for (const [targetChatId, groupInfo] of Object.entries(groupsData)) {
+      const totalPics = Object.keys(groupInfo.pics).length;
+      const totalTasks = Object.values(groupInfo.pics).reduce((acc, list) => acc + list.length, 0);
 
       // Header summary line
       let message = `🔔 <b>Semak ${checkpoint}</b> — ${totalPics} PIC, ${totalTasks} tugasan tanpa timer aktif:\n\n`;
 
       // Grouped by PIC with bullet per task & overflow cap
-      const picEntries = Object.entries(picGroup);
+      const picEntries = Object.entries(groupInfo.pics);
       picEntries.forEach(([pic, taskTitles], index) => {
         const picTaskCount = taskTitles.length;
         message += `👤 <b>${escapeHtml(pic)}</b> (${picTaskCount} tugasan)\n`;
@@ -163,9 +157,15 @@ Deno.serve(async (req: Request) => {
         }
       });
 
-      console.log(`Sending digest to ${dept} (${targetChatId}):\n${message}`);
+      const deptsList = Array.from(groupInfo.departments).join(", ") || "General";
+      console.log(`Sending digest to chat_id ${targetChatId} (${deptsList}):\n${message}`);
       await sendTelegramToChat(message, targetChatId);
-      deliveries.push({ department: dept, chat_id: targetChatId, pic_count: totalPics, task_count: totalTasks });
+      deliveries.push({
+        chat_id: targetChatId,
+        departments: Array.from(groupInfo.departments),
+        pic_count: totalPics,
+        task_count: totalTasks,
+      });
     }
 
     return new Response(JSON.stringify({ message: "Timer nudge digests processed.", deliveries }), {

@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { resolveTaskTelegramGroup, getDepartmentGroupMap } from "../_shared/routing.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -124,16 +125,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     // 0. Load department → telegram_group_id mapping
-    const { data: deptSettings } = await supabase
-      .from("tsk_department_settings")
-      .select("department_name, telegram_group_id");
-
-    const deptGroupMap: Record<string, string> = {};
-    for (const row of (deptSettings ?? [])) {
-      if (row.department_name && row.telegram_group_id) {
-        deptGroupMap[row.department_name] = row.telegram_group_id;
-      }
-    }
+    const deptGroupMap = await getDepartmentGroupMap(supabase);
     console.log("Department group map:", JSON.stringify(deptGroupMap));
 
     // 1. Get all active schedules with their blueprint tasks
@@ -148,7 +140,7 @@ Deno.serve(async (req: Request) => {
         last_run_at,
         run_on_saturday,
         run_on_sunday,
-        customer:tsk_customers!tsk_recurring_schedules_customer_id_fkey (id, name),
+        customer:tsk_customers!tsk_recurring_schedules_customer_id_fkey (id, name, is_internal),
         blueprint:tsk_blueprints!tsk_recurring_schedules_blueprint_id_fkey (
           id,
           name,
@@ -198,6 +190,7 @@ Deno.serve(async (req: Request) => {
 
       const blueprintTasks = (schedule.blueprint as any)?.tsk_blueprint_tasks ?? [];
       const customerName = (schedule.customer as any)?.name ?? "Unknown Customer";
+      const isInternalCustomer = Boolean((schedule.customer as any)?.is_internal);
       const blueprintName = (schedule.blueprint as any)?.name ?? "Blueprint";
 
       if (blueprintTasks.length === 0) {
@@ -250,14 +243,19 @@ Deno.serve(async (req: Request) => {
       totalGenerated += tasksToInsert.length;
       results.push({ schedule_id: schedule.id, status: dryRun ? "dry_run" : "generated", tasks_count: tasksToInsert.length });
 
-      // ─── Determine department for Telegram routing ────────────────────────────
-      // Ambil department dari task pertama dalam blueprint (semua tasks satu blueprint = satu dept)
+      // ─── Determine Telegram routing using shared resolver ─────────────────────
       const firstTaskDept: string | null = blueprintTasks[0]?.department ?? null;
-      const targetChatId = firstTaskDept
-        ? (deptGroupMap[firstTaskDept] ?? TELEGRAM_CHAT_ID)
-        : TELEGRAM_CHAT_ID;
+      const targetChatId = resolveTaskTelegramGroup(
+        {
+          department: firstTaskDept,
+          is_internal: isInternalCustomer,
+          customer_name: customerName,
+        },
+        deptGroupMap,
+        TELEGRAM_CHAT_ID
+      );
 
-      console.log(`Blueprint "${blueprintName}" → dept: ${firstTaskDept} → chat_id: ${targetChatId}`);
+      console.log(`Blueprint "${blueprintName}" → dept: ${firstTaskDept}, is_internal: ${isInternalCustomer} → chat_id: ${targetChatId}`);
 
       // ─── Build & Send Telegram message ────────────────────────────────────────
       if (!dryRun) {

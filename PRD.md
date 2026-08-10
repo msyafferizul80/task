@@ -80,8 +80,9 @@ A centralized notification router that formats and pushes system alerts to Teleg
   * **Task Completed**: Triggers when status changes to `DONE`. Computes and appends the total time spent from `tsk_time_logs`.
   * **New Comment added**: Triggers on `INSERT` of `tsk_comments`.
 * **Dynamic Telegram Routing**: 
+  * Centralized shared resolver `resolveTaskTelegramGroup` (`_shared/routing.ts`) shared across `task-notification-handler`, `task-timer-nudge`, and `blueprint-autopilot`.
   * The handler queries `tsk_department_settings` using the task's department to locate the target `telegram_group_id`.
-  * **Routing Override Rule**: Recruitment tasks for the specific internal customer `SYAZNA WORLD (INTERNAL)` are routed to Group ID `-1004461542862`. All other Recruitment tasks go to `-1001567997515`.
+  * **Routing Override Rule**: Recruitment tasks with `is_internal = true` are routed to Group ID `-1004461542862` ("Internal SW"). All other Recruitment tasks go to `-1001567997515` ("SW Recruiter").
   * **Fallback**: Unconfigured departments default to the global `TELEGRAM_CHAT_ID` env setting.
 
 ---
@@ -117,8 +118,8 @@ During review, the senior developer should evaluate the following structural imp
 4. **Offline Timer Handling**:
    * *Problem*: Users who lose internet connection while working might have their timers drift or fail to stop.
    * *Recommendation*: Implement local storage sync with a client-side network listener to queue timer start/stop events offline and sync them back once connectivity is restored.
-5. **Telegram Routing Customer Hardcoding (Backlog)**:
-   * *Problem*: Section 4.4's routing override rule currently checks for the literal string `SYAZNA WORLD (INTERNAL)` to decide Telegram group routing. This should use the `is_internal` flag or a stable identifier instead of a hardcoded name match.
+5. **Telegram Routing Customer Hardcoding**:
+   * *Status*: **Implemented**. Consolidated routing logic into `resolveTaskTelegramGroup` (`_shared/routing.ts`) utilizing the boolean `is_internal` flag across `task-notification-handler`, `task-timer-nudge`, and `blueprint-autopilot`.
 6. **Auto-Closed Timer Session Flags (Backlog)**:
    * *Problem*: When the Forgotten Timer Daemon auto-closes a session after 12+ hours, the resulting `tsk_time_logs` row has no indicator distinguishing it from genuine work time, polluting duration-based reporting.
    * *Recommendation*: Add an `auto_closed` boolean column (default `false`) to `tsk_time_logs` to be set to `true` by the daemon when it force-closes a session.

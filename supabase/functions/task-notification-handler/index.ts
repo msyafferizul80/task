@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { resolveTaskTelegramGroupAsync } from "../_shared/routing.ts";
 
 const botToken = Deno.env.get('TELEGRAM_BOT_TOKEN');
 const chatId = Deno.env.get('TELEGRAM_CHAT_ID');
@@ -51,20 +52,7 @@ Deno.serve(async (req) => {
             if (data) assigneeName = data.full_name;
         }
 
-        let targetChatId = chatId;
-        // Reroute specific customer + department combination
-        if (record.customer_name === 'SYAZNA WORLD (INTERNAL)' && record.department === 'Recruitment') {
-            targetChatId = '-1004461542862';
-        } else if (record.department) {
-            const { data: deptData } = await supabase
-                .from('tsk_department_settings')
-                .select('telegram_group_id')
-                .eq('department_name', record.department)
-                .single();
-            if (deptData?.telegram_group_id) {
-                targetChatId = deptData.telegram_group_id;
-            }
-        }
+        const targetChatId = await resolveTaskTelegramGroupAsync(record, supabase, chatId);
 
         const safeDept = escapeHtml(record.department || 'Outsourcing');
         const safeCust = escapeHtml(record.customer_name || '-');
@@ -89,20 +77,7 @@ Deno.serve(async (req) => {
             if (data) assigneeName = data.full_name;
         }
 
-        let targetChatId = chatId;
-        // Reroute specific customer + department combination
-        if (record.customer_name === 'SYAZNA WORLD (INTERNAL)' && record.department === 'Recruitment') {
-            targetChatId = '-1004461542862';
-        } else if (record.department) {
-            const { data: deptData } = await supabase
-                .from('tsk_department_settings')
-                .select('telegram_group_id')
-                .eq('department_name', record.department)
-                .single();
-            if (deptData?.telegram_group_id) {
-                targetChatId = deptData.telegram_group_id;
-            }
-        }
+        const targetChatId = await resolveTaskTelegramGroupAsync(record, supabase, chatId);
 
         const safeDept = escapeHtml(record.department || 'Outsourcing');
         const safeCust = escapeHtml(record.customer_name || '-');
@@ -159,7 +134,7 @@ Deno.serve(async (req) => {
     if (type === 'INSERT' && record && table === 'tsk_comments') {
         const { data: task } = await supabase
             .from('tsk_tasks')
-            .select('id, title, customer_name, department, assignee_id')
+            .select('id, title, customer_name, department, assignee_id, is_internal')
             .eq('id', record.task_id)
             .single();
 
@@ -175,20 +150,7 @@ Deno.serve(async (req) => {
             if (commenter) commenterName = commenter.full_name;
         }
 
-        let targetChatId = chatId;
-        // Reroute specific customer + department combination
-        if (task.customer_name === 'SYAZNA WORLD (INTERNAL)' && task.department === 'Recruitment') {
-            targetChatId = '-1004461542862';
-        } else if (task.department) {
-            const { data: deptData } = await supabase
-                .from('tsk_department_settings')
-                .select('telegram_group_id')
-                .eq('department_name', task.department)
-                .single();
-            if (deptData?.telegram_group_id) {
-                targetChatId = deptData.telegram_group_id;
-            }
-        }
+        const targetChatId = await resolveTaskTelegramGroupAsync(task, supabase, chatId);
 
         const contentPreview = record.content?.length > 200
             ? record.content.substring(0, 200) + '...'
