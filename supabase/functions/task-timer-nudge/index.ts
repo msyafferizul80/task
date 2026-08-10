@@ -6,10 +6,20 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "
 const TELEGRAM_BOT_TOKEN = Deno.env.get("TELEGRAM_BOT_TOKEN") ?? "";
 const TELEGRAM_CHAT_ID = Deno.env.get("TELEGRAM_CHAT_ID") ?? ""; // default fallback
 
+// Configurable limit of tasks shown under a single PIC before truncating with overflow note
+const MAX_TASKS_PER_PIC = 5;
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
 
 async function sendTelegramToChat(message: string, chatId: string) {
   if (!TELEGRAM_BOT_TOKEN || !chatId) return;
@@ -73,7 +83,7 @@ Deno.serve(async (req: Request) => {
     if (timersErr) throw timersErr;
     const runningTaskIds = new Set(runningTimers?.map(t => t.task_id) ?? []);
 
-    // 3. Filter tasks that are IN_PROGRESS but have no active running timer
+    // 3. Filter tasks that are IN_PROGRESS but have no active running timer on that specific task
     const untrackedTasks = (tasks ?? []).filter(task => !runningTaskIds.has(task.id));
 
     console.log(`Found ${untrackedTasks.length} untracked IN_PROGRESS tasks.`);
@@ -125,15 +135,37 @@ Deno.serve(async (req: Request) => {
         continue;
       }
 
-      // Format casual message
-      let message = `🔔 <b>Semak ${checkpoint}</b> — tugasan IN_PROGRESS tanpa timer aktif:\n`;
-      for (const [pic, taskTitles] of Object.entries(picGroup)) {
-        message += `• <b>${pic}</b>: ${taskTitles.join(", ")}\n`;
-      }
+      const totalPics = Object.keys(picGroup).length;
+      const totalTasks = Object.values(picGroup).reduce((acc, list) => acc + list.length, 0);
+
+      // Header summary line
+      let message = `🔔 <b>Semak ${checkpoint}</b> — ${totalPics} PIC, ${totalTasks} tugasan tanpa timer aktif:\n\n`;
+
+      // Grouped by PIC with bullet per task & overflow cap
+      const picEntries = Object.entries(picGroup);
+      picEntries.forEach(([pic, taskTitles], index) => {
+        const picTaskCount = taskTitles.length;
+        message += `👤 <b>${escapeHtml(pic)}</b> (${picTaskCount} tugasan)\n`;
+
+        const visibleTasks = taskTitles.slice(0, MAX_TASKS_PER_PIC);
+        visibleTasks.forEach(title => {
+          message += `  • ${escapeHtml(title)}\n`;
+        });
+
+        if (taskTitles.length > MAX_TASKS_PER_PIC) {
+          const remaining = taskTitles.length - MAX_TASKS_PER_PIC;
+          message += `  <i>...dan ${remaining} tugasan lain</i>\n`;
+        }
+
+        // Add blank line between PICs (except after the last one)
+        if (index < picEntries.length - 1) {
+          message += `\n`;
+        }
+      });
 
       console.log(`Sending digest to ${dept} (${targetChatId}):\n${message}`);
       await sendTelegramToChat(message, targetChatId);
-      deliveries.push({ department: dept, chat_id: targetChatId, pic_count: Object.keys(picGroup).length });
+      deliveries.push({ department: dept, chat_id: targetChatId, pic_count: totalPics, task_count: totalTasks });
     }
 
     return new Response(JSON.stringify({ message: "Timer nudge digests processed.", deliveries }), {
