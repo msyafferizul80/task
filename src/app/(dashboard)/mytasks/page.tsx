@@ -5,8 +5,9 @@ import { Card, Select, Input, Table, Tag, Typography, Spin, message, Modal, Form
 import { createClient } from '@/utils/supabase/client';
 import { Task, Profile } from '@/lib/types';
 import { useRole } from '@/components/layout/RoleProvider';
-import { SearchOutlined, CheckCircleOutlined, SyncOutlined, ClockCircleOutlined, ExclamationCircleOutlined, EditOutlined, DeleteOutlined, ExclamationCircleFilled, FireOutlined, PauseCircleOutlined, PlayCircleOutlined } from '@ant-design/icons';
+import { SearchOutlined, CheckCircleOutlined, SyncOutlined, ClockCircleOutlined, ExclamationCircleOutlined, EditOutlined, DeleteOutlined, ExclamationCircleFilled, FireOutlined, PauseCircleOutlined, PlayCircleOutlined, AuditOutlined, TeamOutlined } from '@ant-design/icons';
 import EscalateModal from '@/components/task/EscalateModal';
+import ReviewResolutionModal from '@/components/task/ReviewResolutionModal';
 import TaskStatusHistory from '@/components/task/TaskStatusHistory';
 import TaskComments from '@/components/task/TaskComments';
 import { useTimer } from '@/components/task/TimerProvider';
@@ -128,6 +129,8 @@ export default function MyTasksPage() {
     const [editForm] = Form.useForm();
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
     const [isEscalateModalOpen, setIsEscalateModalOpen] = useState(false);
+    const [isReviewResolutionModalOpen, setIsReviewResolutionModalOpen] = useState(false);
+    const [reviewingTask, setReviewingTask] = useState<Task | null>(null);
     const [pendingUpdateValues, setPendingUpdateValues] = useState<any>(null);
 
     const supabase = createClient();
@@ -139,7 +142,7 @@ export default function MyTasksPage() {
             const userId = user?.id || null;
             setCurrentUserId(userId);
 
-            let query = supabase.from('tsk_tasks').select(`
+            let myTasksQuery = supabase.from('tsk_tasks').select(`
                 *,
                 assignee:lv_profiles!tsk_tasks_assignee_id_fkey (
                     id,
@@ -149,25 +152,77 @@ export default function MyTasksPage() {
                 creator:lv_profiles!tsk_tasks_created_by_fkey (
                     id,
                     full_name
+                ),
+                escalated_group:tsk_review_groups!tsk_tasks_escalated_to_group_id_fkey (
+                    id,
+                    name
+                ),
+                reviewed_by_user:lv_profiles!tsk_tasks_reviewed_by_fkey (
+                    id,
+                    full_name
                 )
             `).order('created_at', { ascending: false });
 
-            // Always only fetch their tasks regardless of role
+            // Fetch tasks assigned or individually escalated to the user
             if (userId) {
-                query = query.eq('assignee_id', userId);
+                myTasksQuery = myTasksQuery.or(`assignee_id.eq.${userId},escalated_to_user_id.eq.${userId}`);
             }
 
-            const [tasksRes, profilesRes, customersRes] = await Promise.all([
-                query,
+            // Fetch user profile and review group memberships in parallel
+            const [tasksRes, profilesRes, customersRes, myProfileRes, groupMembershipsRes] = await Promise.all([
+                myTasksQuery,
                 supabase.from('lv_profiles').select('id, full_name').eq('status', 'active').order('full_name'),
-                supabase.from('tsk_customers').select('id, name, is_internal').eq('status', 'active').order('name')
+                supabase.from('tsk_customers').select('id, name, is_internal').eq('status', 'active').order('name'),
+                userId ? supabase.from('lv_profiles').select('id, department, role').eq('id', userId).single() : Promise.resolve({ data: null, error: null }),
+                userId ? supabase.from('tsk_review_group_members').select('group_id').eq('user_id', userId) : Promise.resolve({ data: [], error: null })
             ]);
 
             if (tasksRes.error) throw tasksRes.error;
             if (profilesRes.error) throw profilesRes.error;
             if (customersRes.error && customersRes.error.code !== '42P01') throw customersRes.error;
 
-            setTasks(tasksRes.data as Task[] || []);
+            let loadedTasks: Task[] = (tasksRes.data as Task[]) || [];
+
+            // If user belongs to review groups, also fetch tasks escalated to those review groups (Option A department-scoped)
+            const userGroupIds = (groupMembershipsRes.data || []).map((m: any) => m.group_id);
+            if (userGroupIds.length > 0) {
+                let groupTasksQuery = supabase.from('tsk_tasks').select(`
+                    *,
+                    assignee:lv_profiles!tsk_tasks_assignee_id_fkey (
+                        id,
+                        full_name,
+                        avatar_url
+                    ),
+                    creator:lv_profiles!tsk_tasks_created_by_fkey (
+                        id,
+                        full_name
+                    ),
+                    escalated_group:tsk_review_groups!tsk_tasks_escalated_to_group_id_fkey (
+                        id,
+                        name
+                    ),
+                    reviewed_by_user:lv_profiles!tsk_tasks_reviewed_by_fkey (
+                        id,
+                        full_name
+                    )
+                `).eq('status', 'REVIEW').in('escalated_to_group_id', userGroupIds);
+
+                const myProfile = myProfileRes.data;
+                // Option A: department scope check for non-admin/non-manager
+                if (myProfile?.role !== 'admin' && myProfile?.role !== 'manager' && myProfile?.department) {
+                    groupTasksQuery = groupTasksQuery.eq('department', myProfile.department);
+                }
+
+                const { data: groupTasks, error: groupTasksError } = await groupTasksQuery;
+                if (!groupTasksError && groupTasks && groupTasks.length > 0) {
+                    const taskMap = new Map<string, Task>();
+                    loadedTasks.forEach(t => taskMap.set(t.id, t));
+                    (groupTasks as Task[]).forEach(t => taskMap.set(t.id, t));
+                    loadedTasks = Array.from(taskMap.values());
+                }
+            }
+
+            setTasks(loadedTasks);
             setProfiles(profilesRes.data || []);
             setCustomers(customersRes.data || []);
         } catch (error: any) {
@@ -176,7 +231,7 @@ export default function MyTasksPage() {
         } finally {
             setLoading(false);
         }
-    }, [role]);
+    }, [role, supabase]);
 
     useEffect(() => {
         fetchData();
@@ -451,7 +506,19 @@ export default function MyTasksPage() {
             render: (text: string, record: Task) => (
                 <div className="font-semibold text-indigo-900">
                     {text}
-                    <div className="mt-1">{getPriorityColor(record.priority_type)}</div>
+                    <div className="mt-1 flex flex-wrap gap-1 items-center">
+                        {getPriorityColor(record.priority_type)}
+                        {record.status === 'REVIEW' && record.escalated_group && (
+                            <Tag color="purple" icon={<TeamOutlined />} className="text-[11px] font-medium">
+                                Kumpulan Semakan: {record.escalated_group.name}
+                            </Tag>
+                        )}
+                        {record.status === 'REVIEW' && !record.escalated_group && record.escalated_to_user_id && (
+                            <Tag color="orange" className="text-[11px]">
+                                Menunggu Semakan PIC
+                            </Tag>
+                        )}
+                    </div>
                 </div>
             )
         },
@@ -938,6 +1005,21 @@ export default function MyTasksPage() {
                                                 setSelectedTask(null);
                                             }} className="mr-3" size="large" disabled={false}>Cancel</Button>
 
+                                            {selectedTask.status === 'REVIEW' && (
+                                                <Button
+                                                    type="primary"
+                                                    size="large"
+                                                    className="bg-amber-600 hover:bg-amber-700 border-none shadow-md mr-3"
+                                                    icon={<AuditOutlined />}
+                                                    onClick={() => {
+                                                        setReviewingTask(selectedTask);
+                                                        setIsReviewResolutionModalOpen(true);
+                                                    }}
+                                                >
+                                                    Semak Tugasan (Approve / Reject)
+                                                </Button>
+                                            )}
+
                                             {selectedTask.status !== 'DONE' && (role === 'admin' || role === 'manager' || selectedTask.assignee_id === currentUserId) && (
                                                 <Button
                                                     type="default"
@@ -992,6 +1074,26 @@ export default function MyTasksPage() {
                         setIsEditModalOpen(false);
                         setSelectedTask(null);
                         setPendingUpdateValues(null);
+                        fetchData();
+                    }}
+                />
+            )}
+
+            {reviewingTask && (
+                <ReviewResolutionModal
+                    isOpen={isReviewResolutionModalOpen}
+                    onClose={() => {
+                        setIsReviewResolutionModalOpen(false);
+                        setReviewingTask(null);
+                    }}
+                    task={reviewingTask}
+                    currentUserId={currentUserId || ''}
+                    onSuccess={async () => {
+                        setIsReviewResolutionModalOpen(false);
+                        setReviewingTask(null);
+                        setIsEditModalOpen(false);
+                        setSelectedTask(null);
+                        fetchData();
                     }}
                 />
             )}

@@ -2,12 +2,13 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { Card, Button, Input, Modal, Form, Select, DatePicker, message, Spin, Typography, Tabs, InputNumber } from 'antd';
-import { PlusOutlined, DeleteOutlined, ExclamationCircleFilled } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, ExclamationCircleFilled, AuditOutlined, TeamOutlined } from '@ant-design/icons';
 import { createClient } from '@/utils/supabase/client';
 import { Task, PriorityType } from '@/lib/types';
 import KanbanBoard from '@/components/task/KanbanBoard';
 import { useRole } from '@/components/layout/RoleProvider';
 import EscalateModal from './EscalateModal';
+import ReviewResolutionModal from './ReviewResolutionModal';
 import TaskHistoryTab from './TaskHistoryTab';
 import TaskStatusHistory from './TaskStatusHistory';
 import TaskComments from './TaskComments';
@@ -28,6 +29,8 @@ export default function EisenhowerDashboard() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [isEscalateModalOpen, setIsEscalateModalOpen] = useState(false);
+    const [isReviewResolutionModalOpen, setIsReviewResolutionModalOpen] = useState(false);
+    const [reviewingTask, setReviewingTask] = useState<Task | null>(null);
     const [selectedTask, setSelectedTask] = useState<Task | null>(null);
     const [taskChecklist, setTaskChecklist] = useState<any[]>([]);
     const [pendingUpdateValues, setPendingUpdateValues] = useState<any>(null);
@@ -57,6 +60,14 @@ export default function EisenhowerDashboard() {
                     id,
                     full_name,
                     avatar_url
+                ),
+                escalated_group:tsk_review_groups!tsk_tasks_escalated_to_group_id_fkey (
+                    id,
+                    name
+                ),
+                reviewed_by_user:lv_profiles!tsk_tasks_reviewed_by_fkey (
+                    id,
+                    full_name
                 )
             `).order('created_at', { ascending: false });
 
@@ -814,6 +825,21 @@ export default function EisenhowerDashboard() {
                                                         setSelectedTask(null);
                                                     }} size="large" disabled={false}>Cancel</Button>
 
+                                                    {selectedTask?.status === 'REVIEW' && (
+                                                        <Button
+                                                            type="primary"
+                                                            size="large"
+                                                            className="bg-amber-600 hover:bg-amber-700 border-none shadow-md mr-3"
+                                                            icon={<AuditOutlined />}
+                                                            onClick={() => {
+                                                                setReviewingTask(selectedTask);
+                                                                setIsReviewResolutionModalOpen(true);
+                                                            }}
+                                                        >
+                                                            Semak Tugasan (Approve / Reject)
+                                                        </Button>
+                                                    )}
+
                                                     {selectedTask?.status !== 'DONE' && selectedTask && (selectedTask.assignee_id === currentUserId || role === 'admin' || role === 'manager' || (role === 'supervisor' && selectedTask.department === currentUserDept)) && (
                                                         <Button 
                                                             type="default" 
@@ -879,6 +905,24 @@ export default function EisenhowerDashboard() {
                     setPendingUpdateValues(null);
                 }}
             />
+
+            {reviewingTask && (
+                <ReviewResolutionModal
+                    isOpen={isReviewResolutionModalOpen}
+                    onClose={() => {
+                        setIsReviewResolutionModalOpen(false);
+                        setReviewingTask(null);
+                    }}
+                    task={reviewingTask}
+                    currentUserId={currentUserId || ''}
+                    onSuccess={() => {
+                        setIsReviewResolutionModalOpen(false);
+                        setReviewingTask(null);
+                        setIsEditModalOpen(false);
+                        fetchTasksAndProfiles();
+                    }}
+                />
+            )}
         </div>
     );
 }

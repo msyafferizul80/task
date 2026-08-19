@@ -17,7 +17,8 @@ import {
     Bot,
     PauseCircle,
     Calendar,
-    Inbox
+    Inbox,
+    UserCheck
 } from 'lucide-react'
 import { createClient } from '@/utils/supabase/client'
 import { useRole } from '@/components/layout/RoleProvider'
@@ -114,6 +115,7 @@ export default function Sidebar() {
     }
 
     if (role === 'admin') {
+        managementItems.push({ name: 'Review Groups', href: '/review-groups', icon: UserCheck });
         managementItems.push({ name: 'User Management', href: '/users', icon: UserCircle });
     }
 
@@ -148,6 +150,7 @@ export default function Sidebar() {
     }
 
     if (role === 'admin') {
+        mobileOrderedItems.push({ name: 'Review Groups', href: '/review-groups', icon: UserCheck });
         mobileOrderedItems.push({ name: 'User Management', href: '/users', icon: UserCircle });
     }
 

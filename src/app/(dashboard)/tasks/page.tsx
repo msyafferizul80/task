@@ -5,8 +5,9 @@ import { Card, Select, Input, Table, Tag, Typography, Spin, message, Modal, Form
 import { createClient } from '@/utils/supabase/client';
 import { Task, Profile } from '@/lib/types';
 import { useRole } from '@/components/layout/RoleProvider';
-import { SearchOutlined, CheckCircleOutlined, SyncOutlined, ClockCircleOutlined, ExclamationCircleOutlined, EditOutlined, DeleteOutlined, ExclamationCircleFilled, PauseCircleOutlined, PlayCircleOutlined } from '@ant-design/icons';
+import { SearchOutlined, CheckCircleOutlined, SyncOutlined, ClockCircleOutlined, ExclamationCircleOutlined, EditOutlined, DeleteOutlined, ExclamationCircleFilled, PauseCircleOutlined, PlayCircleOutlined, AuditOutlined, TeamOutlined } from '@ant-design/icons';
 import EscalateModal from '@/components/task/EscalateModal';
+import ReviewResolutionModal from '@/components/task/ReviewResolutionModal';
 import TaskStatusHistory from '@/components/task/TaskStatusHistory';
 import TaskComments from '@/components/task/TaskComments';
 import { useTimer } from '@/components/task/TimerProvider';
@@ -109,7 +110,7 @@ function LiveTaskTimer({
     );
 }
 
-export default function TaskListingPage() {
+export default function TasksPage() {
     const { activeLogs, startTimer, stopTimer, handleStatusChange } = useTimer();
     const [tasks, setTasks] = useState<Task[]>([]);
     const [customers, setCustomers] = useState<any[]>([]);
@@ -118,16 +119,19 @@ export default function TaskListingPage() {
 
     const [filterCustomer, setFilterCustomer] = useState<string>('');
     const [filterStatus, setFilterStatus] = useState<string>('');
+    const [filterPriority, setFilterPriority] = useState<string>('');
     const [filterPIC, setFilterPIC] = useState<string>('');
-    const [searchText, setSearchText] = useState<string>('');
     const [filterDateRange, setFilterDateRange] = useState<[any, any]>([null, null]);
     const [filterDateField, setFilterDateField] = useState<string>('created_at');
+    const [searchText, setSearchText] = useState<string>('');
 
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [selectedTask, setSelectedTask] = useState<Task | null>(null);
     const [editForm] = Form.useForm();
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
     const [isEscalateModalOpen, setIsEscalateModalOpen] = useState(false);
+    const [isReviewResolutionModalOpen, setIsReviewResolutionModalOpen] = useState(false);
+    const [reviewingTask, setReviewingTask] = useState<Task | null>(null);
     const [pendingUpdateValues, setPendingUpdateValues] = useState<any>(null);
 
     const supabase = createClient();
@@ -150,6 +154,14 @@ export default function TaskListingPage() {
                     id,
                     full_name,
                     avatar_url
+                ),
+                escalated_group:tsk_review_groups!tsk_tasks_escalated_to_group_id_fkey (
+                    id,
+                    name
+                ),
+                reviewed_by_user:lv_profiles!tsk_tasks_reviewed_by_fkey (
+                    id,
+                    full_name
                 )
             `).order('created_at', { ascending: false });
 
@@ -157,7 +169,7 @@ export default function TaskListingPage() {
             if (role === 'supervisor' && currentUserDept) {
                 query = query.eq('department', currentUserDept);
             } else if (role !== 'admin' && role !== 'manager' && userId) {
-                query = query.eq('assignee_id', userId);
+                query = query.or(`assignee_id.eq.${userId},escalated_to_user_id.eq.${userId}`);
             }
 
             const [tasksRes, profilesRes, customersRes] = await Promise.all([
@@ -179,7 +191,7 @@ export default function TaskListingPage() {
         } finally {
             setLoading(false);
         }
-    }, [role]);
+    }, [role, currentUserDept, supabase]);
 
     useEffect(() => {
         fetchData();
@@ -885,7 +897,7 @@ export default function TaskListingPage() {
                                             {(role === 'admin' || role === 'manager' || (role === 'employee' && (selectedTask.status !== 'DONE' || selectedTask.assignee_id === currentUserId))) && (
                                                 <Button danger type="text" onClick={handleDeleteTask} size="large" icon={<DeleteOutlined />} disabled={false}>
                                                     Delete
-                                                 </Button>
+                                                </Button>
                                             )}
                                         </div>
                                         <div style={{ marginTop: '20px' }}>
@@ -893,6 +905,21 @@ export default function TaskListingPage() {
                                                 setIsEditModalOpen(false);
                                                 setSelectedTask(null);
                                             }} className="mr-3" size="large" disabled={false}>Cancel</Button>
+
+                                            {selectedTask.status === 'REVIEW' && (
+                                                <Button
+                                                    type="primary"
+                                                    size="large"
+                                                    className="bg-amber-600 hover:bg-amber-700 border-none shadow-md mr-3"
+                                                    icon={<AuditOutlined />}
+                                                    onClick={() => {
+                                                        setReviewingTask(selectedTask);
+                                                        setIsReviewResolutionModalOpen(true);
+                                                    }}
+                                                >
+                                                    Semak Tugasan (Approve / Reject)
+                                                </Button>
+                                            )}
 
                                             {selectedTask.status !== 'DONE' && (role === 'admin' || role === 'manager' || (role === 'supervisor' && selectedTask?.department === currentUserDept) || selectedTask.assignee_id === currentUserId) && (
                                                 <Button
@@ -905,9 +932,9 @@ export default function TaskListingPage() {
                                                 </Button>
                                             )}
 
-                                            {(selectedTask.status !== 'DONE' || role === 'admin' || role === 'manager') && (
-                                                <Button type="primary" htmlType="submit" size="large" className="bg-indigo-600 shadow-md">Update Task</Button>
-                                            )}
+                                             {(selectedTask.status !== 'DONE' || role === 'admin' || role === 'manager') && (
+                                                 <Button type="primary" htmlType="submit" size="large" className="bg-indigo-600 shadow-md">Update Task</Button>
+                                             )}
                                         </div>
                                     </div>
                                 </Form.Item>
@@ -948,6 +975,26 @@ export default function TaskListingPage() {
                         setIsEditModalOpen(false);
                         setSelectedTask(null);
                         setPendingUpdateValues(null);
+                        fetchData();
+                    }}
+                />
+            )}
+
+            {reviewingTask && (
+                <ReviewResolutionModal
+                    isOpen={isReviewResolutionModalOpen}
+                    onClose={() => {
+                        setIsReviewResolutionModalOpen(false);
+                        setReviewingTask(null);
+                    }}
+                    task={reviewingTask}
+                    currentUserId={currentUserId || ''}
+                    onSuccess={async () => {
+                        setIsReviewResolutionModalOpen(false);
+                        setReviewingTask(null);
+                        setIsEditModalOpen(false);
+                        setSelectedTask(null);
+                        fetchData();
                     }}
                 />
             )}

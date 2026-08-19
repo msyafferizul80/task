@@ -40,6 +40,7 @@ The system segregates users into four main roles, each with strict row-level sec
 1. **Department Restrictions**: Employees and Supervisors are bound to a single department. Supervisors can only view, create, edit, or assign tasks within their department.
 2. **Supervisor Assignment Policy**: Supervisors are restricted from assigning tasks to users outside their department. (Note: Admin and Manager roles have a `NULL` department and are bypassed from this restriction).
 3. **Strict Cross-Department Visibility & Action**: A Supervisor must NOT see, edit, or log time against a task from another department under any circumstances, even if that task is personally assigned to them (Option A strict mode).
+4. **Review Group Department Scoping (Option A Strict)**: Review group membership does NOT bypass department scoping. A Supervisor or Employee in a Review Group can only view and resolve group-escalated tasks belonging to their own department. Admin and Manager roles maintain global organization-wide review scope across all review groups.
 
 ---
 

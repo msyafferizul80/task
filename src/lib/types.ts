@@ -7,6 +7,23 @@ export interface Profile {
     avatar_url?: string;
     jawatan?: string;
     department?: string;
+    role?: string;
+}
+
+export interface ReviewGroup {
+    id: string;
+    name: string;
+    created_at: string;
+    created_by?: string | null;
+    members?: Profile[];
+    member_count?: number;
+}
+
+export interface ReviewGroupMember {
+    group_id: string;
+    user_id: string;
+    created_at: string;
+    user?: Profile;
 }
 
 export interface Task {
@@ -29,6 +46,12 @@ export interface Task {
     creator?: Profile;
     is_escalated?: boolean;
     total_logged_time?: number;
+    escalated_to_user_id?: string | null;
+    escalated_to_group_id?: string | null;
+    escalated_from_user_id?: string | null;
+    reviewed_by?: string | null;
+    reviewed_by_user?: Profile;
+    escalated_group?: ReviewGroup;
 }
 
 
@@ -36,12 +59,14 @@ export interface EscalationLog {
     id: string;
     task_id: string;
     from_user_id: string;
-    to_user_id: string;
+    to_user_id?: string | null;
+    to_group_id?: string | null;
     reason: string;
     task_description?: string;
     created_at: string;
     from_user?: Profile;
     to_user?: Profile;
+    to_group?: ReviewGroup;
 }
 
 export interface TaskChecklist {
