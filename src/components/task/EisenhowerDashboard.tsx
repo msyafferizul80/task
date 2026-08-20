@@ -2,7 +2,18 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { Card, Button, Input, Modal, Form, Select, DatePicker, message, Spin, Typography, Tabs, InputNumber } from 'antd';
-import { PlusOutlined, DeleteOutlined, ExclamationCircleFilled, AuditOutlined, TeamOutlined } from '@ant-design/icons';
+import {
+  PlusOutlined,
+  DeleteOutlined,
+  ExclamationCircleFilled,
+  AuditOutlined,
+  TeamOutlined,
+  BankOutlined,
+  FlagOutlined,
+  SyncOutlined,
+  ClockCircleOutlined,
+  CheckOutlined,
+} from '@ant-design/icons';
 import { createClient } from '@/utils/supabase/client';
 import { Task, PriorityType } from '@/lib/types';
 import KanbanBoard from '@/components/task/KanbanBoard';
@@ -116,7 +127,7 @@ export default function EisenhowerDashboard() {
 
     const handleCreateTask = async (values: any) => {
         try {
-            message.loading({ content: 'Creating Task & Analyzing via AI...', key: 'createTask' });
+            message.loading({ content: 'Mencipta tugasan...', key: 'createTask' });
             
             const { title, description, priority_type, start_date, due_date, customer_name, assignee_id, department, estimated_hours } = values;
             let finalTitle = title;
@@ -135,7 +146,7 @@ export default function EisenhowerDashboard() {
                         const data = await res.json();
                         if (data.suggested_title && data.suggested_title !== title) {
                             finalTitle = data.suggested_title;
-                            message.info(`AI auto-formatted title to "${finalTitle}"`);
+                            message.info(`Tajuk tugasan dikemaskini: "${finalTitle}"`);
                         }
                         if (data.checklist_items && Array.isArray(data.checklist_items)) {
                             aiChecklist = data.checklist_items;
@@ -190,20 +201,20 @@ export default function EisenhowerDashboard() {
                 await supabase.from('tsk_task_checklist').insert(insertData);
             }
 
-            message.success({ content: 'Task created successfully!', key: 'createTask', duration: 2 });
+            message.success({ content: 'Tugasan berjaya dicipta', key: 'createTask', duration: 2 });
             setIsModalOpen(false);
             form.resetFields();
             fetchTasksAndProfiles();
         } catch (error: any) {
             console.error('Error creating task:', error.message);
-            message.error({ content: 'Failed to create task', key: 'createTask', duration: 2 });
+            message.error({ content: 'Gagal mencipta tugasan', key: 'createTask', duration: 2 });
         }
     };
 
     const doUpdateTask = async (values: any) => {
         if (!selectedTask) return;
         try {
-            message.loading({ content: 'Updating Task & Generating AI Checklist...', key: 'updateTask' });
+            message.loading({ content: 'Mengemaskini tugasan...', key: 'updateTask' });
 
             // Check if status is set to DONE
             let totalTimeMessage = '';
@@ -250,7 +261,7 @@ export default function EisenhowerDashboard() {
                         const data = await res.json();
                         if (data.suggested_title && data.suggested_title !== values.title) {
                             finalTitle = data.suggested_title;
-                            message.info(`AI renamed task to "${finalTitle}"`);
+                            message.info(`Tajuk tugasan dikemaskini: "${finalTitle}"`);
                         }
                         if (data.checklist_items && Array.isArray(data.checklist_items) && data.checklist_items.length > 0) {
                             await supabase.from('tsk_task_checklist').delete().eq('task_id', selectedTask.id);
@@ -279,23 +290,29 @@ export default function EisenhowerDashboard() {
                 // is_internal is auto-set by trg_sync_task_is_internal trigger
                 department: values.department || 'Outsourcing',
                 estimated_hours: values.estimated_hours || null,
+                updated_at: new Date().toISOString()
             }).eq('id', selectedTask.id);
 
             if (error) throw error;
 
-            if (values.status === 'DONE' && totalTimeMessage) {
-                message.success({ content: `Task updated to Done! Total time spent: ${totalTimeMessage}`, key: 'updateTask', duration: 8 });
-            } else {
-                message.success({ content: 'Task updated successfully!', key: 'updateTask', duration: 2 });
-            }
+            message.success({ content: 'Tugasan berjaya dikemaskini', key: 'updateTask', duration: 2 });
             setIsEditModalOpen(false);
             setSelectedTask(null);
             editForm.resetFields();
             fetchTasksAndProfiles();
         } catch (error: any) {
             console.error('Error updating task:', error.message);
-            message.error({ content: 'Failed to update task', key: 'updateTask', duration: 2 });
+            message.error({ content: 'Gagal mengemaskini tugasan', key: 'updateTask', duration: 2 });
         }
+    };
+
+    const formatDateDisplay = (dateStr?: string | null) => {
+        if (!dateStr) return '';
+        const d = new Date(dateStr);
+        const day = String(d.getDate()).padStart(2, '0');
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const year = d.getFullYear();
+        return `${day}/${month}/${year}`;
     };
 
     const handleUpdateTask = async (values: any) => {
@@ -360,11 +377,11 @@ export default function EisenhowerDashboard() {
 
     const getPriorityColor = (type: PriorityType | null) => {
         switch (type) {
-            case 'DO_FIRST': return 'border-rose-200 hover:border-rose-400 shadow-rose-100/50';
-            case 'SCHEDULE': return 'border-sky-200 hover:border-sky-400 shadow-sky-100/50';
-            case 'DELEGATE': return 'border-amber-200 hover:border-amber-400 shadow-amber-100/50';
-            case 'ELIMINATE': return 'border-slate-200 hover:border-slate-400 shadow-slate-100/50';
-            default: return 'border-gray-100';
+            case 'DO_FIRST': return 'border-rose-200 hover:border-rose-400 bg-rose-50/20';
+            case 'SCHEDULE': return 'border-sky-200 hover:border-sky-400 bg-sky-50/20';
+            case 'DELEGATE': return 'border-amber-200 hover:border-amber-400 bg-amber-50/20';
+            case 'ELIMINATE': return 'border-slate-200 hover:border-slate-400 bg-slate-50/20';
+            default: return 'border-slate-200';
         }
     };
 
@@ -396,7 +413,7 @@ export default function EisenhowerDashboard() {
     const renderTaskCard = (task: Task) => (
         <div
             key={task.id}
-            className={`p-5 bg-white rounded-2xl transition-all duration-300 cursor-pointer border hover:-translate-y-1 hover:shadow-lg group ${getPriorityColor(task.priority_type)} ${task.is_escalated ? 'bg-orange-50/50 ring-2 ring-orange-500 ring-offset-2' : ''}`}
+            className={`p-4 bg-white rounded-xl transition-all duration-200 cursor-pointer border hover:-translate-y-0.5 hover:shadow-md group ${getPriorityColor(task.priority_type)} ${task.is_escalated ? 'bg-amber-50/40 ring-1 ring-amber-400' : ''}`}
             onClick={() => {
                 setSelectedTask(task);
                 fetchChecklist(task.id);
@@ -408,42 +425,42 @@ export default function EisenhowerDashboard() {
                 setIsEditModalOpen(true);
             }}
         >
-            <div className="flex items-start justify-between gap-2 mb-4">
-                <div className="font-semibold text-slate-800 text-[15px] group-hover:text-indigo-600 transition-colors flex-1">{task.title}</div>
+            <div className="flex items-start justify-between gap-2 mb-3">
+                <div className="font-semibold text-slate-800 text-sm group-hover:text-cyan-600 transition-colors flex-1">{task.title}</div>
                 <div className="flex flex-col items-end gap-1">
                     {task.is_escalated && (
-                        <span className="flex-shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 border border-orange-200 flex items-center gap-0.5 shadow-sm">
-                            🚩 Escalated
+                        <span className="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1 shadow-2xs">
+                            <FlagOutlined className="text-[9px]" /> Eskalasi
                         </span>
                     )}
                     {(task as any).is_recurring && (
-                        <span className="flex-shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200 flex items-center gap-0.5">
-                            🔄 Recurring
+                        <span className="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                            <SyncOutlined className="text-[9px]" /> Berkala
                         </span>
                     )}
                 </div>
             </div>
-            <div className="flex flex-col gap-3 text-xs">
+            <div className="flex flex-col gap-2 text-xs">
                 {task.customer_name && (
-                    <div className="flex items-center gap-2 text-slate-600">
-                        <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[11px] shadow-sm border border-slate-200">🏢</div>
-                        <span className="font-medium">{task.customer_name}</span>
+                    <div className="flex items-center gap-1.5 text-slate-600">
+                        <BankOutlined className="text-slate-400 text-xs" />
+                        <span className="font-medium truncate">{task.customer_name}</span>
                     </div>
                 )}
                 {task.assignee && (
                     <div className="flex items-center gap-2">
                         <img
-                            src={task.assignee.avatar_url || `https://ui-avatars.com/api/?name=${task.assignee.full_name}&background=6366f1&color=fff`}
-                            className="w-6 h-6 rounded-full shadow-sm"
+                            src={task.assignee.avatar_url || `https://ui-avatars.com/api/?name=${task.assignee.full_name}&background=35c0ed&color=fff`}
+                            className="w-5 h-5 rounded-full shadow-2xs"
                             alt={task.assignee.full_name}
                         />
-                        <span className="font-medium text-slate-700">{task.assignee.full_name}</span>
+                        <span className="font-medium text-slate-700 text-xs">{task.assignee.full_name}</span>
                     </div>
                 )}
             </div>
             {task.due_date && (
-                <div className="text-[11px] font-semibold text-rose-500 mt-4 flex items-center gap-1 bg-rose-50 w-fit px-2 py-1 rounded-md border border-rose-100">
-                    ⏱️ Due: {new Date(task.due_date).toLocaleDateString()}
+                <div className="text-[11px] font-semibold text-rose-600 mt-3 flex items-center gap-1 bg-rose-50/80 w-fit px-2 py-0.5 rounded-md border border-rose-200 font-mono tabular-nums">
+                    <ClockCircleOutlined className="text-[10px]" /> Due: {formatDateDisplay(task.due_date)}
                 </div>
             )}
         </div>
@@ -451,22 +468,22 @@ export default function EisenhowerDashboard() {
 
     return (
         <div className="flex flex-col gap-6 font-sans">
-            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 bg-white/80 backdrop-blur-xl p-4 sm:p-6 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100/50">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 bg-white p-5 sm:p-6 rounded-2xl shadow-2xs border border-slate-200/80">
                 <div>
-                    <h1 className="text-xl sm:text-2xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-violet-600 mb-1 tracking-tight">Syazna World Priority Grid</h1>
-                    <p className="text-slate-500 font-medium text-xs sm:text-sm">Strategic planning and task capitalization for premium clients</p>
+                    <h1 className="text-xl sm:text-2xl font-bold text-slate-900 mb-1 tracking-tight">Task Matrix</h1>
+                    <p className="text-slate-500 font-normal text-xs sm:text-sm">Manage and prioritize tasks using the Eisenhower Matrix and Kanban board</p>
                 </div>
-                <Button type="primary" icon={<PlusOutlined />} onClick={() => setIsModalOpen(true)} size="large" className="bg-gradient-to-r from-indigo-600 to-violet-600 border-0 shadow-lg shadow-indigo-200/50 hover:shadow-indigo-400/50 rounded-xl h-12 px-4 sm:px-6 font-semibold transition-all hover:-translate-y-0.5 w-full sm:w-auto">
-                    New Strategic Task
+                <Button type="primary" icon={<PlusOutlined />} onClick={() => setIsModalOpen(true)} size="large" className="rounded-xl h-11 px-5 font-semibold transition-all w-full sm:w-auto shadow-sm">
+                    Add Task
                 </Button>
             </div>
 
             {/* Filter Bar */}
-            <div className="bg-white/60 backdrop-blur-md p-4 rounded-2xl shadow-sm border border-slate-100">
-                <span className="font-bold text-slate-700 uppercase tracking-widest text-[11px] opacity-70 block mb-3">Filters:</span>
+            <div className="bg-white p-4 rounded-xl shadow-2xs border border-slate-200/80">
+                <span className="font-bold text-slate-500 uppercase tracking-wider text-[11px] block mb-2.5">Filters:</span>
                 <div className="flex flex-col sm:flex-row gap-3 items-center">
                     <Select
-                        placeholder="Search Client Organization..."
+                        placeholder="Filter by Customer..."
                         value={filterCustomer || undefined}
                         onChange={val => setFilterCustomer(val || '')}
                         className="w-full sm:w-64"
@@ -480,7 +497,7 @@ export default function EisenhowerDashboard() {
                         ))}
                     </Select>
                     <Select
-                        placeholder="Select Executive Assignee..."
+                        placeholder="Filter by Assignee / PIC..."
                         value={filterPIC || undefined}
                         onChange={val => setFilterPIC(val)}
                         className="w-full sm:w-64"
@@ -502,69 +519,69 @@ export default function EisenhowerDashboard() {
                             className="ml-auto"
                             size="large"
                         >
-                            Reset Filter
+                            Reset Filters
                         </Button>
                     )}
                 </div>
             </div>
 
-            <Title level={3} className="px-1">Kanban Board (Workload View)</Title>
-            <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
+            <Title level={4} className="px-1 !text-slate-800 !mb-0">Kanban Workflow</Title>
+            <div className="bg-white p-4 rounded-2xl shadow-2xs border border-slate-200/80">
                 <KanbanBoard tasks={filteredTasks} role={role} profiles={profiles} currentUserId={currentUserId} />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-8">
                 {/* DO FIRST */}
-                <div className="bg-gradient-to-b from-rose-50/80 to-white/50 backdrop-blur-xl border border-rose-100 p-6 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.02)]">
-                    <div className="flex flex-wrap items-center gap-3 mb-6">
-                        <div className="w-2.5 h-2.5 rounded-full bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.5)]"></div>
-                        <h3 className="font-bold text-rose-950 text-lg m-0">Do First</h3>
-                        <span className="text-[10px] font-bold px-3 py-1 bg-rose-100 text-rose-700 rounded-full ml-auto uppercase tracking-wider relative overflow-hidden">Urgent & Important</span>
+                <div className="bg-white border border-rose-200/80 p-5 rounded-2xl shadow-2xs">
+                    <div className="flex flex-wrap items-center gap-2.5 mb-5 pb-3 border-b border-rose-100">
+                        <div className="w-2.5 h-2.5 rounded-full bg-rose-500"></div>
+                        <h3 className="font-bold text-slate-800 text-sm m-0">Do First</h3>
+                        <span className="text-[10px] font-bold px-2.5 py-0.5 bg-rose-50 text-rose-700 border border-rose-200 rounded-md ml-auto uppercase tracking-wider">Urgent & Important</span>
                     </div>
-                    <div className="flex flex-col gap-4 min-h-[150px]">
-                        {doFirstTasks.length === 0 ? <p className="text-rose-300 text-center mt-8 font-medium italic text-sm">No critical objectives pending</p> :
+                    <div className="flex flex-col gap-3 min-h-[140px]">
+                        {doFirstTasks.length === 0 ? <p className="text-slate-400 text-center mt-8 font-normal italic text-xs">No critical tasks remaining</p> :
                             doFirstTasks.map(renderTaskCard)
                         }
                     </div>
                 </div>
 
                 {/* SCHEDULE */}
-                <div className="bg-gradient-to-b from-sky-50/80 to-white/50 backdrop-blur-xl border border-sky-100 p-6 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.02)]">
-                    <div className="flex flex-wrap items-center gap-3 mb-6">
-                        <div className="w-2.5 h-2.5 rounded-full bg-sky-500 shadow-[0_0_10px_rgba(14,165,233,0.5)]"></div>
-                        <h3 className="font-bold text-sky-950 text-lg m-0">Schedule</h3>
-                        <span className="text-[10px] font-bold px-3 py-1 bg-sky-100 text-sky-700 rounded-full ml-auto uppercase tracking-wider">Not Urgent, Important</span>
+                <div className="bg-white border border-sky-200/80 p-5 rounded-2xl shadow-2xs">
+                    <div className="flex flex-wrap items-center gap-2.5 mb-5 pb-3 border-b border-sky-100">
+                        <div className="w-2.5 h-2.5 rounded-full bg-sky-500"></div>
+                        <h3 className="font-bold text-slate-800 text-sm m-0">Schedule</h3>
+                        <span className="text-[10px] font-bold px-2.5 py-0.5 bg-sky-50 text-sky-700 border border-sky-200 rounded-md ml-auto uppercase tracking-wider">Not Urgent, Important</span>
                     </div>
-                    <div className="flex flex-col gap-4 min-h-[150px]">
-                        {scheduleTasks.length === 0 ? <p className="text-sky-300 text-center mt-8 font-medium italic text-sm">No scheduled objectives</p> :
+                    <div className="flex flex-col gap-3 min-h-[140px]">
+                        {scheduleTasks.length === 0 ? <p className="text-slate-400 text-center mt-8 font-normal italic text-xs">No scheduled tasks</p> :
                             scheduleTasks.map(renderTaskCard)
                         }
                     </div>
                 </div>
 
                 {/* DELEGATE */}
-                <div className="bg-gradient-to-b from-amber-50/80 to-white/50 backdrop-blur-xl border border-amber-100 p-6 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.02)]">
-                    <div className="flex flex-wrap items-center gap-3 mb-6">
-                        <div className="w-2.5 h-2.5 rounded-full bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.5)]"></div>
-                        <h3 className="font-bold text-amber-950 text-lg m-0">Delegate</h3>
-                        <span className="text-[10px] font-bold px-3 py-1 bg-amber-100 text-amber-700 rounded-full ml-auto uppercase tracking-wider">Urgent, Not Important</span>
+                <div className="bg-white border border-amber-200/80 p-5 rounded-2xl shadow-2xs">
+                    <div className="flex flex-wrap items-center gap-2.5 mb-5 pb-3 border-b border-amber-100">
+                        <div className="w-2.5 h-2.5 rounded-full bg-amber-500"></div>
+                        <h3 className="font-bold text-slate-800 text-sm m-0">Delegate</h3>
+                        <span className="text-[10px] font-bold px-2.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-md ml-auto uppercase tracking-wider">Urgent, Not Important</span>
                     </div>
-                    <div className="flex flex-col gap-4 min-h-[150px]">
-                        {delegateTasks.length === 0 ? <p className="text-amber-300 text-center mt-8 font-medium italic text-sm">No assignments to delegate</p> :
+                    <div className="flex flex-col gap-3 min-h-[140px]">
+                        {delegateTasks.length === 0 ? <p className="text-slate-400 text-center mt-8 font-normal italic text-xs">No tasks for delegation</p> :
                             delegateTasks.map(renderTaskCard)
                         }
                     </div>
                 </div>
 
                 {/* ELIMINATE */}
-                <div className="bg-gradient-to-b from-slate-50/80 to-white/50 backdrop-blur-xl border border-slate-200 p-6 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.02)]">
-                    <div className="flex flex-wrap items-center gap-3 mb-6">
-                        <div className="w-2.5 h-2.5 rounded-full bg-slate-400 shadow-[0_0_10px_rgba(148,163,184,0.5)]"></div>
-                        <h3 className="font-bold text-slate-800 text-lg m-0">Eliminate</h3>
-                        <span className="text-[10px] font-bold px-3 py-1 bg-slate-200 text-slate-600 rounded-full ml-auto uppercase tracking-wider">Not Urgent, Not Important</span>
+                <div className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-2xs">
+                    <div className="flex flex-wrap items-center gap-2.5 mb-5 pb-3 border-b border-slate-100">
+                        <div className="w-2.5 h-2.5 rounded-full bg-slate-400"></div>
+                        <h3 className="font-bold text-slate-800 text-sm m-0">Eliminate</h3>
+                        <span className="text-[10px] font-bold px-2.5 py-0.5 bg-slate-100 text-slate-600 border border-slate-200 rounded-md ml-auto uppercase tracking-wider">Not Urgent, Not Important</span>
                     </div>
-                    <div className="flex flex-col gap-4 min-h-[150px]">
-                        {eliminateTasks.length === 0 ? <p className="text-slate-400 text-center mt-8 font-medium italic text-sm">Clean slate</p> :
+                    <div className="flex flex-col gap-3 min-h-[140px]">
+                        {eliminateTasks.length === 0 ? <p className="text-slate-400 text-center mt-8 font-normal italic text-xs">No non-essential tasks</p> :
                             eliminateTasks.map(renderTaskCard)
                         }
                     </div>

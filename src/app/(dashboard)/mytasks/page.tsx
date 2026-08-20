@@ -115,6 +115,8 @@ function LiveTaskTimer({
 export default function MyTasksPage() {
     const { activeLogs, startTimer, stopTimer, handleStatusChange } = useTimer();
     const [tasks, setTasks] = useState<Task[]>([]);
+    const [escalatedOutTasks, setEscalatedOutTasks] = useState<Task[]>([]);
+    const [activeTab, setActiveTab] = useState<'ACTIVE' | 'ESCALATED_OUT'>('ACTIVE');
     const [customers, setCustomers] = useState<any[]>([]);
     const [profiles, setProfiles] = useState<Profile[]>([]);
     const [loading, setLoading] = useState(true);
@@ -168,13 +170,21 @@ export default function MyTasksPage() {
                 myTasksQuery = myTasksQuery.or(`assignee_id.eq.${userId},escalated_to_user_id.eq.${userId}`);
             }
 
-            // Fetch user profile and review group memberships in parallel
-            const [tasksRes, profilesRes, customersRes, myProfileRes, groupMembershipsRes] = await Promise.all([
+            // Fetch user profile, review group memberships, and escalated-out tasks in parallel
+            const [tasksRes, profilesRes, customersRes, myProfileRes, groupMembershipsRes, escalatedOutRes] = await Promise.all([
                 myTasksQuery,
                 supabase.from('lv_profiles').select('id, full_name').eq('status', 'active').order('full_name'),
                 supabase.from('tsk_customers').select('id, name, is_internal').eq('status', 'active').order('name'),
                 userId ? supabase.from('lv_profiles').select('id, department, role').eq('id', userId).single() : Promise.resolve({ data: null, error: null }),
-                userId ? supabase.from('tsk_review_group_members').select('group_id').eq('user_id', userId) : Promise.resolve({ data: [], error: null })
+                userId ? supabase.from('tsk_review_group_members').select('group_id').eq('user_id', userId) : Promise.resolve({ data: [], error: null }),
+                userId ? supabase.from('tsk_tasks').select(`
+                    *,
+                    assignee:lv_profiles!tsk_tasks_assignee_id_fkey(id, full_name, avatar_url),
+                    creator:lv_profiles!tsk_tasks_created_by_fkey(id, full_name),
+                    escalated_group:tsk_review_groups!tsk_tasks_escalated_to_group_id_fkey(id, name),
+                    escalated_to_user:lv_profiles!tsk_tasks_escalated_to_user_id_fkey(id, full_name),
+                    reviewed_by_user:lv_profiles!tsk_tasks_reviewed_by_fkey(id, full_name)
+                `).eq('escalated_from_user_id', userId).eq('status', 'REVIEW').order('updated_at', { ascending: false }) : Promise.resolve({ data: [], error: null })
             ]);
 
             if (tasksRes.error) throw tasksRes.error;
@@ -223,11 +233,12 @@ export default function MyTasksPage() {
             }
 
             setTasks(loadedTasks);
+            setEscalatedOutTasks((escalatedOutRes.data as Task[]) || []);
             setProfiles(profilesRes.data || []);
             setCustomers(customersRes.data || []);
         } catch (error: any) {
             console.error('Error fetching data:', error.message);
-            message.error('Failed to fetch data');
+            message.error('Gagal memuatkan data');
         } finally {
             setLoading(false);
         }
@@ -638,7 +649,7 @@ export default function MyTasksPage() {
                 <Button
                     type="text"
                     icon={<EditOutlined />}
-                    className="text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50"
+                    className="text-slate-500 hover:text-cyan-600 hover:bg-cyan-50"
                     onClick={() => {
                         const latest = tasks.find(t => t.id === record.id) || record;
                         setSelectedTask(latest);
@@ -649,49 +660,174 @@ export default function MyTasksPage() {
         }
     ];
 
+    const escalatedOutFilteredTasks = escalatedOutTasks.filter(t => {
+        const matchesSearch = t.title.toLowerCase().includes(searchText.toLowerCase()) ||
+            (t.description && t.description.toLowerCase().includes(searchText.toLowerCase()));
+        const matchesCustomer = filterCustomer ? t.customer_name === filterCustomer : true;
+        return matchesSearch && matchesCustomer;
+    });
+
+    const escalatedOutColumns = [
+        {
+            title: 'Task Title',
+            dataIndex: 'title',
+            key: 'title',
+            render: (text: string, record: Task) => (
+                <div className="font-semibold text-slate-900">
+                    {text}
+                    <div className="mt-1 flex flex-wrap gap-1 items-center">
+                        {getPriorityColor(record.priority_type)}
+                        <Tag color="purple" icon={<AuditOutlined />} className="text-[11px] font-medium">
+                            {record.escalated_group ? `Review Group: ${record.escalated_group.name}` : 'Awaiting Individual Review'}
+                        </Tag>
+                    </div>
+                </div>
+            )
+        },
+        {
+            title: 'Description / Notes',
+            dataIndex: 'description',
+            key: 'description',
+            width: '40%',
+            render: (text: string) => (
+                <div className="text-slate-600 whitespace-pre-wrap text-xs">
+                    {text || <span className="text-slate-400 italic">No notes added...</span>}
+                </div>
+            )
+        },
+        {
+            title: 'Customer',
+            dataIndex: 'customer_name',
+            key: 'customer_name',
+            render: (text: string) => <Text strong className="text-slate-700 text-xs">{text || '-'}</Text>
+        },
+        {
+            title: 'Review Target',
+            key: 'target',
+            render: (_: any, record: Task) => (
+                <div className="text-xs">
+                    {record.escalated_group ? (
+                        <span className="font-medium text-purple-700 bg-purple-50 px-2 py-1 rounded-md border border-purple-200 inline-flex items-center gap-1">
+                            <TeamOutlined /> {record.escalated_group.name}
+                        </span>
+                    ) : record.escalated_to_user_id ? (
+                        <span className="font-medium text-amber-700 bg-amber-50 px-2 py-1 rounded-md border border-amber-200 inline-flex items-center gap-1">
+                            <ClockCircleOutlined /> Reviewing Officer
+                        </span>
+                    ) : (
+                        <span className="text-slate-400">-</span>
+                    )}
+                </div>
+            )
+        },
+        {
+            title: 'Review Status',
+            key: 'status',
+            width: 1,
+            onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
+            render: () => (
+                <Tag color="orange" icon={<ClockCircleOutlined />} className="text-[11px] font-semibold py-0.5">
+                    Under Review (Read-only)
+                </Tag>
+            )
+        },
+        {
+            title: 'Due Date',
+            dataIndex: 'due_date',
+            key: 'due_date',
+            width: 1,
+            className: 'text-right',
+            onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
+            render: (date: string | null) => (
+                <span className="font-mono tabular-nums text-xs text-slate-600">
+                    {date ? new Date(date).toLocaleDateString() : '-'}
+                </span>
+            )
+        }
+    ];
+
     if (loading) return <div className="flex justify-center items-center h-[calc(100vh-100px)]"><Spin size="large" /></div>;
 
     return (
         <div className="flex flex-col gap-6 font-sans">
-            <div className="bg-white/80 p-6 rounded-2xl shadow-sm border border-slate-100">
-                <Title level={2} className="!text-indigo-900 !mb-2 mt-0">My Tasks</Title>
-                <Text type="secondary" className="text-base">Lihat dan urus tugasan anda yang sedang aktif.</Text>
+            <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-2xs border border-slate-200/80">
+                <Title level={3} className="!text-slate-900 !mb-1 mt-0 font-bold">My Tasks</Title>
+                <Text type="secondary" className="text-xs sm:text-sm">View and manage your active and review tasks.</Text>
             </div>
 
-            <Card variant="borderless" className="shadow-sm rounded-xl border border-slate-100">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6 bg-slate-50 p-4 rounded-lg">
-                    <div className="sm:col-span-2">
-                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Search Title / Nota</label>
+            {/* Navigation Tabs */}
+            <div className="flex items-center gap-2">
+                <button
+                    onClick={() => setActiveTab('ACTIVE')}
+                    className={`px-4 py-2.5 text-xs font-semibold rounded-xl transition-all cursor-pointer flex items-center gap-2 ${
+                        activeTab === 'ACTIVE'
+                            ? 'bg-cyan-600 text-white shadow-xs'
+                            : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200/80'
+                    }`}
+                >
+                    <CheckCircleOutlined /> Active Tasks & Reviews
+                    <span className={`text-[10px] font-mono tabular-nums font-bold px-2 py-0.5 rounded-full ${
+                        activeTab === 'ACTIVE' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
+                    }`}>
+                        {tasks.length}
+                    </span>
+                </button>
+                <button
+                    onClick={() => setActiveTab('ESCALATED_OUT')}
+                    className={`px-4 py-2.5 text-xs font-semibold rounded-xl transition-all cursor-pointer flex items-center gap-2 ${
+                        activeTab === 'ESCALATED_OUT'
+                            ? 'bg-purple-600 text-white shadow-xs'
+                            : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200/80'
+                    }`}
+                >
+                    <AuditOutlined /> Escalated for Review (Sent)
+                    {escalatedOutTasks.length > 0 && (
+                        <span className={`text-[10px] font-mono tabular-nums font-bold px-2 py-0.5 rounded-full ${
+                            activeTab === 'ESCALATED_OUT' ? 'bg-white/20 text-white' : 'bg-purple-100 text-purple-800'
+                        }`}>
+                            {escalatedOutTasks.length}
+                        </span>
+                    )}
+                </button>
+            </div>
+
+            <Card variant="borderless" className="shadow-2xs rounded-2xl border border-slate-200/80 bg-white">
+                {/* Search & Filter Bar */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5 bg-slate-50 p-4 rounded-xl border border-slate-100">
+                    <div className={activeTab === 'ACTIVE' ? 'sm:col-span-2' : 'sm:col-span-1'}>
+                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">Search Title / Notes</label>
                         <Input
-                            placeholder="Cari tugasan..."
-                            prefix={<SearchOutlined />}
+                            placeholder="Search tasks..."
+                            prefix={<SearchOutlined className="text-slate-400" />}
                             value={searchText}
                             onChange={e => setSearchText(e.target.value)}
                             size="large"
                             allowClear
                         />
                     </div>
+                    {activeTab === 'ACTIVE' && (
+                        <div>
+                            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">Status</label>
+                            <Select
+                                placeholder="All Statuses"
+                                value={filterStatus || undefined}
+                                onChange={val => setFilterStatus(val || '')}
+                                allowClear
+                                size="large"
+                                className="w-full"
+                            >
+                                <Option value="BACKLOG">Backlog</Option>
+                                <Option value="CLIENT_HOLD">Client Hold</Option>
+                                <Option value="IN_PROGRESS">In Progress</Option>
+                                <Option value="REVIEW">Review</Option>
+                                <Option value="DONE">Done</Option>
+                            </Select>
+                        </div>
+                    )}
                     <div>
-                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Status</label>
+                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">Customer</label>
                         <Select
-                            placeholder="Semua Status"
-                            value={filterStatus || undefined}
-                            onChange={val => setFilterStatus(val || '')}
-                            allowClear
-                            size="large"
-                            className="w-full"
-                        >
-                            <Option value="BACKLOG">Backlog</Option>
-                            <Option value="CLIENT_HOLD">Client Hold</Option>
-                            <Option value="IN_PROGRESS">In Progress</Option>
-                            <Option value="REVIEW">Review</Option>
-                            <Option value="DONE">Done</Option>
-                        </Select>
-                    </div>
-                    <div>
-                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Customer</label>
-                        <Select
-                            placeholder="Semua Customer"
+                            placeholder="All Customers"
                             value={filterCustomer || undefined}
                             onChange={val => setFilterCustomer(val || '')}
                             allowClear
@@ -704,161 +840,153 @@ export default function MyTasksPage() {
                             ))}
                         </Select>
                     </div>
-                    <div className="sm:col-span-2">
-                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">PIC / Assignee</label>
-                        <Select
-                            placeholder="Semua PIC"
-                            value={filterPIC || undefined}
-                            onChange={val => setFilterPIC(val || '')}
-                            allowClear
-                            showSearch
-                            size="large"
-                            className="w-full"
-                        >
-                            {profiles.map(p => (
-                                <Option key={p.id} value={p.id}>{p.full_name}</Option>
-                            ))}
-                        </Select>
-                    </div>
-                </div>
-
-                {/* Mobile Card View — hidden on md+ */}
-                <div className="md:hidden flex flex-col gap-3 mb-4">
-                    {sortedTasks.length === 0 ? (
-                        <div className="text-center text-gray-400 py-10 italic">Tiada tugasan dijumpai.</div>
-                    ) : sortedTasks.map(task => {
-                        const { isBottleneck, isDueSoon } = getTaskIndicators(task);
-                        let cardClass = 'bg-white border border-slate-100 rounded-xl p-4 shadow-sm flex flex-col gap-2';
-                        if (isDueSoon) {
-                            cardClass = 'bg-gradient-to-r from-rose-50 to-pink-50 border border-rose-200 rounded-xl p-4 shadow-sm flex flex-col gap-2';
-                        } else if (isBottleneck) {
-                            cardClass = 'bg-gradient-to-r from-amber-50 to-orange-50 border border-orange-200 rounded-xl p-4 shadow-sm flex flex-col gap-2';
-                        }
-                        return (
-                        <div
-                            key={task.id}
-                            className={cardClass}
-                        >
-                            <div className="flex justify-between items-start gap-2">
-                                <div className="font-semibold text-indigo-900 flex-1 text-sm">{task.title}</div>
-                                <Button
-                                    type="text"
-                                    size="small"
-                                    icon={<EditOutlined />}
-                                    className="text-indigo-500 shrink-0"
-                                    onClick={() => {
-                                        const latest = tasks.find(t => t.id === task.id) || task;
-                                        setSelectedTask(latest);
-                                        setIsEditModalOpen(true);
-                                    }}
-                                />
-                            </div>
-                            <div className="flex flex-wrap gap-1.5 items-center">
-                                {getPriorityColor(task.priority_type)}
-                                {getStatusTag(task.status)}
-                            </div>
-                            {task.customer_name && (
-                                <div className="text-xs text-slate-500">🏢 {task.customer_name}</div>
-                            )}
-                            {task.assignee && (
-                                <div className="flex items-center gap-1.5 text-xs text-slate-600">
-                                    <img
-                                        src={task.assignee.avatar_url || `https://ui-avatars.com/api/?name=${task.assignee.full_name}&background=6366f1&color=fff`}
-                                        className="w-5 h-5 rounded-full"
-                                        alt={task.assignee.full_name}
-                                    />
-                                    {task.assignee.full_name}
-                                </div>
-                            )}
-                            {task.due_date && (
-                                <div className="flex flex-col gap-1">
-                                    {(() => {
-                                        const { isDueSoon } = getTaskIndicators(task);
-                                        const dateText = new Date(task.due_date as string).toLocaleDateString();
-                                        const duePillClass = task.status === 'DONE'
-                                            ? 'text-slate-800 bg-white border-slate-200'
-                                            : (isDueSoon ? 'text-rose-500 bg-rose-50 border-rose-100' : 'text-slate-800 bg-white border-slate-200');
-                                        return (
-                                            <div
-                                                className={`text-[11px] font-semibold flex items-center gap-1 w-fit px-2 py-0.5 rounded-md border whitespace-nowrap tabular-nums ${duePillClass}`}
-                                                aria-label={`Due date: ${dateText}`}
-                                            >
-                                                ⏱️ Due: {dateText}
-                                            </div>
-                                        );
-                                    })()}
-                                    {(() => {
-                                        const { isBottleneck, isDueSoon } = getTaskIndicators(task);
-                                        if (!isBottleneck && !isDueSoon) return null;
-                                        return (
-                                            <div className="inline-block">
-                                                <div className="flex flex-col gap-1">
-                                                {isBottleneck && (
-                                                    <Tooltip title={`Bottleneck: task ini lebih ${NUMBER_OF_DATE_FOR_DUE_DATE_WARNING} hari sejak dicipta`}>
-                                                        <div
-                                                            aria-label={`Bottleneck: task ini lebih ${NUMBER_OF_DATE_FOR_DUE_DATE_WARNING} hari sejak dicipta`}
-                                                            className="w-full inline-flex items-center justify-center px-2 py-1.5 rounded-md bg-gradient-to-r from-amber-100 to-orange-100 text-orange-800 border border-orange-200 shadow-sm animate-pulse"
-                                                        >
-                                                            <FireOutlined className="text-base" />
-                                                        </div>
-                                                    </Tooltip>
-                                                )}
-                                                {isDueSoon && (
-                                                    <Tooltip title={`Due date dekat: ${NUMBER_OF_DATE_FOR_DUE_DATE_WARNING} hari lagi sebelum due date`}>
-                                                        <div
-                                                            aria-label={`Due date dekat: ${NUMBER_OF_DATE_FOR_DUE_DATE_WARNING} hari lagi sebelum due date`}
-                                                            className="w-full inline-flex items-center justify-center px-2 py-1.5 rounded-md bg-gradient-to-r from-rose-100 to-pink-100 text-rose-800 border border-rose-200 shadow-sm animate-pulse"
-                                                        >
-                                                            <ClockCircleOutlined className="text-base" />
-                                                        </div>
-                                                    </Tooltip>
-                                                )}
-                                                </div>
-                                            </div>
-                                        );
-                                    })()}
-                                </div>
-                            )}
-                            {task.description && (
-                                <div className="text-xs text-gray-500 line-clamp-2">{task.description}</div>
-                            )}
-                            <div className="mt-2 pt-2 border-t border-slate-100 flex justify-between items-center">
-                                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Tracker:</span>
-                                <LiveTaskTimer
-                                    taskId={task.id}
-                                    taskStatus={task.status}
-                                    activeLogs={activeLogs}
-                                    startTimer={startTimer}
-                                    stopTimer={stopTimer}
-                                    accumulatedDuration={Number(task.total_logged_time || 0)}
-                                />
-                            </div>
+                    {activeTab === 'ACTIVE' && (
+                        <div className="sm:col-span-2">
+                            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">Assignee / PIC</label>
+                            <Select
+                                placeholder="All Assignees"
+                                value={filterPIC || undefined}
+                                onChange={val => setFilterPIC(val || '')}
+                                allowClear
+                                showSearch
+                                size="large"
+                                className="w-full"
+                            >
+                                {profiles.map(p => (
+                                    <Option key={p.id} value={p.id}>{p.full_name}</Option>
+                                ))}
+                            </Select>
                         </div>
-                    );
-                    })}
-                
+                    )}
                 </div>
 
-                {/* Desktop Table View — hidden on mobile */}
-                <div className="hidden md:block">
-                <Table
-                    columns={columns}
-                    dataSource={sortedTasks}
-                    rowKey="id"
-                    pagination={{ pageSize: 15 }}
-                    className="border border-slate-100 rounded-lg overflow-hidden"
-                    rowClassName={(record: Task) => {
-                        const { isBottleneck, isDueSoon } = getTaskIndicators(record);
-                        if (isDueSoon) {
-                            return 'bg-gradient-to-r from-rose-50 to-pink-50';
-                        }
-                        if (isBottleneck) {
-                            return 'bg-gradient-to-r from-amber-50 to-orange-50';
-                        }
-                        return '';
-                    }}
-                />
-                </div>
+                {/* Tab 1: Active Tasks View */}
+                {activeTab === 'ACTIVE' && (
+                    <>
+                        {/* Mobile Card View */}
+                        <div className="md:hidden flex flex-col gap-3 mb-4">
+                            {sortedTasks.length === 0 ? (
+                                <div className="text-center text-slate-400 py-10 italic text-xs">No tasks found.</div>
+                            ) : sortedTasks.map(task => {
+                                const { isBottleneck, isDueSoon } = getTaskIndicators(task);
+                                let cardClass = 'bg-white border border-slate-200/80 rounded-xl p-4 shadow-2xs flex flex-col gap-2';
+                                if (isDueSoon) {
+                                    cardClass = 'bg-rose-50/50 border border-rose-200 rounded-xl p-4 shadow-2xs flex flex-col gap-2';
+                                } else if (isBottleneck) {
+                                    cardClass = 'bg-amber-50/50 border border-amber-200 rounded-xl p-4 shadow-2xs flex flex-col gap-2';
+                                }
+                                return (
+                                <div key={task.id} className={cardClass}>
+                                    <div className="flex justify-between items-start gap-2">
+                                        <div className="font-semibold text-slate-900 flex-1 text-xs">{task.title}</div>
+                                        <Button
+                                            type="text"
+                                            size="small"
+                                            icon={<EditOutlined />}
+                                            className="text-slate-500 hover:text-cyan-600 shrink-0"
+                                            onClick={() => {
+                                                const latest = tasks.find(t => t.id === task.id) || task;
+                                                setSelectedTask(latest);
+                                                setIsEditModalOpen(true);
+                                            }}
+                                        />
+                                    </div>
+                                    <div className="flex flex-wrap gap-1.5 items-center">
+                                        {getPriorityColor(task.priority_type)}
+                                        {getStatusTag(task.status)}
+                                    </div>
+                                    {task.customer_name && (
+                                        <div className="text-xs text-slate-600">{task.customer_name}</div>
+                                    )}
+                                    {task.assignee && (
+                                        <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                                            <img
+                                                src={task.assignee.avatar_url || `https://ui-avatars.com/api/?name=${task.assignee.full_name}&background=35c0ed&color=fff`}
+                                                className="w-5 h-5 rounded-full"
+                                                alt={task.assignee.full_name}
+                                            />
+                                            {task.assignee.full_name}
+                                        </div>
+                                    )}
+                                    {task.due_date && (
+                                        <div className="text-[11px] font-mono tabular-nums text-slate-500">
+                                            Due: {new Date(task.due_date as string).toLocaleDateString()}
+                                        </div>
+                                    )}
+                                    <div className="mt-2 pt-2 border-t border-slate-100 flex justify-between items-center">
+                                        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Tracker:</span>
+                                        <LiveTaskTimer
+                                            taskId={task.id}
+                                            taskStatus={task.status}
+                                            activeLogs={activeLogs}
+                                            startTimer={startTimer}
+                                            stopTimer={stopTimer}
+                                            accumulatedDuration={Number(task.total_logged_time || 0)}
+                                        />
+                                    </div>
+                                </div>
+                            );
+                            })}
+                        </div>
+
+                        {/* Desktop Table View */}
+                        <div className="hidden md:block">
+                            <Table
+                                columns={columns}
+                                dataSource={sortedTasks}
+                                rowKey="id"
+                                pagination={{ pageSize: 15 }}
+                                className="border border-slate-200/80 rounded-xl overflow-hidden"
+                            />
+                        </div>
+                    </>
+                )}
+
+                {/* Tab 2: Escalated Out (Originator Tracking - Read Only) */}
+                {activeTab === 'ESCALATED_OUT' && (
+                    <>
+                        <div className="mb-3 px-3 py-2 bg-purple-50 border border-purple-100 rounded-xl text-xs text-purple-800 flex items-center gap-2">
+                            <AuditOutlined className="text-purple-600" />
+                            <span>Tasks listed here were escalated by you for review and approval. Status is displayed as read-only.</span>
+                        </div>
+
+                        {/* Mobile Card View for Escalated Out */}
+                        <div className="md:hidden flex flex-col gap-3 mb-4">
+                            {escalatedOutFilteredTasks.length === 0 ? (
+                                <div className="text-center text-slate-400 py-10 italic text-xs">No tasks currently under review.</div>
+                            ) : escalatedOutFilteredTasks.map(task => (
+                                <div key={task.id} className="bg-white border border-purple-100 rounded-xl p-4 shadow-2xs flex flex-col gap-2">
+                                    <div className="font-semibold text-slate-900 text-xs">{task.title}</div>
+                                    <div className="flex flex-wrap gap-1.5 items-center">
+                                        {getPriorityColor(task.priority_type)}
+                                        <Tag color="purple" icon={<AuditOutlined />} className="text-[10px]">
+                                            {task.escalated_group ? task.escalated_group.name : 'Awaiting Individual Review'}
+                                        </Tag>
+                                    </div>
+                                    {task.customer_name && (
+                                        <div className="text-xs text-slate-600">Customer: {task.customer_name}</div>
+                                    )}
+                                    {task.due_date && (
+                                        <div className="text-[11px] font-mono tabular-nums text-slate-500">
+                                            Due: {new Date(task.due_date as string).toLocaleDateString()}
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Desktop Table View for Escalated Out */}
+                        <div className="hidden md:block">
+                            <Table
+                                columns={escalatedOutColumns}
+                                dataSource={escalatedOutFilteredTasks}
+                                rowKey="id"
+                                pagination={{ pageSize: 15 }}
+                                className="border border-slate-200/80 rounded-xl overflow-hidden"
+                            />
+                        </div>
+                    </>
+                )}
             </Card>
 
             <Modal

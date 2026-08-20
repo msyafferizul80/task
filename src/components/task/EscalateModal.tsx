@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Modal, Form, Select, Input, Button, message, Switch, Tooltip, Radio } from 'antd';
-import { UserOutlined, TeamOutlined, SendOutlined } from '@ant-design/icons';
+import { UserOutlined, TeamOutlined, SendOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { createClient } from '@/utils/supabase/client';
 import { Task, Profile, TaskStatus, ReviewGroup } from '@/lib/types';
 
@@ -284,9 +284,9 @@ export default function EscalateModal({
     return (
         <Modal
             title={
-                <div className="font-bold text-lg mb-2 text-orange-600 flex items-center gap-2">
-                    <SendOutlined />
-                    {nextStatus === 'REVIEW' ? '🧾 Submit for Review' : '🚩 Escalate Task'}
+                <div className="font-bold text-lg mb-2 text-slate-800 flex items-center gap-2">
+                    <SendOutlined className="text-cyan-600" />
+                    {nextStatus === 'REVIEW' ? 'Submit for Review' : 'Escalate Task'}
                 </div>
             }
             open={isOpen}
@@ -300,25 +300,25 @@ export default function EscalateModal({
             destroyOnClose
         >
             {nextStatus === 'REVIEW' ? (
-                <div className="mb-6 text-sm text-slate-500 bg-orange-50 p-3 rounded-lg border border-orange-100">
-                    Hantar task <strong>{task?.title}</strong> kepada reviewer atau Kumpulan Semakan. Status akan menjadi <strong>Review</strong> selepas dihantar.
+                <div className="mb-6 text-xs text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-200/80">
+                    Submit task <strong>{task?.title}</strong> to a reviewer or Review Group. Status will become <strong>Review</strong> once submitted.
                 </div>
             ) : (
-                <div className="mb-6 text-sm text-slate-500 bg-orange-50 p-3 rounded-lg border border-orange-100">
-                    Pindahkan tanggungjawab task <strong>{task?.title}</strong> kepada PIC baru atau Kumpulan Semakan.
+                <div className="mb-6 text-xs text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-200/80">
+                    Transfer responsibility of task <strong>{task?.title}</strong> to a new PIC or Review Group.
                 </div>
             )}
 
             {nextStatus === 'REVIEW' && (
                 <div className="mb-4 flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                        <Tooltip title="When ON: Escalate the task to another staff or group. When OFF: Just mark as Review without escalating.">
-                            <span className="text-sm text-slate-700 cursor-help flex items-center gap-1">
+                        <Tooltip title="When ON: Escalate the task to another staff member or Review Group. When OFF: Just mark as Review without escalating.">
+                            <span className="text-xs text-slate-700 cursor-help flex items-center gap-1 font-medium">
                                 Escalate task
-                                <span className="text-slate-400 text-xs font-bold bg-slate-100 rounded-full w-4 h-4 flex items-center justify-center cursor-help">?</span>
+                                <span className="text-slate-400 text-[10px] font-bold bg-slate-100 rounded-full w-3.5 h-3.5 flex items-center justify-center cursor-help">?</span>
                             </span>
                         </Tooltip>
-                        <Tooltip title={escalateEnabled ? "Escalate to staff/group" : "Just mark as Review"}>
+                        <Tooltip title={escalateEnabled ? "Escalate to staff or Review Group" : "Mark as Review only"}>
                             <Switch
                                 checked={escalateEnabled}
                                 onChange={setEscalateEnabled}
@@ -331,7 +331,7 @@ export default function EscalateModal({
             <Form layout="vertical" form={form} onFinish={escalateEnabled ? handleEscalate : handleDoNothing}>
                 {escalateEnabled ? (
                     <>
-                        <Form.Item label="Pilihan Eskalasi" className="mb-4">
+                        <Form.Item label="Escalation Target Type" className="mb-4">
                             <Radio.Group
                                 value={targetType}
                                 onChange={e => {
@@ -340,11 +340,11 @@ export default function EscalateModal({
                                 }}
                                 className="w-full grid grid-cols-2 gap-2"
                             >
-                                <Radio.Button value="INDIVIDUAL" className="text-center flex items-center justify-center gap-1 h-10">
-                                    <UserOutlined /> Individu (Single PIC)
+                                <Radio.Button value="INDIVIDUAL" className="text-center flex items-center justify-center gap-1 h-10 rounded-lg">
+                                    <UserOutlined /> Individual PIC
                                 </Radio.Button>
-                                <Radio.Button value="GROUP" className="text-center flex items-center justify-center gap-1 h-10">
-                                    <TeamOutlined /> Kumpulan Semakan
+                                <Radio.Button value="GROUP" className="text-center flex items-center justify-center gap-1 h-10 rounded-lg">
+                                    <TeamOutlined /> Review Group
                                 </Radio.Button>
                             </Radio.Group>
                         </Form.Item>
@@ -373,7 +373,7 @@ export default function EscalateModal({
                                 name="to_group_id"
                                 label="Review Group Target"
                                 rules={[{ required: true, message: 'Please select a Review Group' }]}
-                                tooltip="Mana-mana ahli dalam kumpulan ini boleh meluluskan atau menolak tugasan ini."
+                                tooltip="Any member in this group can approve or reject this task."
                             >
                                 <Select
                                     placeholder="Select Review Group"
@@ -395,22 +395,22 @@ export default function EscalateModal({
                             name="reason"
                             label={
                                 <div className="flex items-center justify-between w-full">
-                                    <span>Reason for Escalation</span>
+                                    <span className="text-xs font-semibold text-slate-700">Reason for Escalation</span>
                                     <Button
                                         type="text"
                                         size="small"
                                         onClick={handleAutoDraft}
                                         loading={generatingAI}
-                                        className="text-indigo-600 font-medium bg-indigo-50 hover:bg-indigo-100 rounded-md py-0 px-2"
+                                        className="text-cyan-700 font-medium bg-cyan-50 hover:bg-cyan-100 rounded-md py-0 px-2 text-xs"
                                         style={{ marginLeft: 'auto' }}
                                     >
-                                        ✨ AI Auto Draft
+                                        <ThunderboltOutlined /> Generate Summary Draft
                                     </Button>
                                 </div>
                             }
-                            rules={[{ required: true, message: 'Please provide a reason' }]}
+                            rules={[{ required: true, message: 'Please provide a reason for escalation' }]}
                         >
-                            <TextArea rows={4} placeholder="Contoh: Calculation siap, perlu semakan oleh manager / kumpulan semakan..." />
+                            <TextArea rows={4} placeholder="Example: Calculations completed, ready for manager or Review Group verification..." className="rounded-xl" />
                         </Form.Item>
 
                         <div className="flex justify-end gap-3 mt-6 pt-4 border-t">

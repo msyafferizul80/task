@@ -55,7 +55,7 @@ const PIE_PALETTE = [
     '#f97316', '#84cc16',
 ];
 
-// ─── Custom Bar Chart ────────────────────────────────────────────────────────
+// ─── Custom Workload Bar Chart — Horizontal Layout (Readable PIC names) ───────
 
 function WorkloadBarChart({
     data,
@@ -68,43 +68,70 @@ function WorkloadBarChart({
 }) {
     const max = Math.max(...data.map((d) => d.count), 1);
 
+    if (data.length === 0) {
+        return (
+            <div className="flex items-center justify-center h-[200px] text-slate-400 text-sm">
+                No active tasks.
+            </div>
+        );
+    }
+
     return (
-        <div className="flex items-end gap-2 h-[240px] px-2 pt-4">
-            {data.map(({ pic, count }) => {
-                const heightPct = (count / max) * 100;
+        <div className="flex flex-col gap-2.5 max-h-[340px] overflow-y-auto pr-1">
+            {data.map(({ pic, count }, idx) => {
+                const widthPct = (count / max) * 100;
+                const colors = [
+                    'from-indigo-500 to-indigo-400',
+                    'from-blue-500 to-blue-400',
+                    'from-violet-500 to-violet-400',
+                    'from-cyan-500 to-cyan-400',
+                ];
+                const gradient = colors[idx % colors.length];
                 return (
                     <div
                         key={pic}
-                        className={`flex flex-col items-center flex-1 min-w-0 ${isAdmin ? 'cursor-pointer group' : ''}`}
+                        className={`flex items-center gap-3 group ${
+                            isAdmin ? 'cursor-pointer hover:bg-slate-50/80 p-1.5 rounded-xl transition-all' : ''
+                        }`}
                         onClick={() => isAdmin && onBarClick?.(pic)}
-                        title={isAdmin ? `Klik untuk lihat task ${pic}` : undefined}
+                        title={isAdmin ? `Click to view active tasks for ${pic}` : undefined}
                     >
-                        {/* Count label */}
-                        <span className="text-xs font-bold text-slate-600 mb-1">{count}</span>
+                        {/* Rank badge */}
+                        <span className="w-5 text-xs font-bold text-slate-300 text-right shrink-0">
+                            {idx + 1}
+                        </span>
 
-                        {/* Bar */}
-                        <div className="w-full flex items-end" style={{ height: '180px' }}>
-                            <div
-                                className={`w-full rounded-t-lg transition-all duration-200 ${
-                                    isAdmin
-                                        ? 'bg-indigo-500 group-hover:bg-indigo-400 group-hover:shadow-lg group-hover:-translate-y-0.5'
-                                        : 'bg-indigo-500'
-                                }`}
-                                style={{ height: `${Math.max(heightPct, 3)}%` }}
-                            />
-                        </div>
-
-                        {/* PIC name */}
+                        {/* Full PIC Name — unclipped */}
                         <span
-                            className="text-xs text-slate-500 mt-2 text-center leading-tight w-full px-1 truncate"
-                            style={{ maxWidth: '80px' }}
+                            className="text-xs font-semibold text-slate-700 w-36 shrink-0 truncate group-hover:text-indigo-600 transition-colors"
                             title={pic}
                         >
                             {pic}
                         </span>
 
+                        {/* Bar */}
+                        <div className="flex-1 h-7 bg-slate-100 rounded-lg overflow-hidden">
+                            <div
+                                className={`h-full bg-gradient-to-r ${gradient} rounded-lg transition-all duration-500 flex items-center justify-end pr-2.5 ${
+                                    isAdmin ? 'group-hover:brightness-110 shadow-xs' : ''
+                                }`}
+                                style={{ width: `${Math.max(widthPct, 6)}%` }}
+                            >
+                                {widthPct > 15 && (
+                                    <span className="text-xs font-bold text-white font-mono tabular-nums">
+                                        {count}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Count label */}
+                        <span className="text-xs font-bold text-slate-600 w-8 text-left shrink-0 font-mono tabular-nums">
+                            {widthPct <= 15 ? count : ''}
+                        </span>
+
                         {isAdmin && (
-                            <span className="text-xs text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity mt-0.5">
+                            <span className="text-xs text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                                 ↗
                             </span>
                         )}
@@ -157,7 +184,7 @@ function TotalTaskBarChart({
                                     : 'text-slate-500 hover:text-slate-700'
                             }`}
                         >
-                            {p === 'week' ? '7 Hari' : '30 Hari'}
+                            {p === 'week' ? '7 Days' : '30 Days'}
                         </button>
                     ))}
                     <button
@@ -181,7 +208,7 @@ function TotalTaskBarChart({
                             onChange={(e) => onCustomStartChange(e.target.value)}
                             className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-300"
                         />
-                        <span className="text-xs text-slate-400 font-medium">hingga</span>
+                        <span className="text-xs text-slate-400 font-medium">to</span>
                         <input
                             type="date"
                             value={customEnd}
@@ -192,14 +219,14 @@ function TotalTaskBarChart({
                 )}
 
                 <span className="text-xs text-slate-400 ml-auto">
-                    {data.length} PIC · jumlah {data.reduce((s, d) => s + d.count, 0)} task
+                    {data.length} PICs · {data.reduce((s, d) => s + d.count, 0)} total tasks
                 </span>
             </div>
 
             {/* Horizontal Bar Chart */}
             {data.length === 0 ? (
                 <div className="flex items-center justify-center h-[160px] text-slate-400 text-sm">
-                    Tiada data untuk tempoh ini.
+                    No data for this period.
                 </div>
             ) : (
                 <div className="flex flex-col gap-2.5">
@@ -292,7 +319,7 @@ function CustomerDistributionList({
                                 : 'border-transparent'
                         }`}
                         onClick={() => isAdmin && onSegmentClick?.(customer)}
-                        title={isAdmin ? `Klik untuk lihat task ${customer}` : undefined}
+                        title={isAdmin ? `Click to view tasks for ${customer}` : undefined}
                     >
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2 min-w-0">
@@ -409,7 +436,7 @@ function DrillDownModal({
                 const overdue = d < now;
                 return (
                     <span className={`text-sm font-semibold ${overdue ? 'text-red-500' : 'text-slate-600'}`}>
-                        {d.toLocaleDateString('ms-MY', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        {d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
                         {overdue && (
                             <span className="ml-1 text-xs bg-red-100 text-red-500 px-1.5 py-0.5 rounded-full">
                                 overdue
@@ -431,7 +458,7 @@ function DrillDownModal({
                         icon={<ExternalLink className="w-3 h-3 inline" />}
                         className="bg-indigo-600 border-indigo-600 hover:bg-indigo-700 text-xs"
                     >
-                        &nbsp;Buka Task
+                        &nbsp;Open Task
                     </Button>
                 </Link>
             ),
@@ -452,7 +479,7 @@ function DrillDownModal({
                     <div>
                         <div className="font-bold text-slate-800 text-base">{title}</div>
                         <div className="text-xs text-slate-400 font-normal">
-                            {tasks.length} task dijumpai
+                            {tasks.length} tasks found
                         </div>
                     </div>
                 </div>
@@ -465,7 +492,7 @@ function DrillDownModal({
                 size="small"
                 pagination={tasks.length > 10 ? { pageSize: 10, size: 'small' } : false}
                 className="mt-2"
-                locale={{ emptyText: 'Tiada task.' }}
+                locale={{ emptyText: 'No tasks found.' }}
                 rowClassName={(record) => {
                     const d = record.due_date ? new Date(record.due_date) : null;
                     return d && d < now ? 'bg-red-50/40' : '';
@@ -618,6 +645,7 @@ function TimeBarChart({
 export default function AnalyticsPage() {
     const [tasks, setTasks] = useState<Task[]>([]);
     const [profiles, setProfiles] = useState<Profile[]>([]);
+    const [customersList, setCustomersList] = useState<{ id: string; name: string; is_internal?: boolean }[]>([]);
     const [timeLogs, setTimeLogs] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
@@ -672,9 +700,12 @@ export default function AnalyticsPage() {
         order: 'descend'
     });
 
-    // Configuration thresholds for Data Quality Warning
+    // Configuration thresholds for Data Quality & Anomaly Flags
     const [durationThresholdSeconds, setDurationThresholdSeconds] = useState<number>(30);
     const [durationThresholdPercent, setDurationThresholdPercent] = useState<number>(20);
+    const [estimationTolerancePercent, setEstimationTolerancePercent] = useState<number>(20);
+    const [longRunningHoursThreshold, setLongRunningHoursThreshold] = useState<number>(40);
+    const [longRunningDaysThreshold, setLongRunningDaysThreshold] = useState<number>(14);
 
     // Table data and loading states
     const [durationTableData, setDurationTableData] = useState<any[]>([]);
@@ -741,11 +772,12 @@ export default function AnalyticsPage() {
                 return allLogs;
             };
 
-            const [tasksData, profilesRes, authRes, logsData] = await Promise.all([
+            const [tasksData, profilesRes, authRes, logsData, customersRes] = await Promise.all([
                 fetchAllTasks(),
                 supabase.from('lv_profiles').select('id, full_name, avatar_url, department').eq('status', 'active').order('full_name'),
                 supabase.auth.getUser(),
-                fetchAllLogs()
+                fetchAllLogs(),
+                supabase.from('tsk_customers').select('id, name, is_internal')
             ]);
 
             if (profilesRes.error) throw profilesRes.error;
@@ -753,6 +785,9 @@ export default function AnalyticsPage() {
             setTasks(tasksData);
             setProfiles(profilesRes.data || []);
             setTimeLogs(logsData);
+            if (customersRes.data) {
+                setCustomersList(customersRes.data);
+            }
             
             const userId = authRes.data?.user?.id;
             let myDept: string | null = null;
@@ -779,12 +814,16 @@ export default function AnalyticsPage() {
         fetchData();
         const channelTasks = supabase
             .channel('analytics-tasks-realtime')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'tsk_tasks' }, fetchData)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'tsk_tasks' }, () => {
+                fetchData();
+            })
             .subscribe();
 
         const channelLogs = supabase
-            .channel('analytics-logs-realtime')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'tsk_time_logs' }, fetchData)
+            .channel('analytics-timelogs-realtime')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'tsk_time_logs' }, () => {
+                fetchData();
+            })
             .subscribe();
 
         return () => {
@@ -845,7 +884,7 @@ export default function AnalyticsPage() {
             setDurationPagination(prev => ({ ...prev, total }));
         } catch (err: any) {
             console.error('Fetch duration data error:', err.message);
-            message.error('Gagal mengambil data durasi tugasan');
+            message.error('Failed to retrieve task duration data');
         } finally {
             setDurationTableLoading(false);
         }
@@ -899,7 +938,7 @@ export default function AnalyticsPage() {
             setExpandedLogs(prev => ({ ...prev, [taskId]: data || [] }));
         } catch (err: any) {
             console.error('Fetch session logs error:', err.message);
-            message.error('Gagal mengambil maklumat log sesi kerja');
+            message.error('Failed to retrieve work session logs');
         } finally {
             setExpandedLoading(prev => ({ ...prev, [taskId]: false }));
         }
@@ -932,7 +971,7 @@ export default function AnalyticsPage() {
             <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-100/80 shadow-inner">
                 <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
                     <Clock className="w-3.5 h-3.5 text-indigo-500" />
-                    Perincian Sesi Kerja (Work Sessions Detail)
+                    Work Sessions Detail
                 </p>
                 <Table
                     dataSource={logs}
@@ -940,10 +979,10 @@ export default function AnalyticsPage() {
                     rowKey="id"
                     pagination={false}
                     size="small"
-                    locale={{ emptyText: 'Tiada sesi kerja dikesan.' }}
+                    locale={{ emptyText: 'No work sessions logged.' }}
                     columns={[
                         {
-                            title: 'Pekerja (PIC)',
+                            title: 'PIC / Assignee',
                             key: 'user',
                             render: (_, log) => (
                                 <div className="flex items-center gap-2">
@@ -957,19 +996,19 @@ export default function AnalyticsPage() {
                             )
                         },
                         {
-                            title: 'Mula Bekerja',
+                            title: 'Start Time',
                             dataIndex: 'start_time',
                             key: 'start_time',
-                            render: (val) => <span className="text-slate-500 text-xs">{val ? new Date(val).toLocaleString('ms-MY') : '—'}</span>
+                            render: (val) => <span className="text-slate-500 text-xs">{val ? new Date(val).toLocaleString('en-GB') : '—'}</span>
                         },
                         {
-                            title: 'Tamat Bekerja',
+                            title: 'End Time',
                             dataIndex: 'end_time',
                             key: 'end_time',
-                            render: (val) => <span className="text-slate-500 text-xs">{val ? new Date(val).toLocaleString('ms-MY') : '—'}</span>
+                            render: (val) => <span className="text-slate-500 text-xs">{val ? new Date(val).toLocaleString('en-GB') : '—'}</span>
                         },
                         {
-                            title: 'Tempoh Sesi',
+                            title: 'Session Duration',
                             dataIndex: 'duration',
                             key: 'duration',
                             render: (val: number) => {
@@ -996,6 +1035,14 @@ export default function AnalyticsPage() {
     // ── Derived Data ─────────────────────────────────────────────────────────
 
     const now = new Date();
+
+    // Internal customer set for revenue-relevant client filtering
+    const internalCustomerNames = useMemo(() => {
+        const set = new Set<string>();
+        customersList.filter(c => c.is_internal).forEach(c => set.add(c.name));
+        set.add('SYAZNA WORLD (INTERNAL)');
+        return set;
+    }, [customersList]);
 
     // ─── Time Tracking Analytics Derivations ───
     const joinedLogs = useMemo(() => {
@@ -1038,16 +1085,18 @@ export default function AnalyticsPage() {
         return `${hrs} hrs`;
     }, [totalSecondsTracked]);
 
+    // Exclude internal customer from customer duration & top customer metrics
     const timerClientDurations = useMemo(() => {
         const durMap: Record<string, number> = {};
         filteredLogs.forEach(log => {
             const client = log.task?.customer_name || 'No Customer';
+            if (internalCustomerNames.has(client)) return; // Exclude internal customers
             durMap[client] = (durMap[client] || 0) + (log.duration || 0);
         });
         return Object.entries(durMap)
             .map(([name, duration]) => ({ name, duration }))
             .sort((a, b) => b.duration - a.duration);
-    }, [filteredLogs]);
+    }, [filteredLogs, internalCustomerNames]);
 
     const topClientName = useMemo(() => {
         return timerClientDurations[0]?.name || 'None';
@@ -1125,9 +1174,11 @@ export default function AnalyticsPage() {
         activeTasks.filter(t => differenceInDays(now, new Date(t.created_at)) >= 3),
         [activeTasks]);
 
-    const uniqueCustomers = useMemo(() =>
-        new Set(baseTasks.map(t => t.customer_name).filter(Boolean)).size,
-        [baseTasks]);
+    // Active external client accounts count
+    const uniqueCustomers = useMemo(() => {
+        const external = baseTasks.filter(t => !internalCustomerNames.has(t.customer_name || ''));
+        return new Set(external.map(t => t.customer_name).filter(Boolean)).size;
+    }, [baseTasks, internalCustomerNames]);
 
     const workloadData = useMemo(() => {
         const counts: Record<string, number> = {};
@@ -1168,16 +1219,18 @@ export default function AnalyticsPage() {
             .sort((a, b) => b.count - a.count);
     }, [baseTasks, totalPicPeriod, totalPicCustomStart, totalPicCustomEnd]);
 
+    // Exclude internal customer from Customer Workload Distribution
     const customerData = useMemo(() => {
         const counts: Record<string, number> = {};
         baseTasks.forEach(t => {
             const name = t.customer_name || 'No Customer';
+            if (internalCustomerNames.has(name)) return; // Exclude internal customers
             counts[name] = (counts[name] || 0) + 1;
         });
         return Object.entries(counts)
             .map(([customer, value]) => ({ customer, value }))
             .sort((a, b) => b.value - a.value);
-    }, [baseTasks]);
+    }, [baseTasks, internalCustomerNames]);
 
     const overdueByStatus = useMemo(() => {
         const counts: Record<string, number> = { BACKLOG: 0, CLIENT_HOLD: 0, IN_PROGRESS: 0, REVIEW: 0 };
@@ -1187,11 +1240,13 @@ export default function AnalyticsPage() {
         return counts;
     }, [overdueTasks]);
 
+    // Exclude internal customer from Detailed Customer Analytics
     const customerDetailedData = useMemo(() => {
         const stats: Record<string, { total: number; completed: number; pending: number; overdue: number; firstTaskDate: Date; tasksPerDay: number }> = {};
         
         baseTasks.forEach(t => {
             const name = t.customer_name || 'No Customer';
+            if (internalCustomerNames.has(name)) return; // Exclude internal customers
             const createdAt = new Date(t.created_at);
             
             if (!stats[name]) {
@@ -1223,9 +1278,9 @@ export default function AnalyticsPage() {
         return Object.entries(stats)
             .map(([customer, data]) => ({ customer, ...data }))
             .sort((a, b) => b.total - a.total);
-    }, [tasks, now]);
+    }, [tasks, now, internalCustomerNames]);
 
-    // ─── Estimated vs Actual Derivations ───
+    // ─── Estimated vs Actual Derivations with Symmetric Tolerance Band ───
     const filteredTasksForEstimation = useMemo(() => {
         return baseTasks.filter(t => {
             if (filterTimerUser !== 'All' && t.assignee_id !== filterTimerUser) return false;
@@ -1285,20 +1340,27 @@ export default function AnalyticsPage() {
             }
         });
 
+        const toleranceRatio = estimationTolerancePercent / 100;
+
         return filteredTasksForEstimation.map(t => {
             const actualSeconds = taskDurationMap[t.id] || 0;
             const actualHours = actualSeconds / 3600;
             const estimatedHours = t.estimated_hours ? Number(t.estimated_hours) : null;
             
             let variance = null;
-            let status = 'No Estimate';
-            if (estimatedHours !== null) {
+            let status: 'Accurate' | 'Exceeded' | 'Under Budget' | 'No Estimate' = 'No Estimate';
+            if (estimatedHours !== null && estimatedHours > 0) {
                 variance = estimatedHours - actualHours;
-                if (actualHours <= estimatedHours) {
-                    status = 'Within Estimate';
-                } else {
+                const diffRatio = Math.abs(actualHours - estimatedHours) / estimatedHours;
+                if (diffRatio <= toleranceRatio) {
+                    status = 'Accurate';
+                } else if (actualHours > estimatedHours) {
                     status = 'Exceeded';
+                } else {
+                    status = 'Under Budget';
                 }
+            } else if (estimatedHours !== null) {
+                status = actualHours === 0 ? 'Accurate' : 'Exceeded';
             }
 
             return {
@@ -1319,15 +1381,40 @@ export default function AnalyticsPage() {
             if (a.estimatedHours === null && b.estimatedHours !== null) return 1;
             return b.actualHours - a.actualHours;
         });
-    }, [filteredTasksForEstimation, timeLogs, timerDateRange]);
+    }, [filteredTasksForEstimation, timeLogs, timerDateRange, estimationTolerancePercent]);
 
-    const estimationAccuracyStr = useMemo(() => {
-        const tasksWithEstimates = estimatedVsActualData.filter(d => d.estimatedHours !== null);
-        if (tasksWithEstimates.length === 0) return '—';
-        const withinEstimateCount = tasksWithEstimates.filter(d => d.status === 'Within Estimate').length;
-        const pct = Math.round((withinEstimateCount / tasksWithEstimates.length) * 100);
-        return `${pct}% (${withinEstimateCount}/${tasksWithEstimates.length})`;
-    }, [estimatedVsActualData]);
+    // Estimation Accuracy & Estimation Coverage Metrics
+    const {
+        estimationAccuracyStr,
+        estimationAccuracySubtext,
+        estimationCoverageStr,
+        estimationCoverageSubtext
+    } = useMemo(() => {
+        const totalCount = baseTasks.length;
+        const tasksWithEstimates = estimatedVsActualData.filter(d => d.estimatedHours !== null && d.estimatedHours > 0);
+        const estCount = tasksWithEstimates.length;
+        const coveragePct = totalCount > 0 ? (estCount / totalCount) * 100 : 0;
+        const coverageFormatted = coveragePct.toFixed(1);
+
+        if (estCount === 0) {
+            return {
+                estimationAccuracyStr: '—',
+                estimationAccuracySubtext: `0 of ${totalCount} tasks have estimates (0% coverage)`,
+                estimationCoverageStr: `0% (0/${totalCount})`,
+                estimationCoverageSubtext: 'No tasks with estimates set'
+            };
+        }
+
+        const accurateCount = tasksWithEstimates.filter(d => d.status === 'Accurate').length;
+        const accPct = Math.round((accurateCount / estCount) * 100);
+
+        return {
+            estimationAccuracyStr: `${accPct}% (${accurateCount}/${estCount})`,
+            estimationAccuracySubtext: `Based on ${estCount} of ${totalCount} tasks (${coverageFormatted}% coverage)`,
+            estimationCoverageStr: `${coverageFormatted}% (${estCount}/${totalCount})`,
+            estimationCoverageSubtext: `${estCount} tasks with estimated hours`
+        };
+    }, [estimatedVsActualData, baseTasks.length]);
 
     // ── Bottleneck Table Columns ──────────────────────────────────────────────
 
@@ -1431,7 +1518,7 @@ export default function AnalyticsPage() {
 
     const exportAllToExcel = useCallback(async () => {
         if (filteredLogs.length === 0) {
-            message.warning("Tiada data untuk dieksport mengikut penapis semasa");
+            message.warning("No data to export for current filters");
             return;
         }
 
@@ -1440,7 +1527,7 @@ export default function AnalyticsPage() {
             // Lazy load xlsx
             const XLSX = await import('xlsx');
 
-            // 1. Log Sesi Kerja
+            // 1. Work Session Logs
             const detailedLogsSheetData = filteredLogs.map((log) => {
                 const totalSecs = log.duration || 0;
                 const hrs = Math.floor(totalSecs / 3600);
@@ -1455,67 +1542,63 @@ export default function AnalyticsPage() {
                 const decimalHours = Number((totalSecs / 3600).toFixed(2));
 
                 return {
-                    'Pekerja (PIC)': log.user?.full_name || '—',
-                    'Tugasan (Task Title)': log.task?.title || '—',
-                    'Pelanggan (Customer)': log.task?.customer_name || '—',
-                    'Mula Bekerja': log.start_time ? new Date(log.start_time).toLocaleString('ms-MY') : '—',
-                    'Tamat Bekerja': log.end_time ? new Date(log.end_time).toLocaleString('ms-MY') : '—',
-                    'Durasi (hh:mm:ss)': timeString,
-                    'Durasi (Jam Perpuluhan)': decimalHours
+                    'PIC / Assignee': log.user?.full_name || '—',
+                    'Task Title': log.task?.title || '—',
+                    'Customer': log.task?.customer_name || '—',
+                    'Start Time': log.start_time ? new Date(log.start_time).toLocaleString('en-GB') : '—',
+                    'End Time': log.end_time ? new Date(log.end_time).toLocaleString('en-GB') : '—',
+                    'Duration (hh:mm:ss)': timeString,
+                    'Duration (Decimal Hours)': decimalHours
                 };
             });
 
-            // 2. Anggaran vs Sebenar
+            // 2. Estimated vs Actual
             const estVsActSheetData = estimatedVsActualData.map((t) => {
                 const estHours = t.estimatedHours !== null ? Number(t.estimatedHours.toFixed(1)) : null;
                 const actHours = Number(t.actualHours.toFixed(2));
-                
-                // Variance = Estimated - Actual
-                // Positive = Under budget (saved hours)
-                // Negative = Over budget (exceeded hours)
                 const varHours = t.variance !== null ? Number(t.variance.toFixed(2)) : null;
 
                 return {
-                    'Nama Tugasan (Task Title)': t.title,
-                    'Pelanggan': t.customer_name,
-                    'PIC Utama': t.assignee_name,
+                    'Task Title': t.title,
+                    'Customer': t.customer_name,
+                    'Lead PIC': t.assignee_name,
                     'Estimated Hours': estHours !== null ? estHours : '—',
                     'Actual Hours': actHours,
                     'Variance (Estimated - Actual)': varHours !== null ? varHours : '—',
-                    'Status': t.status === 'Within Estimate' ? 'On Track' : t.status === 'Exceeded' ? 'Exceeded' : 'No Estimate'
+                    'Status': t.status === 'Accurate' ? 'Accurate (Within ±20%)' : t.status === 'Exceeded' ? 'Exceeded' : t.status === 'Under Budget' ? 'Under Budget' : 'No Estimate'
                 };
             });
 
-            // 3. Rumusan PIC
+            // 3. PIC Summary
             const picSummarySheetData = timerEmployeeDurations.map((d) => ({
-                'Nama Pekerja (PIC)': d.name,
-                'Jumlah Masa (Jam)': Number((d.duration / 3600).toFixed(2))
+                'PIC Name': d.name,
+                'Total Hours': Number((d.duration / 3600).toFixed(2))
             }));
 
-            // 4. Rumusan Pelanggan
+            // 4. Customer Summary
             const customerSummarySheetData = timerClientDurations.map((d) => ({
-                'Nama Pelanggan (Customer)': d.name,
-                'Jumlah Masa (Jam)': Number((d.duration / 3600).toFixed(2))
+                'Customer Name': d.name,
+                'Total Hours': Number((d.duration / 3600).toFixed(2))
             }));
 
-            // 5. Info Eksport
+            // 5. Export Info
             const generatedAt = new Date();
             const picFilterLabel = filterTimerUser === 'All' 
-                ? 'Semua PIC' 
+                ? 'All PICs' 
                 : (profiles.find(p => p.id === filterTimerUser)?.full_name || filterTimerUser);
             
             const dateRangeLabel = timerDateRange[0] && timerDateRange[1]
-                ? `${timerDateRange[0].format('YYYY-MM-DD')} hingga ${timerDateRange[1].format('YYYY-MM-DD')}`
-                : 'Semua (Lalai)';
+                ? `${timerDateRange[0].format('YYYY-MM-DD')} to ${timerDateRange[1].format('YYYY-MM-DD')}`
+                : 'All (Default)';
 
             const infoExportData = [
-                { 'Parameter Eksport': 'Tarikh & Masa Penjanaan', 'Nilai': generatedAt.toLocaleString('ms-MY') },
-                { 'Parameter Eksport': 'Dijana Oleh', 'Nilai': currentUserProfile?.full_name || 'Pengguna Aktif' },
-                { 'Parameter Eksport': 'Filter Jabatan', 'Nilai': filterDepartment === 'All' ? 'Semua Jabatan' : filterDepartment },
-                { 'Parameter Eksport': 'Filter Pekerja (PIC)', 'Nilai': picFilterLabel },
-                { 'Parameter Eksport': 'Filter Pelanggan', 'Nilai': filterTimerCustomer === 'All' ? 'Semua Customer' : filterTimerCustomer },
-                { 'Parameter Eksport': 'Kata Kunci Carian', 'Nilai': timerSearchText || '—' },
-                { 'Parameter Eksport': 'Filter Julat Tarikh', 'Nilai': dateRangeLabel }
+                { 'Export Parameter': 'Generated At', 'Value': generatedAt.toLocaleString('en-GB') },
+                { 'Export Parameter': 'Generated By', 'Value': currentUserProfile?.full_name || 'Active User' },
+                { 'Export Parameter': 'Department Filter', 'Value': filterDepartment === 'All' ? 'All Departments' : filterDepartment },
+                { 'Export Parameter': 'PIC Filter', 'Value': picFilterLabel },
+                { 'Export Parameter': 'Customer Filter', 'Value': filterTimerCustomer === 'All' ? 'All Customers' : filterTimerCustomer },
+                { 'Export Parameter': 'Search Keyword', 'Value': timerSearchText || '—' },
+                { 'Export Parameter': 'Date Range Filter', 'Value': dateRangeLabel }
             ];
 
             // Create workbook and append sheets
@@ -1527,15 +1610,15 @@ export default function AnalyticsPage() {
             const wsCustomerSummary = XLSX.utils.json_to_sheet(customerSummarySheetData);
             const wsInfo = XLSX.utils.json_to_sheet(infoExportData);
 
-            XLSX.utils.book_append_sheet(wb, wsDetailed, "Log Sesi Kerja");
-            XLSX.utils.book_append_sheet(wb, wsEstVsAct, "Anggaran vs Sebenar");
-            XLSX.utils.book_append_sheet(wb, wsPicSummary, "Rumusan PIC");
-            XLSX.utils.book_append_sheet(wb, wsCustomerSummary, "Rumusan Pelanggan");
-            XLSX.utils.book_append_sheet(wb, wsInfo, "Info Eksport");
+            XLSX.utils.book_append_sheet(wb, wsDetailed, "Session Logs");
+            XLSX.utils.book_append_sheet(wb, wsEstVsAct, "Estimated vs Actual");
+            XLSX.utils.book_append_sheet(wb, wsPicSummary, "PIC Summary");
+            XLSX.utils.book_append_sheet(wb, wsCustomerSummary, "Customer Summary");
+            XLSX.utils.book_append_sheet(wb, wsInfo, "Export Info");
 
             // Construct dynamic filename
-            const dateStr = generatedAt.toISOString().slice(0, 10); // YYYY-MM-DD
-            const timeStr = generatedAt.toTimeString().slice(0, 5).replace(':', ''); // HHMM
+            const dateStr = generatedAt.toISOString().slice(0, 10);
+            const timeStr = generatedAt.toTimeString().slice(0, 5).replace(':', '');
             
             let filterName = 'All';
             const isPicActive = filterTimerUser !== 'All';
@@ -1554,10 +1637,10 @@ export default function AnalyticsPage() {
 
             const filename = `Time_Tracking_Report_${dateStr}_${timeStr}_${filterName}.xlsx`;
             XLSX.writeFile(wb, filename);
-            message.success(`Berjaya memuat turun fail ${filename}`);
+            message.success(`Successfully exported ${filename}`);
         } catch (err: any) {
             console.error('Export Excel error:', err);
-            message.error(`Gagal memuat turun Excel: ${err.message || err}`);
+            message.error(`Failed to export Excel: ${err.message || err}`);
         } finally {
             setIsExporting(false);
         }
@@ -1614,7 +1697,7 @@ export default function AnalyticsPage() {
 
             const rawData = data || [];
             if (rawData.length === 0) {
-                message.warning('Tiada data untuk dieksport');
+                message.warning('No data to export');
                 return;
             }
 
@@ -1625,18 +1708,29 @@ export default function AnalyticsPage() {
                     const totalSess = durationsArr.length;
                     const shortSess = durationsArr.filter(d => d < durationThresholdSeconds).length;
                     const warningPct = totalSess > 0 ? (shortSess / totalSess) * 100 : 0;
-                    const hasWarning = warningPct > durationThresholdPercent;
-                    const warningLabel = hasWarning ? `AMARAN: ${shortSess} drpd ${totalSess} sesi bawah ${durationThresholdSeconds}s` : 'OK';
+                    const hasShortWarning = warningPct >= durationThresholdPercent;
+                    
+                    const actualHoursVal = Number(row.actual_hours || 0);
+                    const matchingTask = tasks.find(t => t.id === row.task_id);
+                    const daysActive = matchingTask?.created_at ? differenceInDays(new Date(), new Date(matchingTask.created_at)) : 0;
+                    const isStillActive = matchingTask ? matchingTask.status !== 'DONE' : true;
+                    const isLongHours = isStillActive && actualHoursVal >= longRunningHoursThreshold;
+                    const isLongDays = isStillActive && daysActive >= longRunningDaysThreshold;
+
+                    const flags: string[] = [];
+                    if (hasShortWarning) flags.push(`Short Sessions (${shortSess}/${totalSess} < ${durationThresholdSeconds}s)`);
+                    if (isLongHours) flags.push(`Long Running (${actualHoursVal.toFixed(1)}h >= ${longRunningHoursThreshold}h)`);
+                    if (isLongDays) flags.push(`Long Active (${daysActive}d >= ${longRunningDaysThreshold}d)`);
 
                     return {
-                        'Tajuk Tugasan (Task Title)': row.task_title,
-                        'Pelanggan (Customer)': row.customer,
-                        'Pekerja (PIC)': row.pic_name,
-                        'Bilangan Sesi': Number(row.session_count),
-                        'Masa Sebenar (Actual Hours)': Number(Number(row.actual_hours).toFixed(2)),
-                        'Masa Anggaran (Estimated Hours)': row.estimated_hours !== null ? Number(Number(row.estimated_hours).toFixed(1)) : '—',
-                        'Varians (Estimated - Actual)': row.variance !== null ? Number(Number(row.variance).toFixed(2)) : '—',
-                        'Kualiti Data (Data Quality)': warningLabel
+                        'Task Title': row.task_title,
+                        'Customer': row.customer,
+                        'Lead PIC': row.pic_name,
+                        'Session Count': Number(row.session_count),
+                        'Actual Hours': Number(Number(row.actual_hours).toFixed(2)),
+                        'Estimated Hours': row.estimated_hours !== null ? Number(Number(row.estimated_hours).toFixed(1)) : '—',
+                        'Variance (Estimated - Actual)': row.variance !== null ? Number(Number(row.variance).toFixed(2)) : '—',
+                        'Data Quality Flags': flags.length > 0 ? flags.join('; ') : 'OK'
                     };
                 });
             } else {
@@ -1645,18 +1739,17 @@ export default function AnalyticsPage() {
                     const totalSess = durationsArr.length;
                     const shortSess = durationsArr.filter(d => d < durationThresholdSeconds).length;
                     const warningPct = totalSess > 0 ? (shortSess / totalSess) * 100 : 0;
-                    const hasWarning = warningPct > durationThresholdPercent;
-                    const warningLabel = hasWarning ? `AMARAN: ${shortSess} drpd ${totalSess} sesi bawah ${durationThresholdSeconds}s` : 'OK';
+                    const hasShortWarning = warningPct >= durationThresholdPercent;
 
                     return {
-                        'Tajuk Tugasan (Task Title)': row.task_title,
-                        'Bilangan Pelanggan Terlibat': Number(row.customer_count),
-                        'Bilangan PIC Terlibat': Number(row.pic_count),
-                        'Bilangan Sesi': Number(row.session_count),
-                        'Masa Sebenar (Actual Hours)': Number(Number(row.actual_hours).toFixed(2)),
-                        'Masa Anggaran (Estimated Hours)': row.estimated_hours !== null ? Number(Number(row.estimated_hours).toFixed(1)) : '—',
-                        'Varians (Estimated - Actual)': row.variance !== null ? Number(Number(row.variance).toFixed(2)) : '—',
-                        'Kualiti Data (Data Quality)': warningLabel
+                        'Task Title / Blueprint': row.task_title,
+                        'Customer Count': Number(row.customer_count),
+                        'PIC Count': Number(row.pic_count),
+                        'Session Count': Number(row.session_count),
+                        'Actual Hours': Number(Number(row.actual_hours).toFixed(2)),
+                        'Estimated Hours': row.estimated_hours !== null ? Number(Number(row.estimated_hours).toFixed(1)) : '—',
+                        'Variance (Estimated - Actual)': row.variance !== null ? Number(Number(row.variance).toFixed(2)) : '—',
+                        'Data Quality Flags': hasShortWarning ? `Short Sessions (${shortSess}/${totalSess} < ${durationThresholdSeconds}s)` : 'OK'
                     };
                 });
             }
@@ -1665,26 +1758,28 @@ export default function AnalyticsPage() {
 
             const generatedAt = new Date();
             const dateRangeLabel = timerDateRange[0] && timerDateRange[1]
-                ? `${timerDateRange[0].format('YYYY-MM-DD')} hingga ${timerDateRange[1].format('YYYY-MM-DD')}`
-                : 'Semua (Lalai)';
+                ? `${timerDateRange[0].format('YYYY-MM-DD')} to ${timerDateRange[1].format('YYYY-MM-DD')}`
+                : 'All (Default)';
 
             const infoExportData = [
-                { 'Parameter Eksport': 'Tarikh & Masa Penjanaan', 'Nilai': generatedAt.toLocaleString('ms-MY') },
-                { 'Parameter Eksport': 'Dijana Oleh', 'Nilai': currentUserProfile?.full_name || 'Pengguna Aktif' },
-                { 'Parameter Eksport': 'Mod Paparan (View Mode)', 'Nilai': durationViewMode === 'instance' ? 'Per Instance (Tugasan Terperinci)' : 'Per Task Type (Agregasi Tajuk)' },
-                { 'Parameter Eksport': 'Filter Jabatan', 'Nilai': filterDepartment === 'All' ? 'Semua Jabatan' : filterDepartment },
-                { 'Parameter Eksport': 'Filter Pekerja (PIC)', 'Nilai': durationPICs.length > 0 ? durationPICs.join(', ') : 'Semua PIC' },
-                { 'Parameter Eksport': 'Filter Pelanggan', 'Nilai': durationCustomers.length > 0 ? durationCustomers.join(', ') : 'Semua Customer' },
-                { 'Parameter Eksport': 'Kata Kunci Carian', 'Nilai': durationSearch || '—' },
-                { 'Parameter Eksport': 'Filter Julat Tarikh', 'Nilai': dateRangeLabel },
-                { 'Parameter Eksport': 'Tetapan Sesi Pendek (Threshold)', 'Nilai': `${durationThresholdSeconds} saat` },
-                { 'Parameter Eksport': 'Tetapan Had Amaran (Percent)', 'Nilai': `${durationThresholdPercent}%` }
+                { 'Export Parameter': 'Generated At', 'Value': generatedAt.toLocaleString('en-GB') },
+                { 'Export Parameter': 'Generated By', 'Value': currentUserProfile?.full_name || 'Active User' },
+                { 'Export Parameter': 'View Mode', 'Value': durationViewMode === 'instance' ? 'Task Instance View' : 'Task Type / Blueprint View' },
+                { 'Export Parameter': 'Department Filter', 'Value': filterDepartment === 'All' ? 'All Departments' : filterDepartment },
+                { 'Export Parameter': 'PIC Filter', 'Value': durationPICs.length > 0 ? durationPICs.join(', ') : 'All PICs' },
+                { 'Export Parameter': 'Customer Filter', 'Value': durationCustomers.length > 0 ? durationCustomers.join(', ') : 'All Customers' },
+                { 'Export Parameter': 'Search Keyword', 'Value': durationSearch || '—' },
+                { 'Export Parameter': 'Date Range Filter', 'Value': dateRangeLabel },
+                { 'Export Parameter': 'Short Session Threshold', 'Value': `${durationThresholdSeconds} seconds` },
+                { 'Export Parameter': 'Short Session Warning Ratio', 'Value': `${durationThresholdPercent}%` },
+                { 'Export Parameter': 'Long-Running Hours Threshold', 'Value': `${longRunningHoursThreshold} hours` },
+                { 'Export Parameter': 'Long-Running Days Threshold', 'Value': `${longRunningDaysThreshold} days` }
             ];
             const wsInfo = XLSX.utils.json_to_sheet(infoExportData);
 
             const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "Laporan Durasi");
-            XLSX.utils.book_append_sheet(wb, wsInfo, "Info Eksport");
+            XLSX.utils.book_append_sheet(wb, ws, "Duration Report");
+            XLSX.utils.book_append_sheet(wb, wsInfo, "Export Info");
 
             const dateStr = generatedAt.toISOString().slice(0, 10);
             const timeStr = generatedAt.toTimeString().slice(0, 5).replace(':', '');
@@ -1705,10 +1800,10 @@ export default function AnalyticsPage() {
 
             const filename = `Task_Duration_Report_${durationViewMode}_${dateStr}_${timeStr}_${filterName}.xlsx`;
             XLSX.writeFile(wb, filename);
-            message.success(`Berjaya memuat turun fail ${filename}`);
+            message.success(`Successfully exported ${filename}`);
         } catch (err: any) {
             console.error('Export error:', err.message);
-            message.error('Gagal mengeksport data ke Excel');
+            message.error('Failed to export data to Excel');
         } finally {
             setIsDurationExporting(false);
         }
@@ -1722,7 +1817,10 @@ export default function AnalyticsPage() {
         timerDateRange,
         currentUserProfile,
         durationThresholdSeconds,
-        durationThresholdPercent
+        durationThresholdPercent,
+        longRunningHoursThreshold,
+        longRunningDaysThreshold,
+        tasks
     ]);
 
     // ── Chart click handlers ──────────────────────────────────────────────────
@@ -1731,7 +1829,7 @@ export default function AnalyticsPage() {
         const filtered = activeTasks.filter(
             t => ((t.assignee as any)?.full_name || 'Unassigned') === pic
         );
-        openDrill(`Workload: ${pic} — ${filtered.length} task aktif`, filtered);
+        openDrill(`Workload: ${pic} — ${filtered.length} active tasks`, filtered);
     }, [activeTasks, openDrill]);
 
     const handleTotalPicBarClick = useCallback((pic: string) => {
@@ -1753,15 +1851,15 @@ export default function AnalyticsPage() {
             return ((t.assignee as any)?.full_name || 'Unassigned') === pic
                 && created >= startDate && created <= endDate;
         });
-        const periodLabel = totalPicPeriod === 'week' ? '7 Hari' : totalPicPeriod === 'month' ? '30 Hari' : 'Tempoh Custom';
-        openDrill(`Total Task: ${pic} (${periodLabel}) — ${filtered.length} task`, filtered);
+        const periodLabel = totalPicPeriod === 'week' ? '7 Days' : totalPicPeriod === 'month' ? '30 Days' : 'Custom Period';
+        openDrill(`Total Tasks: ${pic} (${periodLabel}) — ${filtered.length} tasks`, filtered);
     }, [tasks, totalPicPeriod, totalPicCustomStart, totalPicCustomEnd, openDrill]);
 
     const handleCustomerClick = useCallback((customer: string) => {
         const filtered = tasks.filter(
             t => (t.customer_name || 'No Customer') === customer
         );
-        openDrill(`Customer: ${customer} — ${filtered.length} task`, filtered);
+        openDrill(`Customer: ${customer} — ${filtered.length} tasks`, filtered);
     }, [tasks, openDrill]);
 
     // ── Render ────────────────────────────────────────────────────────────────
@@ -1770,7 +1868,7 @@ export default function AnalyticsPage() {
         return (
             <div className="flex flex-col items-center justify-center h-[calc(100vh-100px)] gap-4">
                 <Spin size="large" />
-                <p className="text-slate-400 text-sm">Memuatkan data analitik...</p>
+                <p className="text-slate-400 text-sm">Loading analytics data...</p>
             </div>
         );
     }
@@ -1794,16 +1892,16 @@ export default function AnalyticsPage() {
                             <Title level={2} className="!text-white !m-0 font-extrabold tracking-tight">Management Analytics</Title>
                         </div>
                         <Text className="!text-indigo-200/80 text-sm font-medium">
-                            Boss View — gambaran keseluruhan prestasi pasukan secara real-time
+                            Executive View — real-time workforce performance, time auditing & operational intelligence
                         </Text>
                     </div>
                     <div className="flex flex-col items-end gap-2">
                         <div className="flex items-center gap-2 text-indigo-200/60 text-xs">
                             <RefreshCw className="w-3.5 h-3.5" />
-                            <span>Live · {lastRefreshed.toLocaleTimeString('ms-MY')}</span>
+                            <span>Live · {lastRefreshed.toLocaleTimeString('en-GB')}</span>
                         </div>
                         <div className="flex items-center gap-2 mt-1">
-                            <span className="text-xs text-indigo-200 uppercase font-bold tracking-wider">Jabatan:</span>
+                            <span className="text-xs text-indigo-200 uppercase font-bold tracking-wider">Department:</span>
                             <Select
                                 value={filterDepartment}
                                 onChange={setFilterDepartment}
@@ -1812,7 +1910,7 @@ export default function AnalyticsPage() {
                                 className="w-[185px]"
                                 popupClassName="rounded-xl shadow-lg border border-slate-100"
                                 options={[
-                                    { value: 'All', label: 'Seluruh Organisasi' },
+                                    { value: 'All', label: 'All Departments' },
                                     { value: 'Outsourcing', label: 'Outsourcing' },
                                     { value: 'IT', label: 'IT' },
                                     { value: 'Sales', label: 'Sales' },
@@ -1826,7 +1924,7 @@ export default function AnalyticsPage() {
                         {hasFullAccess && (
                             <div className="flex items-center gap-1.5 bg-white/15 text-white text-xs px-2.5 py-1 mt-1 rounded-full">
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 inline-block" />
-                                Drill-down aktif
+                                Drill-down active
                             </div>
                         )}
                     </div>
@@ -1877,27 +1975,27 @@ export default function AnalyticsPage() {
                         <KpiCard
                             title="Active Tasks"
                             value={activeTasks.length}
-                            subtitle={`daripada ${tasks.length} keseluruhan task`}
+                            subtitle={`out of ${tasks.length} total tasks`}
                             icon={CheckSquare}
                             color="bg-indigo-600"
                             bg="bg-indigo-50"
                             clickable={canDrillDown}
-                            onClick={() => canDrillDown && openDrill(`Semua Task Aktif (${activeTasks.length})`, activeTasks)}
+                            onClick={() => canDrillDown && openDrill(`All Active Tasks (${activeTasks.length})`, activeTasks)}
                         />
                         <KpiCard
                             title="Overdue Tasks"
                             value={overdueTasks.length}
-                            subtitle="melepasi due date"
+                            subtitle="past due date"
                             icon={AlertTriangle}
                             color="bg-red-500"
                             bg="bg-red-50"
                             clickable={canDrillDown && overdueTasks.length > 0}
-                            onClick={() => canDrillDown && openDrill(`⚠️ Task Overdue (${overdueTasks.length})`, overdueTasks)}
+                            onClick={() => canDrillDown && openDrill(`⚠️ Overdue Tasks (${overdueTasks.length})`, overdueTasks)}
                         />
                         <KpiCard
                             title="Bottleneck Tasks"
                             value={bottleneckTasks.length}
-                            subtitle="belum siap > 3 hari"
+                            subtitle="unresolved ≥ 3 days (not DONE)"
                             icon={Clock}
                             color="bg-amber-500"
                             bg="bg-amber-50"
@@ -1905,9 +2003,9 @@ export default function AnalyticsPage() {
                             onClick={() => canDrillDown && openDrill(`🕐 Bottleneck Tasks (${bottleneckTasks.length})`, bottleneckTasks)}
                         />
                         <KpiCard
-                            title="Klien Aktif"
+                            title="Active Clients"
                             value={uniqueCustomers}
-                            subtitle="organisasi pelanggan"
+                            subtitle="external client accounts"
                             icon={Users}
                             color="bg-emerald-600"
                             bg="bg-emerald-50"
@@ -1923,10 +2021,10 @@ export default function AnalyticsPage() {
                             title={
                                 <div className="flex items-center gap-2 py-1">
                                     <TrendingUp className="w-4 h-4 text-indigo-600" />
-                                    <span className="font-bold text-slate-700">Workload Chart — Task Aktif per PIC</span>
+                                    <span className="font-bold text-slate-700">Workload Chart — Active Tasks per PIC</span>
                                     {hasFullAccess && (
                                         <span className="text-xs font-normal text-indigo-400 bg-indigo-50 px-2 py-0.5 rounded-full ml-1">
-                                            Klik bar untuk drill-down ↗
+                                            Click bar for drill-down ↗
                                         </span>
                                     )}
                                 </div>
@@ -1934,7 +2032,7 @@ export default function AnalyticsPage() {
                         >
                             {workloadData.length === 0 ? (
                                 <div className="flex items-center justify-center h-[240px] text-slate-400">
-                                    Tiada data task aktif.
+                                    No active tasks found.
                                 </div>
                             ) : (
                                 <WorkloadBarChart
@@ -1952,10 +2050,10 @@ export default function AnalyticsPage() {
                             title={
                                 <div className="flex items-center gap-2 py-1">
                                     <Users className="w-4 h-4 text-violet-600" />
-                                    <span className="font-bold text-slate-700">Customer Distribution</span>
+                                    <span className="font-bold text-slate-700">Customer Workload Distribution</span>
                                     {hasFullAccess && (
                                         <span className="text-xs font-normal text-violet-400 bg-violet-50 px-2 py-0.5 rounded-full ml-1">
-                                            Klik untuk drill-down ↗
+                                            Click for drill-down ↗
                                         </span>
                                     )}
                                 </div>
@@ -1963,7 +2061,7 @@ export default function AnalyticsPage() {
                         >
                             {customerData.length === 0 ? (
                                 <div className="flex items-center justify-center h-[260px] text-slate-400">
-                                    Tiada data.
+                                    No client data.
                                 </div>
                             ) : (
                                 <CustomerDistributionList
@@ -1983,11 +2081,11 @@ export default function AnalyticsPage() {
                         title={
                             <div className="flex items-center gap-2 py-1">
                                 <BarChart2 className="w-4 h-4 text-emerald-600" />
-                                <span className="font-bold text-slate-700">Total Task per PIC</span>
-                                <span className="text-xs font-normal text-slate-400 ml-1">— jumlah task diterima mengikut tempoh masa</span>
+                                <span className="font-bold text-slate-700">Total Tasks Completed per PIC</span>
+                                <span className="text-xs font-normal text-slate-400 ml-1">— received tasks by period</span>
                                 {hasFullAccess && (
                                     <span className="text-xs font-normal text-emerald-500 bg-emerald-50 px-2 py-0.5 rounded-full ml-auto">
-                                        Klik bar untuk drill-down ↗
+                                        Click bar for drill-down ↗
                                     </span>
                                 )}
                             </div>
@@ -2022,17 +2120,17 @@ export default function AnalyticsPage() {
                             <div className="flex flex-col gap-3">
                                 {overdueTasks.length === 0 ? (
                                     <div className="text-center text-emerald-500 font-semibold py-8">
-                                        🎉 Tiada task overdue!
+                                        🎉 No overdue tasks!
                                     </div>
                                 ) : (
                                     <>
                                         <div
                                             className={`bg-red-50 border border-red-100 rounded-xl p-4 text-center transition-all ${canDrillDown ? 'cursor-pointer hover:bg-red-100' : ''}`}
-                                            onClick={() => canDrillDown && openDrill(`⚠️ Task Overdue (${overdueTasks.length})`, overdueTasks)}
+                                            onClick={() => canDrillDown && openDrill(`⚠️ Overdue Tasks (${overdueTasks.length})`, overdueTasks)}
                                         >
                                             <p className="text-4xl font-black text-red-500">{overdueTasks.length}</p>
-                                            <p className="text-xs text-red-400 font-semibold mt-1">JUMLAH OVERDUE</p>
-                                            {canDrillDown && <p className="text-xs text-red-300 mt-0.5">Klik untuk lihat senarai ↗</p>}
+                                            <p className="text-xs text-red-400 font-semibold mt-1">TOTAL OVERDUE</p>
+                                            {canDrillDown && <p className="text-xs text-red-300 mt-0.5">Click to view list ↗</p>}
                                         </div>
 
                                         {Object.entries(overdueByStatus).filter(([, v]) => v > 0).map(([status, count]) => (
@@ -2058,9 +2156,9 @@ export default function AnalyticsPage() {
 
                                         <div className="mt-4">
                                             <div className="flex items-center justify-between mb-2">
-                                                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Task Terlibat</p>
+                                                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Involved Tasks</p>
                                                 <span className="text-[10px] font-bold text-red-400 bg-red-50 px-1.5 py-0.5 rounded-full">
-                                                    {overdueTasks.length} task
+                                                    {overdueTasks.length} tasks
                                                 </span>
                                             </div>
                                             <div className="flex flex-col gap-2 max-h-[320px] overflow-y-auto pr-1">
@@ -2070,7 +2168,7 @@ export default function AnalyticsPage() {
                                                         <div 
                                                             key={t.id} 
                                                             className="group flex flex-col gap-1.5 p-2.5 bg-white border border-red-100 rounded-xl hover:border-red-300 hover:shadow-md transition-all cursor-pointer"
-                                                            onClick={() => openDrill(`Detail Task: ${t.title}`, [t])}
+                                                            onClick={() => openDrill(`Task Detail: ${t.title}`, [t])}
                                                         >
                                                             <div className="flex items-start gap-2">
                                                                 <AlertTriangle className="w-3.5 h-3.5 text-red-500 mt-0.5 flex-shrink-0" />
@@ -2113,10 +2211,12 @@ export default function AnalyticsPage() {
                             title={
                                 <div className="flex items-center gap-2 py-1">
                                     <Clock className="w-4 h-4 text-amber-500" />
-                                    <span className="font-bold text-slate-700">Bottleneck Detection</span>
-                                    <span className="text-xs font-normal text-slate-400 ml-1">
-                                        — task belum siap melebihi 3 hari
-                                    </span>
+                                    <span className="font-bold text-slate-700">Bottleneck Tasks</span>
+                                    <Tooltip title="Condition: Active tasks (status != 'DONE') created >= 3 days ago without completion">
+                                        <span className="text-xs font-normal text-slate-400 ml-1 cursor-help">
+                                            — active tasks in system ≥ 3 days
+                                        </span>
+                                    </Tooltip>
                                 </div>
                             }
                             extra={
@@ -2131,7 +2231,7 @@ export default function AnalyticsPage() {
                                 rowKey="id"
                                 pagination={{ pageSize: 8, size: 'small' }}
                                 size="small"
-                                locale={{ emptyText: '✅ Tiada bottleneck — semua task dalam tempoh!' }}
+                                locale={{ emptyText: '✅ No bottleneck tasks — all active tasks within expected schedule!' }}
                                 rowClassName={(record) => {
                                     const days = differenceInDays(now, new Date(record.created_at));
                                     return days >= 7 ? 'bg-red-50/50' : days >= 5 ? 'bg-amber-50/50' : '';
@@ -2147,9 +2247,9 @@ export default function AnalyticsPage() {
                         title={
                             <div className="flex items-center gap-2 py-2">
                                 <Users className="w-5 h-5 text-indigo-600" />
-                                <span className="font-extrabold text-slate-800 text-lg">Customer Analytics (Maklumat Terperinci)</span>
+                                <span className="font-extrabold text-slate-800 text-lg">Customer Analytics (Detailed Breakdown)</span>
                                 <span className="text-xs font-normal text-slate-400 bg-slate-50 border border-slate-100 px-3 py-1 rounded-full ml-2">
-                                    {customerDetailedData.length} Pelanggan
+                                    {customerDetailedData.length} Clients
                                 </span>
                             </div>
                         }
@@ -2168,7 +2268,7 @@ export default function AnalyticsPage() {
                                     render: (text: string) => <span className="font-bold text-slate-700">{text}</span>
                                 },
                                 {
-                                    title: <Tooltip title="Jumlah keseluruhan task dari mula hingga kini">Total Tasks</Tooltip>,
+                                    title: <Tooltip title="Total tasks from inception to date">Total Tasks</Tooltip>,
                                     dataIndex: 'total',
                                     key: 'total',
                                     sorter: (a: any, b: any) => a.total - b.total,
@@ -2176,19 +2276,19 @@ export default function AnalyticsPage() {
                                     render: (val: number) => <span className="font-bold text-lg text-slate-800">{val}</span>
                                 },
                                 {
-                                    title: <Tooltip title="Task yang sedang dijalankan / diusahakan">Pending Active</Tooltip>,
+                                    title: <Tooltip title="Active tasks currently in progress or waiting for review">Pending Active</Tooltip>,
                                     dataIndex: 'pending',
                                     key: 'pending',
                                     sorter: (a: any, b: any) => a.pending - b.pending,
                                     render: (val: number, record: any) => (
                                         <div className="flex flex-col gap-1">
-                                            <span className="font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md w-fit">{val} task</span>
+                                            <span className="font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md w-fit">{val} tasks</span>
                                             {record.overdue > 0 && <span className="text-[10px] text-red-500 font-bold bg-red-50 border border-red-100 px-1 py-0.5 rounded w-fit">⚠️ {record.overdue} OVERDUE</span>}
                                         </div>
                                     )
                                 },
                                 {
-                                    title: <Tooltip title="Task yang telah siap (DONE)">Completed (DONE)</Tooltip>,
+                                    title: <Tooltip title="Completed tasks (DONE)">Completed (DONE)</Tooltip>,
                                     dataIndex: 'completed',
                                     key: 'completed',
                                     sorter: (a: any, b: any) => a.completed - b.completed,
@@ -2196,14 +2296,14 @@ export default function AnalyticsPage() {
                                         const percent = Math.round((val / record.total) * 100) || 0;
                                         return (
                                             <div className="flex items-center gap-2">
-                                                <span className="font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md">{val} task</span>
+                                                <span className="font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md">{val} tasks</span>
                                                 <span className="text-[10px] text-slate-400 font-bold">({percent}%)</span>
                                             </div>
                                         );
                                     }
                                 },
                                 {
-                                    title: <Tooltip title="Purata task baru yang masuk sehari secara sejarah">Frequency (Task/Hari)</Tooltip>,
+                                    title: <Tooltip title="Average incoming tasks per day historically">Frequency (Tasks/Day)</Tooltip>,
                                     dataIndex: 'tasksPerDay',
                                     key: 'tasksPerDay',
                                     sorter: (a: any, b: any) => a.tasksPerDay - b.tasksPerDay,
@@ -2226,10 +2326,10 @@ export default function AnalyticsPage() {
                                             className="text-indigo-600 bg-indigo-50 border border-indigo-100 hover:bg-indigo-600 hover:text-white transition-all font-semibold text-xs"
                                             onClick={() => {
                                                 const filtered = tasks.filter(t => (t.customer_name || 'No Customer') === record.customer);
-                                                openDrill(`Detailed View: ${record.customer} (${filtered.length} task)`, filtered);
+                                                openDrill(`Detailed View: ${record.customer} (${filtered.length} tasks)`, filtered);
                                             }}
                                         >
-                                            Semak Task
+                                            View Tasks
                                         </Button>
                                     )
                                 }
@@ -2242,35 +2342,43 @@ export default function AnalyticsPage() {
             {activeTab === 'timers' && (
                 <>
                     {/* ── Time Tracking KPI Cards ── */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
                         <KpiCard
                             title="Total Hours Tracked"
                             value={totalHoursTrackedStr}
-                            subtitle={`daripada ${filteredLogs.length} sesi`}
+                            subtitle={`across ${filteredLogs.length} completed sessions`}
                             icon={Hourglass}
                             color="bg-indigo-600"
                             bg="bg-indigo-50"
                         />
                         <KpiCard
-                            title="Total Est. Hours"
-                            value={totalEstimatedHours.toFixed(1) + ' hrs'}
-                            subtitle="anggaran keseluruhan"
-                            icon={Clock}
-                            color="bg-sky-600"
-                            bg="bg-sky-50"
-                        />
-                        <KpiCard
                             title="Estimation Accuracy"
                             value={estimationAccuracyStr}
-                            subtitle="menempati anggaran"
+                            subtitle={estimationAccuracySubtext}
                             icon={TrendingUp}
                             color="bg-rose-500"
                             bg="bg-rose-50"
                         />
                         <KpiCard
+                            title="Estimation Coverage"
+                            value={estimationCoverageStr}
+                            subtitle={estimationCoverageSubtext}
+                            icon={CheckSquare}
+                            color="bg-teal-600"
+                            bg="bg-teal-50"
+                        />
+                        <KpiCard
+                            title="Total Est. Hours"
+                            value={totalEstimatedHours.toFixed(1) + ' hrs'}
+                            subtitle="combined blueprint estimate"
+                            icon={Clock}
+                            color="bg-sky-600"
+                            bg="bg-sky-50"
+                        />
+                        <KpiCard
                             title="Top Customer (Hours)"
                             value={topClientName}
-                            subtitle="penggunaan masa tertinggi"
+                            subtitle="highest time usage (excludes internal)"
                             icon={Users}
                             color="bg-emerald-600"
                             bg="bg-emerald-50"
@@ -2278,7 +2386,7 @@ export default function AnalyticsPage() {
                         <KpiCard
                             title="Top PIC (Hours)"
                             value={topPicName}
-                            subtitle="paling banyak log jam"
+                            subtitle="most logged work hours"
                             icon={BarChart2}
                             color="bg-violet-600"
                             bg="bg-violet-50"
@@ -2286,7 +2394,7 @@ export default function AnalyticsPage() {
                         <KpiCard
                             title="Avg Session Duration"
                             value={averageSessionStr}
-                            subtitle="purata masa per sesi"
+                            subtitle="average duration per session"
                             icon={Clock}
                             color="bg-amber-600"
                             bg="bg-amber-50"
@@ -2297,33 +2405,33 @@ export default function AnalyticsPage() {
                     <Card className="rounded-2xl shadow-sm border border-slate-100" variant="borderless">
                         <div className="flex flex-wrap items-center gap-4">
                             <div className="flex flex-col gap-1.5">
-                                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Filter Pekerja (PIC)</span>
+                                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Filter PIC</span>
                                 <Select
                                     value={filterTimerUser}
                                     onChange={setFilterTimerUser}
                                     className="w-[200px]"
                                     options={[
-                                        { value: 'All', label: 'Semua PIC' },
+                                        { value: 'All', label: 'All PICs' },
                                         ...profiles.map(p => ({ value: p.id, label: p.full_name }))
                                     ]}
                                 />
                             </div>
 
                             <div className="flex flex-col gap-1.5">
-                                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Filter Pelanggan (Customer)</span>
+                                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Filter Customer</span>
                                 <Select
                                     value={filterTimerCustomer}
                                     onChange={setFilterTimerCustomer}
                                     className="w-[220px]"
                                     options={[
-                                        { value: 'All', label: 'Semua Customer' },
+                                        { value: 'All', label: 'All Customers' },
                                         ...uniqueCustomerNames.map(c => ({ value: c, label: c }))
                                     ]}
                                 />
                             </div>
 
                             <div className="flex flex-col gap-1.5">
-                                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Filter Tarikh (Date Range)</span>
+                                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Filter Date Range</span>
                                 <DatePicker.RangePicker
                                     value={timerDateRange}
                                     onChange={(dates) => {
@@ -2334,15 +2442,15 @@ export default function AnalyticsPage() {
                                         }
                                     }}
                                     className="w-[260px] rounded-lg"
-                                    placeholder={['Mula', 'Tamat']}
+                                    placeholder={['Start Date', 'End Date']}
                                     allowClear
                                 />
                             </div>
 
                             <div className="flex flex-col gap-1.5 md:ml-auto w-full md:w-auto">
-                                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Cari Tugasan / PIC</span>
+                                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Search Task / PIC</span>
                                 <Input
-                                    placeholder="Cari kata kunci..."
+                                    placeholder="Search keywords..."
                                     value={timerSearchText}
                                     onChange={e => setTimerSearchText(e.target.value)}
                                     className="w-full md:w-[260px] rounded-lg"
@@ -2359,7 +2467,7 @@ export default function AnalyticsPage() {
                                     className="bg-emerald-600 border-emerald-600 hover:bg-emerald-700 font-semibold rounded-lg h-9 shadow-sm"
                                     onClick={exportAllToExcel}
                                 >
-                                    {isExporting ? 'Mengeksport...' : 'Muat Turun Excel'}
+                                    {isExporting ? 'Exporting...' : 'Export Excel'}
                                 </Button>
                             </div>
                         </div>
@@ -2374,13 +2482,13 @@ export default function AnalyticsPage() {
                             title={
                                 <div className="flex items-center gap-2 py-1">
                                     <BarChart2 className="w-4 h-4 text-indigo-600" />
-                                    <span className="font-bold text-slate-700">Analisis Jam Kerja Pekerja (PIC)</span>
+                                    <span className="font-bold text-slate-700">Staff Labor Hours Analysis (By PIC)</span>
                                 </div>
                             }
                         >
                             {timerEmployeeDurations.length === 0 ? (
                                 <div className="flex items-center justify-center h-[200px] text-slate-400">
-                                    Tiada data timer dikesan.
+                                    No time log data recorded.
                                 </div>
                             ) : (
                                 <TimeBarChart
@@ -2397,13 +2505,13 @@ export default function AnalyticsPage() {
                             title={
                                 <div className="flex items-center gap-2 py-1">
                                     <Users className="w-4 h-4 text-violet-600" />
-                                    <span className="font-bold text-slate-700">Agihan Masa Mengikut Pelanggan (Customer)</span>
+                                    <span className="font-bold text-slate-700">Customer Time Allocation (Hours)</span>
                                 </div>
                             }
                         >
                             {timerClientDurations.length === 0 ? (
                                 <div className="flex items-center justify-center h-[200px] text-slate-400">
-                                    Tiada data timer dikesan.
+                                    No client time logs recorded.
                                 </div>
                             ) : (
                                 <TimeBarChart
@@ -2421,9 +2529,9 @@ export default function AnalyticsPage() {
                         title={
                             <div className="flex items-center gap-2 py-2">
                                 <Clock className="w-5 h-5 text-indigo-600" />
-                                <span className="font-extrabold text-slate-800 text-lg">Anggaran vs Masa Sebenar (Estimated vs Actual)</span>
+                                <span className="font-extrabold text-slate-800 text-lg">Estimated vs Actual Hours Comparison</span>
                                 <span className="text-xs font-normal text-slate-400 bg-slate-50 border border-slate-100 px-3 py-1 rounded-full ml-2">
-                                    {estimatedVsActualData.length} Tugasan
+                                    {estimatedVsActualData.length} Tasks
                                 </span>
                             </div>
                         }
@@ -2434,13 +2542,13 @@ export default function AnalyticsPage() {
                             pagination={{ pageSize: 10 }}
                             columns={[
                                 {
-                                    title: 'Nama Tugasan (Task Title)',
+                                    title: 'Task Title',
                                     dataIndex: 'title',
                                     key: 'title',
                                     render: (text: string) => <span className="font-bold text-slate-700 text-sm">{text}</span>
                                 },
                                 {
-                                    title: 'Pelanggan',
+                                    title: 'Customer',
                                     dataIndex: 'customer_name',
                                     key: 'customer_name',
                                     render: (text: string) => <span className="text-slate-500 text-xs">{text}</span>
@@ -2494,8 +2602,10 @@ export default function AnalyticsPage() {
                                     render: (status: string) => {
                                         if (status === 'Exceeded') {
                                             return <Tag color="error" className="rounded-full font-bold">⚠️ Exceeded</Tag>;
-                                        } else if (status === 'Within Estimate') {
-                                            return <Tag color="success" className="rounded-full font-bold">✓ On Track</Tag>;
+                                        } else if (status === 'Accurate') {
+                                            return <Tag color="success" className="rounded-full font-bold">✓ Accurate (±{estimationTolerancePercent}%)</Tag>;
+                                        } else if (status === 'Under Budget') {
+                                            return <Tag color="processing" className="rounded-full font-bold">Under Budget</Tag>;
                                         }
                                         return <Tag color="default" className="rounded-full font-semibold">No Estimate</Tag>;
                                     }
@@ -2511,7 +2621,7 @@ export default function AnalyticsPage() {
                         title={
                             <div className="flex items-center gap-2 py-1">
                                 <Clock className="w-4 h-4 text-rose-500" />
-                                <span className="font-bold text-slate-700">Tugasan Paling Banyak Memakan Masa (Top 10 Longest Tasks)</span>
+                                <span className="font-bold text-slate-700">Top 10 Longest Tasks (By Cumulative Hours)</span>
                             </div>
                         }
                     >
@@ -2520,28 +2630,28 @@ export default function AnalyticsPage() {
                             rowKey="title"
                             pagination={false}
                             size="small"
-                            locale={{ emptyText: 'Tiada tugasan dikesan mengikut penapis semasa.' }}
+                            locale={{ emptyText: 'No tasks found for current filter.' }}
                             columns={[
                                 {
-                                    title: 'Nama Tugasan (Task Title)',
+                                    title: 'Task Title',
                                     dataIndex: 'title',
                                     key: 'title',
                                     render: (text: string) => <span className="font-bold text-slate-700 text-sm">{text}</span>
                                 },
                                 {
-                                    title: 'Pelanggan',
+                                    title: 'Customer',
                                     dataIndex: 'customer',
                                     key: 'customer',
                                     render: (text: string) => <span className="text-slate-500 text-sm">{text}</span>
                                 },
                                 {
-                                    title: 'PIC Utama',
+                                    title: 'Lead PIC',
                                     dataIndex: 'assignee',
                                     key: 'assignee',
                                     render: (text: string) => <span className="text-slate-600 text-sm font-medium">{text}</span>
                                 },
                                 {
-                                    title: 'Jumlah Masa Kerja',
+                                    title: 'Total Logged Time',
                                     dataIndex: 'duration',
                                     key: 'duration',
                                     sorter: (a: any, b: any) => a.duration - b.duration,
@@ -2561,7 +2671,7 @@ export default function AnalyticsPage() {
                         title={
                             <div className="flex items-center gap-2 py-1">
                                 <Hourglass className="w-4 h-4 text-indigo-600" />
-                                <span className="font-bold text-slate-700">Rekod Log Masa Terperinci (Detailed Work Session Logs)</span>
+                                <span className="font-bold text-slate-700">Detailed Work Session Logs</span>
                             </div>
                         }
                     >
@@ -2570,10 +2680,10 @@ export default function AnalyticsPage() {
                             rowKey="id"
                             pagination={{ pageSize: 10 }}
                             size="middle"
-                            locale={{ emptyText: 'Tiada rekod log masa dikesan.' }}
+                            locale={{ emptyText: 'No work session logs recorded.' }}
                             columns={[
                                 {
-                                    title: 'Pekerja (PIC)',
+                                    title: 'PIC / Assignee',
                                     key: 'user',
                                     render: (_: any, record: any) => {
                                         const user = record.user;
@@ -2605,27 +2715,27 @@ export default function AnalyticsPage() {
                                     )
                                 },
                                 {
-                                    title: 'Mula Bekerja',
+                                    title: 'Start Time',
                                     dataIndex: 'start_time',
                                     key: 'start_time',
                                     render: (val: string) => (
                                         <span className="text-slate-500 text-[11px]">
-                                            {new Date(val).toLocaleString('ms-MY', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                            {new Date(val).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
                                         </span>
                                     )
                                 },
                                 {
-                                    title: 'Tamat Bekerja',
+                                    title: 'End Time',
                                     dataIndex: 'end_time',
                                     key: 'end_time',
                                     render: (val: string) => (
                                         <span className="text-slate-500 text-[11px]">
-                                            {val ? new Date(val).toLocaleString('ms-MY', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
+                                            {val ? new Date(val).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
                                         </span>
                                     )
                                 },
                                 {
-                                    title: 'Tempoh Kerja',
+                                    title: 'Session Duration',
                                     dataIndex: 'duration',
                                     key: 'duration',
                                     render: (val: number) => {
@@ -2656,29 +2766,29 @@ export default function AnalyticsPage() {
                             header={
                                 <div className="flex items-center gap-2 py-1">
                                     <TrendingUp className="w-4 h-4 text-indigo-600" />
-                                    <span className="font-bold text-slate-700">Tetapan Data Quality (Data Quality Settings)</span>
+                                    <span className="font-bold text-slate-700">Data Quality & Anomaly Threshold Settings</span>
                                 </div>
                             } 
                             key="settings"
                         >
                             <div className="p-1 flex flex-wrap gap-6 items-center">
-                                <div className="flex items-center gap-3">
-                                    <span className="text-xs text-slate-500 font-semibold">Had Sesi Singkat:</span>
+                                <div className="flex items-center gap-2.5">
+                                    <span className="text-xs text-slate-500 font-semibold">Short Session:</span>
                                     <InputNumber
                                         min={5}
                                         max={3600}
                                         value={durationThresholdSeconds}
                                         onChange={(val) => setDurationThresholdSeconds(val || 30)}
-                                        addonAfter="saat"
+                                        addonAfter="sec"
                                         size="middle"
-                                        className="w-[140px]"
+                                        className="w-[130px]"
                                     />
-                                    <Tooltip title="Sesi kerja dengan durasi kurang daripada had ini akan dianggap sebagai ralat ketukan (accidental click).">
-                                        <span className="text-xs text-slate-400 cursor-help bg-slate-50 hover:bg-slate-100 border px-2 py-1 rounded-md">?</span>
+                                    <Tooltip title="Work sessions shorter than this duration are flagged as potential accidental clicks / ghost timers.">
+                                        <span className="text-xs text-slate-400 cursor-help bg-slate-50 hover:bg-slate-100 border px-1.5 py-0.5 rounded-md">?</span>
                                     </Tooltip>
                                 </div>
-                                <div className="flex items-center gap-3">
-                                    <span className="text-xs text-slate-500 font-semibold">Had Peratusan Amaran:</span>
+                                <div className="flex items-center gap-2.5">
+                                    <span className="text-xs text-slate-500 font-semibold">Short Warning Ratio:</span>
                                     <InputNumber
                                         min={1}
                                         max={100}
@@ -2686,10 +2796,55 @@ export default function AnalyticsPage() {
                                         onChange={(val) => setDurationThresholdPercent(val || 20)}
                                         addonAfter="%"
                                         size="middle"
+                                        className="w-[120px]"
+                                    />
+                                    <Tooltip title="Flag task if ratio of short sessions exceeds this percentage.">
+                                        <span className="text-xs text-slate-400 cursor-help bg-slate-50 hover:bg-slate-100 border px-1.5 py-0.5 rounded-md">?</span>
+                                    </Tooltip>
+                                </div>
+                                <div className="flex items-center gap-2.5">
+                                    <span className="text-xs text-slate-500 font-semibold">Long-Running Hours:</span>
+                                    <InputNumber
+                                        min={1}
+                                        max={1000}
+                                        value={longRunningHoursThreshold}
+                                        onChange={(val) => setLongRunningHoursThreshold(val || 40)}
+                                        addonAfter="hrs"
+                                        size="middle"
                                         className="w-[130px]"
                                     />
-                                    <Tooltip title="Amaran kualiti data akan dipaparkan jika peratusan sesi pendek melepasi had peratusan ini.">
-                                        <span className="text-xs text-slate-400 cursor-help bg-slate-50 hover:bg-slate-100 border px-2 py-1 rounded-md">?</span>
+                                    <Tooltip title="Flag active tasks if cumulative logged hours reach or exceed this threshold.">
+                                        <span className="text-xs text-slate-400 cursor-help bg-slate-50 hover:bg-slate-100 border px-1.5 py-0.5 rounded-md">?</span>
+                                    </Tooltip>
+                                </div>
+                                <div className="flex items-center gap-2.5">
+                                    <span className="text-xs text-slate-500 font-semibold">Long-Running Days:</span>
+                                    <InputNumber
+                                        min={1}
+                                        max={365}
+                                        value={longRunningDaysThreshold}
+                                        onChange={(val) => setLongRunningDaysThreshold(val || 14)}
+                                        addonAfter="days"
+                                        size="middle"
+                                        className="w-[130px]"
+                                    />
+                                    <Tooltip title="Flag active tasks if active lifespan in system reaches or exceeds this threshold without reaching DONE.">
+                                        <span className="text-xs text-slate-400 cursor-help bg-slate-50 hover:bg-slate-100 border px-1.5 py-0.5 rounded-md">?</span>
+                                    </Tooltip>
+                                </div>
+                                <div className="flex items-center gap-2.5">
+                                    <span className="text-xs text-slate-500 font-semibold">Estimation Tolerance:</span>
+                                    <InputNumber
+                                        min={1}
+                                        max={100}
+                                        value={estimationTolerancePercent}
+                                        onChange={(val) => setEstimationTolerancePercent(val || 20)}
+                                        addonAfter="±%"
+                                        size="middle"
+                                        className="w-[130px]"
+                                    />
+                                    <Tooltip title="Tolerance band for Estimation Accuracy. A task is accurate if actual hours are within ±20% of estimate.">
+                                        <span className="text-xs text-slate-400 cursor-help bg-slate-50 hover:bg-slate-100 border px-1.5 py-0.5 rounded-md">?</span>
                                     </Tooltip>
                                 </div>
                             </div>
@@ -2706,7 +2861,7 @@ export default function AnalyticsPage() {
                                 <div className="flex flex-wrap items-center gap-3 flex-1 min-w-[280px]">
                                     {/* Search Input */}
                                     <Input
-                                        placeholder="Cari tajuk tugasan..."
+                                        placeholder="Search task title..."
                                         value={durationSearchInput}
                                         onChange={(e) => setDurationSearchInput(e.target.value)}
                                         className="w-full sm:w-[260px] rounded-xl"
@@ -2717,7 +2872,7 @@ export default function AnalyticsPage() {
                                     {/* PIC multi-select */}
                                     <Select
                                         mode="multiple"
-                                        placeholder="Pilih Pekerja (PIC)"
+                                        placeholder="Select PIC / Assignee"
                                         value={durationPICs}
                                         onChange={(val) => {
                                             setDurationPICs(val);
@@ -2736,7 +2891,7 @@ export default function AnalyticsPage() {
                                     {/* Customer multi-select */}
                                     <Select
                                         mode="multiple"
-                                        placeholder="Pilih Pelanggan"
+                                        placeholder="Select Customer"
                                         value={durationCustomers}
                                         onChange={(val) => {
                                             setDurationCustomers(val);
@@ -2760,7 +2915,7 @@ export default function AnalyticsPage() {
                                         loading={isDurationExporting}
                                         className="bg-indigo-600 hover:bg-indigo-700 border-none rounded-xl font-bold flex items-center gap-1.5 h-10"
                                     >
-                                        Eksport ke Excel
+                                        Export to Excel
                                     </Button>
                                 </div>
                             </div>
@@ -2770,7 +2925,7 @@ export default function AnalyticsPage() {
                                 <div className="text-xs text-slate-400 bg-slate-50 border border-slate-100 rounded-lg p-2.5 flex items-center gap-2">
                                     <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" />
                                     <span>
-                                        <strong>Nota:</strong> Penapis Pekerja (PIC) & Pelanggan di atas bertindak ke atas sesi kerja asal sebelum proses agregasi dijalankan. Baris yang dipaparkan adalah mengikut Tajuk Tugasan sahaja.
+                                        <strong>Note:</strong> PIC & Customer filters apply to underlying session logs prior to aggregation. Rows are aggregated by Blueprint / Task Title.
                                     </span>
                                 </div>
                             )}
@@ -2785,7 +2940,7 @@ export default function AnalyticsPage() {
                             <div className="flex items-center justify-between flex-wrap gap-4 py-2">
                                 <div className="flex items-center gap-2">
                                     <Hourglass className="w-5 h-5 text-indigo-600" />
-                                    <span className="font-extrabold text-slate-800 text-lg">Prestasi Jam Tugasan</span>
+                                    <span className="font-extrabold text-slate-800 text-lg">Task Duration & Work Effort Performance</span>
                                 </div>
                                 <Segmented
                                     value={durationViewMode}
@@ -2795,8 +2950,8 @@ export default function AnalyticsPage() {
                                         setDurationPagination(prev => ({ ...prev, current: 1 }));
                                     }}
                                     options={[
-                                        { label: 'Per Instance (Tugasan)', value: 'instance' },
-                                        { label: 'Per Task Type (Tajuk)', value: 'type' }
+                                        { label: 'Task Instance View', value: 'instance' },
+                                        { label: 'Task Blueprint / Type View', value: 'type' }
                                     ]}
                                     className="bg-slate-100 p-0.5 rounded-lg border border-slate-200/40"
                                 />
@@ -2815,7 +2970,7 @@ export default function AnalyticsPage() {
                             }}
                             onChange={handleDurationTableChange}
                             size="middle"
-                            locale={{ emptyText: 'Tiada rekod prestasi tugasan dikesan.' }}
+                            locale={{ emptyText: 'No task duration records found.' }}
                             expandable={durationViewMode === 'instance' ? {
                                 expandedRowRender: renderExpandedLogsTable,
                                 expandedRowKeys,
@@ -2828,36 +2983,62 @@ export default function AnalyticsPage() {
                             } : undefined}
                             columns={[
                                 {
-                                    title: 'Tajuk Tugasan (Task Title)',
+                                    title: 'Task Title',
                                     dataIndex: 'task_title',
                                     key: 'task_title',
                                     sorter: true,
                                     sortOrder: durationSorter.field === 'task_title' ? durationSorter.order : null,
                                     render: (text: string, record: any) => {
-                                        // Compute data quality warning flag client-side
                                         const durationsArr = (record.durations as number[]) || [];
                                         const totalSess = durationsArr.length;
                                         const shortSess = durationsArr.filter(d => d < durationThresholdSeconds).length;
                                         const warningPct = totalSess > 0 ? (shortSess / totalSess) * 100 : 0;
-                                        const hasWarning = warningPct >= durationThresholdPercent;
+                                        const hasShortWarning = warningPct >= durationThresholdPercent;
+
+                                        const actualHoursVal = Number(record.actual_hours || 0);
+                                        const matchingTask = durationViewMode === 'instance' ? tasks.find(t => t.id === record.task_id) : null;
+                                        const daysActive = matchingTask?.created_at ? differenceInDays(now, new Date(matchingTask.created_at)) : 0;
+                                        const isStillActive = matchingTask ? matchingTask.status !== 'DONE' : true;
+                                        const isLongHours = isStillActive && actualHoursVal >= longRunningHoursThreshold;
+                                        const isLongDays = isStillActive && daysActive >= longRunningDaysThreshold;
 
                                         return (
-                                            <div className="flex items-center gap-2">
-                                                <span className="font-bold text-slate-700 text-sm max-w-[340px] break-words leading-snug">
-                                                    {text}
-                                                </span>
-                                                {hasWarning && (
-                                                    <Tooltip title={`Kualiti Data Rendah: ${shortSess} daripada ${totalSess} sesi adalah lebih singkat daripada ${durationThresholdSeconds} saat (${warningPct.toFixed(0)}%)`}>
-                                                        <AlertTriangle className="w-4 h-4 text-rose-500 cursor-help flex-shrink-0 animate-pulse" />
-                                                    </Tooltip>
-                                                )}
+                                            <div className="flex flex-col gap-1">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-bold text-slate-700 text-sm max-w-[340px] break-words leading-snug">
+                                                        {text}
+                                                    </span>
+                                                </div>
+                                                <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                                                    {hasShortWarning && (
+                                                        <Tooltip title={`Low Data Quality: ${shortSess} of ${totalSess} sessions are shorter than ${durationThresholdSeconds}s (${warningPct.toFixed(0)}%)`}>
+                                                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">
+                                                                <AlertTriangle className="w-3 h-3 text-rose-500" /> Short Sessions ({warningPct.toFixed(0)}%)
+                                                            </span>
+                                                        </Tooltip>
+                                                    )}
+                                                    {isLongHours && (
+                                                        <Tooltip title={`Long-Running Effort: Active task with ${actualHoursVal.toFixed(1)}h logged (Threshold: >= ${longRunningHoursThreshold}h)`}>
+                                                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                                                                <Hourglass className="w-3 h-3 text-amber-600" /> Long-Running ({actualHoursVal.toFixed(0)}h)
+                                                            </span>
+                                                        </Tooltip>
+                                                    )}
+                                                    {isLongDays && !isLongHours && (
+                                                        <Tooltip title={`Long-Running Lifespan: Active task in system for ${daysActive} days without completion (Threshold: >= ${longRunningDaysThreshold}d)`}>
+                                                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                                                                <Clock className="w-3 h-3 text-amber-600" /> Long-Running ({daysActive}d)
+                                                            </span>
+                                                        </Tooltip>
+                                                    )}
+                                                </div>
                                             </div>
                                         );
                                     }
                                 },
                                 ...(durationViewMode === 'instance' ? [
                                     {
-                                        title: 'Pelanggan',
+                                        title: 'Customer',
                                         dataIndex: 'customer',
                                         key: 'customer',
                                         sorter: true,
@@ -2883,32 +3064,32 @@ export default function AnalyticsPage() {
                                     }
                                 ] : [
                                     {
-                                        title: 'Bil. Pelanggan',
+                                        title: 'Client Count',
                                         dataIndex: 'customer_count',
                                         key: 'customer_count',
                                         sorter: true,
                                         sortOrder: durationSorter.field === 'customer_count' ? durationSorter.order : null,
-                                        render: (val: number) => <span className="font-semibold text-slate-700">{val} pelanggan</span>
+                                        render: (val: number) => <span className="font-semibold text-slate-700">{val} clients</span>
                                     },
                                     {
-                                        title: 'Bil. Pekerja (PIC)',
+                                        title: 'PIC Count',
                                         dataIndex: 'pic_count',
                                         key: 'pic_count',
                                         sorter: true,
                                         sortOrder: durationSorter.field === 'pic_count' ? durationSorter.order : null,
-                                        render: (val: number) => <span className="font-semibold text-slate-700">{val} PIC</span>
+                                        render: (val: number) => <span className="font-semibold text-slate-700">{val} PICs</span>
                                     }
                                 ]),
                                 {
-                                    title: 'Sesi Selesai',
+                                    title: 'Completed Sessions',
                                     dataIndex: 'session_count',
                                     key: 'session_count',
                                     sorter: true,
                                     sortOrder: durationSorter.field === 'session_count' ? durationSorter.order : null,
-                                    render: (val: number) => <span className="font-mono text-xs font-semibold text-slate-600 bg-slate-50 px-2 py-0.5 border border-slate-100 rounded">{val} sesi</span>
+                                    render: (val: number) => <span className="font-mono text-xs font-semibold text-slate-600 bg-slate-50 px-2 py-0.5 border border-slate-100 rounded">{val} sessions</span>
                                 },
                                 {
-                                    title: 'Masa Sebenar',
+                                    title: 'Actual Hours',
                                     dataIndex: 'actual_hours',
                                     key: 'actual_hours',
                                     sorter: true,
@@ -2916,7 +3097,7 @@ export default function AnalyticsPage() {
                                     render: (val: number) => <span className="font-extrabold text-slate-700 text-sm">{val.toFixed(2)} hrs</span>
                                 },
                                 {
-                                    title: 'Anggaran Masa',
+                                    title: 'Estimated Hours',
                                     dataIndex: 'estimated_hours',
                                     key: 'estimated_hours',
                                     sorter: true,
@@ -2924,7 +3105,7 @@ export default function AnalyticsPage() {
                                     render: (val: number | null) => val !== null ? <span className="font-semibold text-slate-600">{val.toFixed(1)} hrs</span> : <span className="text-slate-400 italic">—</span>
                                 },
                                 {
-                                    title: 'Varians',
+                                    title: 'Variance',
                                     dataIndex: 'variance',
                                     key: 'variance',
                                     sorter: true,

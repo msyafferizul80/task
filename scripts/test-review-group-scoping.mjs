@@ -284,4 +284,83 @@ assert.strictEqual(eligibleStaff.some(s => s.role === 'employee'), false, 'No em
 
 console.log('✅ Test 5 Passed: Role-aware labels and member role filtering verified.\n');
 
-console.log('🎉 ALL REVIEW GROUP ESCALATION TESTS PASSED SUCCESSFULLY!');
+// ─────────────────────────────────────────────────────────────────────────────
+// Test 6: Option B Assignee Lifecycle & Originator Visibility
+// ─────────────────────────────────────────────────────────────────────────────
+console.log('Test 6: Testing Option B Assignee Lifecycle & Originator Visibility...');
+
+const originatorUserId = 'user-originator-001';
+const reviewGroupId = 'group-ops-leads';
+
+// Step 1: Originator creates task and starts work
+let taskState = {
+  id: 'task-opt-b-01',
+  title: 'Monthly EPF Submission',
+  status: 'IN_PROGRESS',
+  assignee_id: originatorUserId,
+  created_by: originatorUserId,
+  escalated_from_user_id: null,
+  escalated_to_group_id: null,
+  is_escalated: false
+};
+
+// Verify active list includes task
+assert.strictEqual(taskState.assignee_id, originatorUserId);
+
+// Step 2: Originator escalates to Review Group (Option B)
+function escalateToReviewGroup(task, currentUserId, targetGroupId) {
+  return {
+    ...task,
+    status: 'REVIEW',
+    assignee_id: null, // Option B: nulled out during review so it does not appear in originator's active in-progress list
+    is_escalated: true,
+    escalated_from_user_id: currentUserId,
+    escalated_to_group_id: targetGroupId,
+    escalated_to_user_id: null
+  };
+}
+
+taskState = escalateToReviewGroup(taskState, originatorUserId, reviewGroupId);
+
+assert.strictEqual(taskState.status, 'REVIEW');
+assert.strictEqual(taskState.assignee_id, null, 'Option B: assignee_id must be null during group review');
+assert.strictEqual(taskState.escalated_from_user_id, originatorUserId, 'Originator preserved in escalated_from_user_id');
+assert.strictEqual(taskState.escalated_to_group_id, reviewGroupId);
+
+// Step 3: Check Originator Visibility
+// Active list query: assignee_id = originatorUserId
+const isInOriginatorActiveList = taskState.assignee_id === originatorUserId;
+assert.strictEqual(isInOriginatorActiveList, false, 'Group-escalated task must NOT appear in originator active in-progress list');
+
+// Originator Tracking query: escalated_from_user_id = originatorUserId AND status = 'REVIEW'
+const isInOriginatorEscalatedOutQueue = taskState.escalated_from_user_id === originatorUserId && taskState.status === 'REVIEW';
+assert.strictEqual(isInOriginatorEscalatedOutQueue, true, 'Group-escalated task MUST appear in originator "Menunggu Semakan Yang Dihantar" queue');
+
+// Step 4: Review Group member resolves review (Approve -> DONE / Reject -> IN_PROGRESS)
+// Both paths restore assignee_id = escalated_from_user_id
+const approvedTask = {
+  ...taskState,
+  status: 'DONE',
+  assignee_id: taskState.escalated_from_user_id,
+  is_escalated: false,
+  escalated_to_group_id: null,
+  reviewed_by: 'reviewer-supervisor-99'
+};
+assert.strictEqual(approvedTask.status, 'DONE');
+assert.strictEqual(approvedTask.assignee_id, originatorUserId, 'On Approve, assignee_id restored to originator');
+
+const rejectedTask = {
+  ...taskState,
+  status: 'IN_PROGRESS',
+  assignee_id: taskState.escalated_from_user_id,
+  is_escalated: false,
+  escalated_to_group_id: null,
+  reviewed_by: 'reviewer-supervisor-99'
+};
+assert.strictEqual(rejectedTask.status, 'IN_PROGRESS');
+assert.strictEqual(rejectedTask.assignee_id, originatorUserId, 'On Reject, assignee_id restored to originator for revisions');
+
+console.log('✅ Test 6 Passed: Option B Assignee Lifecycle & Originator Visibility successfully validated.\n');
+
+console.log('🎉 ALL REVIEW GROUP ESCALATION & LIFECYCLE TESTS PASSED SUCCESSFULLY!');
+

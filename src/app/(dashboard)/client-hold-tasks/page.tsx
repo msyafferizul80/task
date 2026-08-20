@@ -5,7 +5,7 @@ import { Card, Select, Input, Table, Tag, Typography, Spin, message, Modal, Form
 import { createClient } from '@/utils/supabase/client';
 import { Task, Profile } from '@/lib/types';
 import { useRole } from '@/components/layout/RoleProvider';
-import { SearchOutlined, CheckCircleOutlined, SyncOutlined, ClockCircleOutlined, ExclamationCircleOutlined, EditOutlined, DeleteOutlined, ExclamationCircleFilled, PauseCircleOutlined } from '@ant-design/icons';
+import { SearchOutlined, CheckCircleOutlined, SyncOutlined, ClockCircleOutlined, ExclamationCircleOutlined, EditOutlined, DeleteOutlined, ExclamationCircleFilled, PauseCircleOutlined, BankOutlined } from '@ant-design/icons';
 import EscalateModal from '@/components/task/EscalateModal';
 import TaskStatusHistory from '@/components/task/TaskStatusHistory';
 import TaskComments from '@/components/task/TaskComments';
@@ -426,7 +426,7 @@ export default function ClientHoldTasksPage() {
                         className={`text-[11px] font-semibold flex items-center gap-1 w-fit px-2 py-0.5 rounded-md border whitespace-nowrap tabular-nums ${duePillClass}`}
                         aria-label={`Due date: ${dateText}`}
                     >
-                        ⏱️ Due: {dateText}
+                        <ClockCircleOutlined /> Due: {dateText}
                     </div>
                 );
             }
@@ -464,18 +464,18 @@ export default function ClientHoldTasksPage() {
 
     return (
         <div className="flex flex-col gap-6 font-sans">
-            <div className="bg-white/80 p-6 rounded-2xl shadow-sm border border-slate-100">
-                <Title level={2} className="!text-fuchsia-900 !mb-2 mt-0">Client Hold Tasks</Title>
-                <Text type="secondary" className="text-base">Lihat dan urus tugasan anda yang berada pada status Client Hold.</Text>
+            <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-2xs border border-slate-200/80">
+                <Title level={3} className="!text-slate-900 !mb-1 mt-0 font-bold">Client Hold Tasks</Title>
+                <Text type="secondary" className="text-xs sm:text-sm">View and manage tasks on client hold status.</Text>
             </div>
 
-            <Card variant="borderless" className="shadow-sm rounded-xl border border-slate-100">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6 bg-slate-50 p-4 rounded-lg">
+            <Card variant="borderless" className="shadow-2xs rounded-2xl border border-slate-200/80 bg-white">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6 bg-slate-50 p-4 rounded-xl border border-slate-100">
                     <div className="sm:col-span-2">
-                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Search Title / Nota</label>
+                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">Search Title / Notes</label>
                         <Input
-                            placeholder="Cari tugasan..."
-                            prefix={<SearchOutlined />}
+                            placeholder="Search tasks..."
+                            prefix={<SearchOutlined className="text-slate-400" />}
                             value={searchText}
                             onChange={e => setSearchText(e.target.value)}
                             size="large"
@@ -483,9 +483,9 @@ export default function ClientHoldTasksPage() {
                         />
                     </div>
                     <div>
-                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Customer</label>
+                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">Customer</label>
                         <Select
-                            placeholder="Semua Customer"
+                            placeholder="All Customers"
                             value={filterCustomer || undefined}
                             onChange={val => setFilterCustomer(val || '')}
                             allowClear
@@ -500,9 +500,9 @@ export default function ClientHoldTasksPage() {
                     </div>
                     <div className="sm:col-span-2 flex items-center gap-3">
                         <div className="flex-1">
-                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">PIC / Assignee</label>
+                            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">Assignee / PIC</label>
                             <Select
-                                placeholder="Semua PIC"
+                                placeholder="All Assignees"
                                 value={filterPIC || undefined}
                                 onChange={val => setFilterPIC(val || '')}
                                 allowClear
@@ -533,7 +533,7 @@ export default function ClientHoldTasksPage() {
                 {/* Mobile Card View — hidden on md+ */}
                 <div className="md:hidden flex flex-col gap-3 mb-4">
                     {sortedTasks.length === 0 ? (
-                        <div className="text-center text-gray-400 py-10 italic">Tiada tugasan dijumpai.</div>
+                        <div className="text-center text-slate-400 py-10 italic text-xs">No tasks found.</div>
                     ) : sortedTasks.map(task => {
                         const { isBottleneck, isDueSoon } = getTaskIndicators(task);
                         let cardClass = 'bg-white border border-slate-100 rounded-xl p-4 shadow-sm flex flex-col gap-2';
@@ -566,7 +566,7 @@ export default function ClientHoldTasksPage() {
                                 {getStatusTag(task.status)}
                             </div>
                             {task.customer_name && (
-                                <div className="text-xs text-slate-500">🏢 {task.customer_name}</div>
+                                <div className="text-xs text-slate-500 flex items-center gap-1"><BankOutlined /> {task.customer_name}</div>
                             )}
                             {task.assignee && (
                                 <div className="flex items-center gap-1.5 text-xs text-slate-600">
@@ -589,7 +589,7 @@ export default function ClientHoldTasksPage() {
                                                 className={`text-[11px] font-semibold flex items-center gap-1 w-fit px-2 py-0.5 rounded-md border whitespace-nowrap tabular-nums ${duePillClass}`}
                                                 aria-label={`Due date: ${dateText}`}
                                             >
-                                                ⏱️ Due: {dateText}
+                                                <ClockCircleOutlined /> Due: {dateText}
                                             </div>
                                         );
                                     })()}

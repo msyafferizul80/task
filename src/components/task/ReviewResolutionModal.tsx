@@ -171,7 +171,7 @@ export default function ReviewResolutionModal({
             title={
                 <div className="font-semibold text-lg text-slate-800 flex items-center gap-2">
                     <AuditOutlined className="text-amber-600" />
-                    <span>Semakan Tugasan: {task.title}</span>
+                    <span>Task Review: {task.title}</span>
                 </div>
             }
             open={isOpen}
@@ -184,11 +184,11 @@ export default function ReviewResolutionModal({
             destroyOnClose
         >
             <Alert
-                message="Tugasan Menunggu Kelulusan / Semakan"
+                message="Task Pending Review / Approval"
                 description={
                     task.escalated_to_group_id
-                        ? "Tugasan ini dieskalasikan kepada Kumpulan Semakan anda. Tindakan pertama daripada mana-mana ahli akan menyelesaikan semakan ini untuk semua orang."
-                        : "Tugasan ini dihantar untuk semakan individu anda."
+                        ? "This task was escalated to your Review Group. The first action by any member resolves this review for everyone."
+                        : "This task was submitted for your individual review."
                 }
                 type="warning"
                 showIcon
@@ -198,7 +198,7 @@ export default function ReviewResolutionModal({
             {actionType === null && (
                 <div className="flex flex-col gap-3 py-3">
                     <p className="text-slate-600 text-sm">
-                        Sila pilih tindakan semakan untuk tugasan ini:
+                        Please choose a review action for this task:
                     </p>
                     <div className="flex gap-3 justify-end mt-4">
                         <Button
@@ -207,7 +207,7 @@ export default function ReviewResolutionModal({
                             icon={<CloseCircleOutlined />}
                             onClick={() => setActionType('REJECT')}
                         >
-                            Tolak (Perlu Pembetulan)
+                            Reject (Needs Changes)
                         </Button>
                         <Button
                             type="primary"
@@ -217,7 +217,7 @@ export default function ReviewResolutionModal({
                             loading={loading}
                             onClick={handleApprove}
                         >
-                            Luluskan (Selesai / Done)
+                            Approve (Done)
                         </Button>
                     </div>
                 </div>
@@ -227,20 +227,20 @@ export default function ReviewResolutionModal({
                 <Form form={rejectionForm} layout="vertical" onFinish={handleReject}>
                     <Form.Item
                         name="reason"
-                        label="Sebab Penolakan / Maklum Balas Pembetulan"
-                        rules={[{ required: true, message: 'Sila masukkan maklum balas pembetulan.' }]}
+                        label="Rejection Reason / Required Changes"
+                        rules={[{ required: true, message: 'Please provide feedback for what needs to be changed.' }]}
                     >
                         <TextArea
                             rows={4}
-                            placeholder="Nyatakan perkara yang perlu diperbaiki sebelum tugasan boleh diluluskan..."
+                            placeholder="Specify what needs to be corrected before this task can be approved..."
                         />
                     </Form.Item>
                     <div className="flex justify-end gap-2 pt-2">
                         <Button onClick={() => setActionType(null)} disabled={loading}>
-                            Kembali
+                            Back
                         </Button>
                         <Button type="primary" danger htmlType="submit" loading={loading}>
-                            Hantar Penolakan
+                            Submit Rejection
                         </Button>
                     </div>
                 </Form>

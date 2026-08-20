@@ -20,18 +20,18 @@ const { Title, Text } = Typography;
 const { Option } = Select;
 
 const PRIORITY_OPTIONS = [
-    { value: 'DO_FIRST', label: '🔴 DO FIRST', color: 'red' },
-    { value: 'SCHEDULE', label: '🔵 SCHEDULE', color: 'blue' },
-    { value: 'DELEGATE', label: '🟡 DELEGATE', color: 'gold' },
-    { value: 'ELIMINATE', label: '⚫ ELIMINATE', color: 'default' },
+    { value: 'DO_FIRST', label: 'Do First', color: 'red' },
+    { value: 'SCHEDULE', label: 'Schedule', color: 'blue' },
+    { value: 'DELEGATE', label: 'Delegate', color: 'gold' },
+    { value: 'ELIMINATE', label: 'Eliminate', color: 'default' },
 ];
 
 const FREQUENCY_OPTIONS = [
-    { value: 'DAILY',     label: '📆 Daily',     desc: 'Setiap hari' },
-    { value: 'WEEKLY',    label: '📅 Weekly',    desc: 'Setiap minggu' },
-    { value: 'MONTHLY',   label: '📅 Monthly',   desc: 'Setiap bulan' },
-    { value: 'QUARTERLY', label: '📆 Quarterly', desc: 'Setiap 3 bulan' },
-    { value: 'YEARLY',    label: '📋 Yearly',    desc: 'Setiap tahun' },
+    { value: 'DAILY',     label: 'Daily',     desc: 'Setiap hari' },
+    { value: 'WEEKLY',    label: 'Weekly',    desc: 'Setiap minggu' },
+    { value: 'MONTHLY',   label: 'Monthly',   desc: 'Setiap bulan' },
+    { value: 'QUARTERLY', label: 'Quarterly', desc: 'Setiap 3 bulan' },
+    { value: 'YEARLY',    label: 'Yearly',    desc: 'Setiap tahun' },
 ];
 
 const DAY_OF_WEEK_OPTIONS = [

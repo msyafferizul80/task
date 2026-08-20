@@ -41,6 +41,11 @@ The system segregates users into four main roles, each with strict row-level sec
 2. **Supervisor Assignment Policy**: Supervisors are restricted from assigning tasks to users outside their department. (Note: Admin and Manager roles have a `NULL` department and are bypassed from this restriction).
 3. **Strict Cross-Department Visibility & Action**: A Supervisor must NOT see, edit, or log time against a task from another department under any circumstances, even if that task is personally assigned to them (Option A strict mode).
 4. **Review Group Department Scoping (Option A Strict)**: Review group membership does NOT bypass department scoping. A Supervisor or Employee in a Review Group can only view and resolve group-escalated tasks belonging to their own department. Admin and Manager roles maintain global organization-wide review scope across all review groups.
+5. **Escalation Assignee & Originator Lifecycle (Option B)**:
+   - **Individual Escalation**: Sets `assignee_id = to_user_id`, transferring active ownership to the single reviewer.
+   - **Group Escalation**: Sets `assignee_id = null` (pooled queue) while `status = 'REVIEW'` and preserves the creator in `escalated_from_user_id`.
+   - **Originator Visibility**: Originators maintain continuous tracking of tasks they escalated out through a dedicated "Menunggu Semakan (Escalated Out)" view in *Tugasan Saya*, queried via `escalated_from_user_id = auth.uid()`.
+   - **Resolution Restoration**: When a review is resolved (Approved &rarr; `DONE`, Rejected &rarr; `IN_PROGRESS`), `assignee_id` is restored back to `escalated_from_user_id`.
 
 ---
 

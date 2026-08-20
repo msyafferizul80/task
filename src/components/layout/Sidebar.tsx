@@ -18,7 +18,8 @@ import {
     PauseCircle,
     Calendar,
     Inbox,
-    UserCheck
+    UserCheck,
+    Search
 } from 'lucide-react'
 import { createClient } from '@/utils/supabase/client'
 import { useRole } from '@/components/layout/RoleProvider'
@@ -79,8 +80,11 @@ export default function Sidebar() {
             .channel('sidebar-counts')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'tsk_tasks' }, fetchCountsAndProfile)
             .subscribe()
-        return () => { supabase.removeChannel(channel) }
-    }, [])
+
+        return () => {
+            supabase.removeChannel(channel)
+        }
+    }, [supabase])
 
     type SidebarNavItem = {
         name: string;
@@ -111,7 +115,7 @@ export default function Sidebar() {
     if (role === 'admin' || role === 'manager') {
         managementItems.push({ name: 'Submissions', href: '/submissions', icon: Inbox });
         managementItems.push({ name: 'Customers', href: '/customers', icon: Users });
-        managementItems.push({ name: 'Blueprints', href: '/blueprints', icon: Bot });
+        managementItems.push({ name: 'Task Blueprints', href: '/blueprints', icon: Bot });
     }
 
     if (role === 'admin') {
@@ -120,12 +124,12 @@ export default function Sidebar() {
     }
 
     const navGroups: { title: string; items: SidebarNavItem[] }[] = [
-        { title: 'Tugasan Saya', items: myWorkspaceItems },
-        { title: 'Projek & Kalendar', items: projectToolsItems }
+        { title: 'My Workspace', items: myWorkspaceItems },
+        { title: 'Projects & Schedule', items: projectToolsItems }
     ];
 
     if (managementItems.length > 0) {
-        navGroups.push({ title: 'Pengurusan', items: managementItems });
+        navGroups.push({ title: 'Management', items: managementItems });
     }
 
     // Mobile bottom navigation bar - optimized for on-the-go workflow
@@ -143,15 +147,10 @@ export default function Sidebar() {
     if (role === 'admin' || role === 'manager' || role === 'supervisor') {
         mobileOrderedItems.push({ name: 'Analytics', href: '/analytics', icon: BarChart2 });
     }
-    if (role === 'admin' || role === 'manager') {
-        mobileOrderedItems.push({ name: 'Submissions', href: '/submissions', icon: Inbox });
-        mobileOrderedItems.push({ name: 'Customers', href: '/customers', icon: Users });
-        mobileOrderedItems.push({ name: 'Blueprints', href: '/blueprints', icon: Bot });
-    }
 
     if (role === 'admin') {
         mobileOrderedItems.push({ name: 'Review Groups', href: '/review-groups', icon: UserCheck });
-        mobileOrderedItems.push({ name: 'User Management', href: '/users', icon: UserCircle });
+        mobileOrderedItems.push({ name: 'Users', href: '/users', icon: UserCircle });
     }
 
     const visibleMobileItems = mobileOrderedItems.slice(0, 4)
@@ -168,18 +167,34 @@ export default function Sidebar() {
     return (
         <>
             {/* ─── Desktop Sidebar ─── */}
-            <aside className="hidden md:flex flex-col w-64 h-screen bg-white border-r border-gray-200 shadow-sm sticky top-0 left-0 print:hidden">
-                <div className="h-20 flex items-center justify-center border-b border-gray-100 p-4">
+            <aside className="hidden md:flex flex-col w-64 h-screen bg-white border-r border-slate-200/80 shadow-2xs sticky top-0 left-0 print:hidden font-sans">
+                <div className="h-20 flex items-center justify-center border-b border-slate-100 p-4">
                     <img src="/logo.png" alt="Syazna World Logo" className="max-h-12 w-auto object-contain" />
                 </div>
 
-                <nav className="flex-1 overflow-y-auto py-6 px-4 space-y-8">
+                {/* Command Palette Trigger */}
+                <div className="px-4 pt-4 pb-1">
+                    <button
+                        onClick={() => window.dispatchEvent(new CustomEvent('open-command-palette'))}
+                        className="flex items-center justify-between w-full px-3 py-2 text-xs font-medium text-slate-500 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200/70 transition-colors group cursor-pointer shadow-2xs"
+                    >
+                        <span className="flex items-center gap-2 text-slate-500 group-hover:text-slate-700">
+                            <Search className="h-3.5 w-3.5 text-slate-400 group-hover:text-cyan-600 transition-colors" />
+                            Quick search...
+                        </span>
+                        <kbd className="px-1.5 py-0.5 text-[10px] font-mono font-semibold bg-white border border-slate-200 rounded text-slate-400 shadow-2xs">
+                            ⌘K
+                        </kbd>
+                    </button>
+                </div>
+
+                <nav className="flex-1 overflow-y-auto py-4 px-4 space-y-6">
                     {navGroups.map((group) => (
                         <div key={group.title}>
-                            <h3 className="px-3 text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">
+                            <h3 className="px-3 text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
                                 {group.title}
                             </h3>
-                            <div className="space-y-1">
+                            <div className="space-y-0.5">
                                 {group.items.map((item) => {
                                     const isActive = pathname === item.href
                                     const Icon = item.icon
@@ -187,15 +202,15 @@ export default function Sidebar() {
                                         <Link
                                             key={item.name}
                                             href={item.href}
-                                            className={`flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-colors ${isActive
-                                                ? "bg-indigo-50 text-indigo-700"
-                                                : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                                            className={`flex items-center gap-3 px-3 py-2 text-xs font-semibold rounded-lg transition-colors ${isActive
+                                                ? "bg-cyan-50/80 text-cyan-900 border border-cyan-100/60"
+                                                : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                                                 }`}
                                         >
-                                            <Icon className={`h-5 w-5 ${isActive ? "text-indigo-600" : "text-gray-400"}`} />
+                                            <Icon className={`h-4 w-4 ${isActive ? "text-cyan-600" : "text-slate-400"}`} />
                                             <span className="flex-1">{item.name}</span>
                                             {item.badge !== undefined && (
-                                                <span className={`flex items-center justify-center h-5 min-w-[20px] px-1 rounded-full text-white text-[10px] font-bold animate-pulse ${item.badgeColor === 'fuchsia' ? 'bg-fuchsia-500' : 'bg-amber-500'}`}>
+                                                <span className={`flex items-center justify-center h-4 min-w-[18px] px-1 rounded-full text-white text-[10px] font-bold font-mono ${item.badgeColor === 'fuchsia' ? 'bg-fuchsia-500' : 'bg-amber-500'}`}>
                                                     {item.badge}
                                                 </span>
                                             )}

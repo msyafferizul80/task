@@ -505,20 +505,30 @@ export default function TasksPage() {
             )
         },
         {
-            title: 'Date Created',
+            title: 'Created Date',
             dataIndex: 'created_at',
             key: 'created_at',
             width: '10%',
+            className: 'text-right',
             sorter: (a: Task, b: Task) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime(),
-            render: (date: string | null) => date ? new Date(date).toLocaleDateString() : '-'
+            render: (date: string | null) => (
+                <span className="font-mono tabular-nums text-xs text-slate-600">
+                    {date ? new Date(date).toLocaleDateString() : '-'}
+                </span>
+            )
         },
         {
             title: 'Due Date',
             dataIndex: 'due_date',
             key: 'due_date',
             width: '10%',
+            className: 'text-right',
             sorter: (a: Task, b: Task) => new Date(a.due_date || 0).getTime() - new Date(b.due_date || 0).getTime(),
-            render: (date: string | null) => date ? new Date(date).toLocaleDateString() : '-'
+            render: (date: string | null) => (
+                <span className="font-mono tabular-nums text-xs text-slate-600">
+                    {date ? new Date(date).toLocaleDateString() : '-'}
+                </span>
+            )
         },
         {
             title: 'Timer',
@@ -544,7 +554,7 @@ export default function TasksPage() {
                 <Button
                     type="text"
                     icon={<EditOutlined />}
-                    className="text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50"
+                    className="text-slate-500 hover:text-cyan-600 hover:bg-cyan-50"
                     onClick={() => {
                         setSelectedTask(record);
                         editForm.setFieldsValue({
@@ -572,18 +582,18 @@ export default function TasksPage() {
 
     return (
         <div className="flex flex-col gap-6 font-sans">
-            <div className="bg-white/80 p-6 rounded-2xl shadow-sm border border-slate-100">
-                <Title level={2} className="!text-indigo-900 !mb-2 mt-0">Task Listing</Title>
-                <Text type="secondary" className="text-base">Lihat dan urus semua tugasan termasuk yang telah siap (DONE).</Text>
+            <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-2xs border border-slate-200/80">
+                <Title level={3} className="!text-slate-900 !mb-1 mt-0 font-bold">Task Listing</Title>
+                <Text type="secondary" className="text-xs sm:text-sm">View and manage all organization tasks including completed (DONE).</Text>
             </div>
 
-            <Card variant="borderless" className="shadow-sm rounded-xl border border-slate-100">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6 bg-slate-50 p-4 rounded-lg">
+            <Card variant="borderless" className="shadow-2xs rounded-2xl border border-slate-200/80 bg-white">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6 bg-slate-50 p-4 rounded-xl border border-slate-100">
                     <div className="sm:col-span-2">
-                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Search Title / Nota</label>
+                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">Search Title / Notes</label>
                         <Input
-                            placeholder="Cari tugasan..."
-                            prefix={<SearchOutlined />}
+                            placeholder="Search tasks..."
+                            prefix={<SearchOutlined className="text-slate-400" />}
                             value={searchText}
                             onChange={e => setSearchText(e.target.value)}
                             size="large"
@@ -591,9 +601,9 @@ export default function TasksPage() {
                         />
                     </div>
                     <div>
-                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Status</label>
+                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">Status</label>
                         <Select
-                            placeholder="Semua Status"
+                            placeholder="All Statuses"
                             value={filterStatus || undefined}
                             onChange={val => setFilterStatus(val || '')}
                             allowClear
@@ -608,9 +618,9 @@ export default function TasksPage() {
                         </Select>
                     </div>
                     <div>
-                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Customer</label>
+                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">Customer</label>
                         <Select
-                            placeholder="Semua Customer"
+                            placeholder="All Customers"
                             value={filterCustomer || undefined}
                             onChange={val => setFilterCustomer(val || '')}
                             allowClear
@@ -624,9 +634,9 @@ export default function TasksPage() {
                         </Select>
                     </div>
                     <div className="sm:col-span-2">
-                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">PIC / Assignee</label>
+                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Assignee / PIC</label>
                         <Select
-                            placeholder="Semua PIC"
+                            placeholder="All Assignees"
                             value={filterPIC || undefined}
                             onChange={val => setFilterPIC(val || '')}
                             allowClear
