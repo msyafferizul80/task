@@ -11,6 +11,22 @@ import dayjs from 'dayjs';
 const { Title, Text } = Typography;
 const { Option } = Select;
 
+export const formatUserRoleLabel = (p: { full_name?: string; role?: string; department?: string | null }) => {
+    const roleCapitalized = p.role ? (p.role.charAt(0).toUpperCase() + p.role.slice(1).toLowerCase()) : '';
+    
+    // For Admin / Manager: global scope -> role only, e.g. "En Hafiz (Manager)"
+    if (p.role === 'admin' || p.role === 'manager') {
+        return `${p.full_name} (${roleCapitalized})`;
+    }
+    
+    // For Supervisor / Employee: department scoped -> role + department, e.g. "Cik Arina (Supervisor · Outsourcing)"
+    if (p.department) {
+        return `${p.full_name} (${roleCapitalized} · ${p.department})`;
+    }
+    
+    return `${p.full_name} (${roleCapitalized || 'Staff'})`;
+};
+
 export default function ReviewGroupsPage() {
     const supabase = createClient();
     const { role } = useRole();
@@ -26,7 +42,7 @@ export default function ReviewGroupsPage() {
         try {
             setLoading(true);
 
-            // Fetch groups, members, and active profiles in parallel
+            // Fetch groups, members, and active review-eligible profiles (Admin, Manager, Supervisor) in parallel
             const [groupsRes, membersRes, profilesRes] = await Promise.all([
                 supabase
                     .from('tsk_review_groups')
@@ -49,6 +65,7 @@ export default function ReviewGroupsPage() {
                     .from('lv_profiles')
                     .select('id, full_name, avatar_url, department, role')
                     .eq('status', 'active')
+                    .in('role', ['admin', 'manager', 'supervisor'])
                     .order('full_name')
             ]);
 
@@ -279,19 +296,24 @@ export default function ReviewGroupsPage() {
                 }
                 return (
                     <div className="flex flex-wrap gap-1.5 items-center">
-                        {members.map(m => (
-                            <Tooltip key={m.id} title={`${m.full_name} (${m.department || 'General'})`}>
-                                <Tag className="rounded-full px-2.5 py-0.5 bg-slate-50 border-slate-200 text-slate-700 flex items-center gap-1">
-                                    <Avatar size={16} className="bg-indigo-500 text-[10px]">
-                                        {m.full_name.charAt(0).toUpperCase()}
-                                    </Avatar>
-                                    <span className="text-xs">{m.full_name}</span>
-                                    {m.department && (
-                                        <span className="text-[10px] text-slate-400 font-mono">[{m.department}]</span>
-                                    )}
-                                </Tag>
-                            </Tooltip>
-                        ))}
+                        {members.map(m => {
+                            const roleCap = m.role ? (m.role.charAt(0).toUpperCase() + m.role.slice(1).toLowerCase()) : '';
+                            const scopeLabel = (m.role === 'admin' || m.role === 'manager')
+                                ? roleCap
+                                : (m.department ? `${roleCap} · ${m.department}` : (roleCap || 'Staff'));
+
+                            return (
+                                <Tooltip key={m.id} title={formatUserRoleLabel(m)}>
+                                    <Tag className="rounded-full px-2.5 py-0.5 bg-slate-50 border-slate-200 text-slate-700 flex items-center gap-1.5">
+                                        <Avatar size={16} className={`${m.role === 'admin' || m.role === 'manager' ? 'bg-purple-600' : 'bg-indigo-500'} text-[10px]`}>
+                                            {m.full_name ? m.full_name.charAt(0).toUpperCase() : 'U'}
+                                        </Avatar>
+                                        <span className="text-xs font-medium">{m.full_name}</span>
+                                        <span className="text-[10px] text-slate-500 font-mono">({scopeLabel})</span>
+                                    </Tag>
+                                </Tooltip>
+                            );
+                        })}
                     </div>
                 );
             }
@@ -409,7 +431,7 @@ export default function ReviewGroupsPage() {
                         >
                             {profiles.map(p => (
                                 <Option key={p.id} value={p.id}>
-                                    {p.full_name} {p.department ? `(${p.department})` : ''}
+                                    {formatUserRoleLabel(p)}
                                 </Option>
                             ))}
                         </Select>

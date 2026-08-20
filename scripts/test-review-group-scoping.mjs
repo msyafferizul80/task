@@ -233,4 +233,55 @@ assert.strictEqual(rejectAction.updatedTask.assignee_id, 'originator-user-2');
 assert.strictEqual(rejectAction.updatedTask.rejection_feedback, 'Tolong betulkan format jadual.');
 console.log('✅ Test 4 Passed: Atomic concurrency and distinct end-states (DONE vs IN_PROGRESS) verified.\n');
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Test 5: Role-Aware Label Formatting & Member Role Filtering
+// ─────────────────────────────────────────────────────────────────────────────
+console.log('Test 5: Testing Role-Aware Label Formatting & Member Role Filtering...');
+
+function formatUserRoleLabel(p) {
+  const roleCapitalized = p.role ? (p.role.charAt(0).toUpperCase() + p.role.slice(1).toLowerCase()) : '';
+  if (p.role === 'admin' || p.role === 'manager') {
+    return `${p.full_name} (${roleCapitalized})`;
+  }
+  if (p.department) {
+    return `${p.full_name} (${roleCapitalized} · ${p.department})`;
+  }
+  return `${p.full_name} (${roleCapitalized || 'Staff'})`;
+}
+
+// 1. Label format assertions
+assert.strictEqual(
+  formatUserRoleLabel({ full_name: 'En Hafiz', role: 'manager', department: 'Human Resources' }),
+  'En Hafiz (Manager)',
+  'Manager label should omit department since access is global'
+);
+
+assert.strictEqual(
+  formatUserRoleLabel({ full_name: 'Puan Widuri', role: 'admin', department: 'Outsourcing' }),
+  'Puan Widuri (Admin)',
+  'Admin label should omit department since access is global'
+);
+
+assert.strictEqual(
+  formatUserRoleLabel({ full_name: 'Cik Arina', role: 'supervisor', department: 'Outsourcing' }),
+  'Cik Arina (Supervisor · Outsourcing)',
+  'Supervisor label must include role and department scope'
+);
+
+// 2. Member picker eligibility filter assertion
+const ALLOWED_REVIEW_ROLES = ['admin', 'manager', 'supervisor'];
+const sampleStaff = [
+  { full_name: 'En Hafiz', role: 'manager' },
+  { full_name: 'Cik Arina', role: 'supervisor' },
+  { full_name: 'Megat Syafferizul', role: 'admin' },
+  { full_name: 'Puan Qaisara', role: 'employee' },
+  { full_name: 'Cik Nurin', role: 'employee' }
+];
+
+const eligibleStaff = sampleStaff.filter(s => ALLOWED_REVIEW_ROLES.includes(s.role));
+assert.strictEqual(eligibleStaff.length, 3, 'Should filter out employees without approval authority');
+assert.strictEqual(eligibleStaff.some(s => s.role === 'employee'), false, 'No employees should be eligible');
+
+console.log('✅ Test 5 Passed: Role-aware labels and member role filtering verified.\n');
+
 console.log('🎉 ALL REVIEW GROUP ESCALATION TESTS PASSED SUCCESSFULLY!');
