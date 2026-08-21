@@ -26,7 +26,7 @@ const DONE_HIDDEN_KEY = 'kanban_done_hidden';
 export default function KanbanBoard({ tasks, role, profiles, currentUserId }: KanbanBoardProps) {
     const supabase = createClient();
     const { handleStatusChange } = useTimer();
-    const { department: currentUserDept } = useRole();
+    const { department: currentUserDept, accessibleDepartments } = useRole();
     const isAdminOrManager = role === 'admin' || role === 'manager';
     const [isDragging, setIsDragging] = useState(false);
     const [isExpanded, setIsExpanded] = useState(false);
@@ -137,14 +137,14 @@ export default function KanbanBoard({ tasks, role, profiles, currentUserId }: Ka
         const activeTask = boardTasks.find(t => t.id === taskId);
         if (!activeTask || activeTask.status === newStatus) return;
 
-        // Only allow admins/managers, supervisors (if same department), or the task's assignee to move the task
+        // Only allow admins/managers, supervisors (if accessible department), or the task's assignee to move the task
         const canMoveTask = 
             role === 'admin' || 
             role === 'manager' || 
-            (role === 'supervisor' && activeTask.department === currentUserDept) ||
+            (role === 'supervisor' && !!activeTask.department && accessibleDepartments.includes(activeTask.department)) ||
             activeTask.assignee_id === currentUserId;
         if (!canMoveTask) {
-            message.error(role === 'supervisor' ? 'You can only move tasks within your department' : 'You can only move tasks assigned to you');
+            message.error(role === 'supervisor' ? 'You can only move tasks within your accessible departments' : 'You can only move tasks assigned to you');
             return;
         }
 

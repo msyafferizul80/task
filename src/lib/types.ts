@@ -1,6 +1,14 @@
 export type PriorityType = 'DO_FIRST' | 'SCHEDULE' | 'DELEGATE' | 'ELIMINATE';
 export type TaskStatus = 'BACKLOG' | 'CLIENT_HOLD' | 'IN_PROGRESS' | 'REVIEW' | 'DONE';
 
+export interface UserDepartment {
+    id: string;
+    user_id: string;
+    department: string;
+    granted_by?: string | null;
+    created_at?: string;
+}
+
 export interface Profile {
     id: string;
     full_name: string;
@@ -8,6 +16,8 @@ export interface Profile {
     jawatan?: string;
     department?: string;
     role?: string;
+    user_departments?: UserDepartment[];
+    additional_departments?: string[];
 }
 
 export interface ReviewGroup {

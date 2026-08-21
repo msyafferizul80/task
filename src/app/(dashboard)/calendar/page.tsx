@@ -42,8 +42,9 @@ export default function CalendarTimelinePage() {
     const [ganttGroupBy, setGanttGroupBy] = useState<'assignee' | 'flat'>('assignee');
 
     const supabase = createClient();
-    const { role, department: currentUserDept } = useRole();
+    const { role, department: currentUserDept, accessibleDepartments } = useRole();
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+    const [userDepartments, setUserDepartments] = useState<{ user_id: string; department: string }[]>([]);
 
     const fetchData = useCallback(async () => {
         try {
@@ -64,17 +65,22 @@ export default function CalendarTimelinePage() {
                 )
             `).order('created_at', { ascending: false });
 
-            // If user is supervisor, fetch all tasks in department. If employee, fetch their own tasks.
-            if (role === 'supervisor' && currentUserDept) {
-                query = query.eq('department', currentUserDept);
+            // If user is supervisor, fetch all tasks in accessible departments. If employee, fetch their own tasks.
+            if (role === 'supervisor') {
+                if (accessibleDepartments.length > 0) {
+                    query = query.in('department', accessibleDepartments);
+                } else if (currentUserDept) {
+                    query = query.eq('department', currentUserDept);
+                }
             } else if (role !== 'admin' && role !== 'manager' && userId) {
                 query = query.eq('assignee_id', userId);
             }
 
-            const [tasksRes, profilesRes, customersRes] = await Promise.all([
+            const [tasksRes, profilesRes, customersRes, userDeptsRes] = await Promise.all([
                 query,
-                supabase.from('lv_profiles').select('id, full_name, avatar_url, department').eq('status', 'active').order('full_name'),
-                supabase.from('tsk_customers').select('id, name, is_internal').eq('status', 'active').order('name')
+                supabase.from('lv_profiles').select('id, full_name, avatar_url, department, role').eq('status', 'active').order('full_name'),
+                supabase.from('tsk_customers').select('id, name, is_internal').eq('status', 'active').order('name'),
+                supabase.from('user_departments').select('user_id, department')
             ]);
 
             if (tasksRes.error) throw tasksRes.error;
@@ -84,13 +90,14 @@ export default function CalendarTimelinePage() {
             setTasks(tasksRes.data as Task[] || []);
             setProfiles(profilesRes.data || []);
             setCustomers(customersRes.data || []);
+            setUserDepartments(userDeptsRes.data || []);
         } catch (error: any) {
             console.error('Error fetching data:', error.message);
             message.error('Failed to fetch calendar data');
         } finally {
             setLoading(false);
         }
-    }, [role]);
+    }, [role, currentUserDept, accessibleDepartments]);
 
     useEffect(() => {
         fetchData();
@@ -518,14 +525,25 @@ export default function CalendarTimelinePage() {
         );
     };
 
-    const assignableProfiles = React.useMemo(() => {
-        if (role === 'supervisor' && currentUserDept) {
-            return profiles.filter(p => p.department === currentUserDept);
+    const getAssignableProfilesForDept = useCallback((dept?: string | null) => {
+        if (!dept) {
+            if (role === 'supervisor') {
+                return profiles.filter(p => 
+                    p.role === 'admin' || p.role === 'manager' ||
+                    (p.department && accessibleDepartments.includes(p.department)) ||
+                    userDepartments.some(ud => ud.user_id === p.id && accessibleDepartments.includes(ud.department))
+                );
+            }
+            return profiles;
         }
-        return profiles;
-    }, [profiles, role, currentUserDept]);
+        return profiles.filter(p => {
+            if (p.role === 'admin' || p.role === 'manager') return true;
+            if (p.department === dept) return true;
+            return userDepartments.some(ud => ud.user_id === p.id && ud.department === dept);
+        });
+    }, [profiles, userDepartments, role, accessibleDepartments]);
 
-    const canEditTaskFields = role === 'admin' || role === 'manager' || (role === 'supervisor' && selectedTask?.department === currentUserDept);
+    const canEditTaskFields = role === 'admin' || role === 'manager' || (role === 'supervisor' && !!selectedTask?.department && accessibleDepartments.includes(selectedTask.department));
 
     if (loading) return <div className="flex justify-center items-center h-[calc(100vh-100px)]"><Spin size="large" /></div>;
 
@@ -682,11 +700,17 @@ export default function CalendarTimelinePage() {
                                         </Select>
                                     </Form.Item>
 
-                                    <Form.Item noStyle shouldUpdate={(prev, cur) => prev.customer_name !== cur.customer_name}>
+                                    <Form.Item noStyle shouldUpdate={(prev, cur) => prev.customer_name !== cur.customer_name || prev.department !== cur.department}>
                                         {({ getFieldValue }) => {
                                             const selCustomer = customers.find((c: any) => c.name === getFieldValue('customer_name'));
                                             const isInternal = selCustomer?.is_internal ?? false;
                                             const hasBadCombo = isInternal && getFieldValue('department') === 'Outsourcing';
+                                            const allDepts = ['Outsourcing', 'IT', 'Sales', 'Marketing', 'Recruitment', 'Human Resources', 'Account'];
+                                            const allowedDepts = (role === 'admin' || role === 'manager')
+                                                ? allDepts
+                                                : (accessibleDepartments.length > 0 ? accessibleDepartments : (currentUserDept ? [currentUserDept] : allDepts));
+                                            const filteredDepts = allowedDepts.filter(d => !(isInternal && d === 'Outsourcing'));
+
                                             return (
                                                 <Form.Item name="department" label="Jabatan (Department)" className="col-span-2 sm:col-span-1" rules={[{ required: true, message: 'Please select a department' }]}
                                                     extra={hasBadCombo ? <span className="text-amber-600 text-xs">⚠️ This task's department may need review</span> : undefined}
@@ -695,14 +719,13 @@ export default function CalendarTimelinePage() {
                                                         placeholder="Select Department"
                                                         size="large"
                                                         disabled={(selectedTask?.status === 'DONE' && role !== 'admin' && role !== 'manager') || !canEditTaskFields}
+                                                        onChange={() => {
+                                                            editForm.setFieldsValue({ assignee_id: undefined });
+                                                        }}
                                                     >
-                                                        {(!isInternal || getFieldValue('department') === 'Outsourcing') && <Option value="Outsourcing">Outsourcing</Option>}
-                                                        <Option value="IT">IT</Option>
-                                                        <Option value="Sales">Sales</Option>
-                                                        <Option value="Marketing">Marketing</Option>
-                                                        <Option value="Recruitment">Recruitment</Option>
-                                                        <Option value="Human Resources">Human Resources</Option>
-                                                        <Option value="Account">Account</Option>
+                                                        {filteredDepts.map(dept => (
+                                                            <Option key={dept} value={dept}>{dept}</Option>
+                                                        ))}
                                                     </Select>
                                                 </Form.Item>
                                             );
@@ -713,12 +736,20 @@ export default function CalendarTimelinePage() {
                                         <Input placeholder="Enter task title" size="large" disabled={(selectedTask?.status === 'DONE' && role !== 'admin' && role !== 'manager') || !canEditTaskFields} />
                                     </Form.Item>
 
-                                    <Form.Item name="assignee_id" label="PIC / Assignee" rules={[{ required: true, message: 'Assignee is required' }]}>
-                                        <Select placeholder="Select Assignee" size="large" showSearch optionFilterProp="children" disabled={(selectedTask?.status === 'DONE' && role !== 'admin' && role !== 'manager') || !canEditTaskFields}>
-                                            {assignableProfiles.map(p => (
-                                                <Option key={p.id} value={p.id}>{p.full_name}</Option>
-                                            ))}
-                                        </Select>
+                                    <Form.Item noStyle shouldUpdate={(prev, cur) => prev.department !== cur.department}>
+                                        {({ getFieldValue }) => {
+                                            const currentDept = getFieldValue('department') || selectedTask?.department;
+                                            const assignables = getAssignableProfilesForDept(currentDept);
+                                            return (
+                                                <Form.Item name="assignee_id" label="PIC / Assignee" rules={[{ required: true, message: 'Assignee is required' }]}>
+                                                    <Select placeholder="Select Assignee" size="large" showSearch optionFilterProp="children" disabled={(selectedTask?.status === 'DONE' && role !== 'admin' && role !== 'manager') || !canEditTaskFields}>
+                                                        {assignables.map(p => (
+                                                            <Option key={p.id} value={p.id}>{p.full_name} {p.department ? `(${p.department})` : ''}</Option>
+                                                        ))}
+                                                    </Select>
+                                                </Form.Item>
+                                            );
+                                        }}
                                     </Form.Item>
 
                                     <Form.Item name="priority_type" label="Eisenhower Priority" rules={[{ required: true, message: 'Please select a priority' }]}>

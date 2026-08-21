@@ -7,9 +7,19 @@ import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { createClient } from '@/utils/supabase/client';
 import { useRole } from '@/components/layout/RoleProvider';
 
+const ALL_DEPARTMENTS = [
+    'Outsourcing',
+    'IT',
+    'Sales',
+    'Marketing',
+    'Recruitment',
+    'Human Resources',
+    'Account'
+];
+
 export default function UsersPage() {
     const supabase = createClient();
-    const { role } = useRole();
+    const { role, userId: currentUserId } = useRole();
     const [users, setUsers] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -20,23 +30,38 @@ export default function UsersPage() {
     const fetchUsers = async () => {
         try {
             setLoading(true);
-            const { data, error } = await supabase
-                .from('lv_profiles')
-                .select('*')
-                .order('full_name');
+            const [profilesRes, deptsRes] = await Promise.all([
+                supabase.from('lv_profiles').select('*').order('full_name'),
+                supabase.from('user_departments').select('*')
+            ]);
 
-            if (!error && data) {
-                // Sort: active first, then inactive/suspended — alphabetically within each group
-                data.sort((a: any, b: any) => {
-                    const statusOrder = (s: string) => (s === 'active' ? 0 : 1);
-                    const diff = statusOrder(a.status) - statusOrder(b.status);
-                    if (diff !== 0) return diff;
-                    return (a.full_name || '').localeCompare(b.full_name || '');
-                });
+            if (profilesRes.error) throw profilesRes.error;
+            if (deptsRes.error && deptsRes.error.code !== 'PGRST205' && deptsRes.error.code !== '42P01') {
+                console.warn('user_departments query notice:', deptsRes.error.message);
             }
 
-            if (error) throw error;
-            setUsers(data || []);
+            const deptMap: Record<string, string[]> = {};
+            (deptsRes.data || []).forEach((row: any) => {
+                if (!deptMap[row.user_id]) {
+                    deptMap[row.user_id] = [];
+                }
+                deptMap[row.user_id].push(row.department);
+            });
+
+            const data = (profilesRes.data || []).map((p: any) => ({
+                ...p,
+                additional_departments: deptMap[p.id] || []
+            }));
+
+            // Sort: active first, then inactive/suspended — alphabetically within each group
+            data.sort((a: any, b: any) => {
+                const statusOrder = (s: string) => (s === 'active' ? 0 : 1);
+                const diff = statusOrder(a.status) - statusOrder(b.status);
+                if (diff !== 0) return diff;
+                return (a.full_name || '').localeCompare(b.full_name || '');
+            });
+
+            setUsers(data);
         } catch (error: any) {
             console.error('Error fetching users:', error.message);
             message.error('Failed to load users');
@@ -52,26 +77,58 @@ export default function UsersPage() {
     const handleSave = async (values: any) => {
         setIsSubmitting(true);
         try {
+            const primaryDept = values.department || null;
+            const additionalDepts: string[] = (values.additional_departments || [])
+                .filter((d: string) => d && d !== primaryDept);
+
             if (editingId) {
                 // Update existing user profile
-                const { error } = await supabase
+                const { error: profileError } = await supabase
                     .from('lv_profiles')
                     .update({ 
                         full_name: values.full_name, 
                         role: values.role, 
                         status: values.status,
-                        department: values.department || null
+                        department: primaryDept
                     })
                     .eq('id', editingId);
 
-                if (error) throw error;
+                if (profileError) throw profileError;
+
+                // Sync user_departments table: delete old grants and insert new ones
+                const { error: deleteDeptError } = await supabase
+                    .from('user_departments')
+                    .delete()
+                    .eq('user_id', editingId);
+
+                if (deleteDeptError) {
+                    console.error('Error deleting previous user departments:', deleteDeptError);
+                }
+
+                if (additionalDepts.length > 0) {
+                    const insertRows = additionalDepts.map((d: string) => ({
+                        user_id: editingId,
+                        department: d,
+                        granted_by: currentUserId
+                    }));
+
+                    const { error: insertDeptError } = await supabase
+                        .from('user_departments')
+                        .insert(insertRows);
+
+                    if (insertDeptError) throw insertDeptError;
+                }
+
                 message.success('User updated successfully');
             } else {
                 // Create new user via API route
                 const res = await fetch('/api/users', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(values)
+                    body: JSON.stringify({
+                        ...values,
+                        additional_departments: additionalDepts
+                    })
                 });
 
                 const data = await res.json();
@@ -125,15 +182,17 @@ export default function UsersPage() {
 
     const openEditModal = (record: any) => {
         setEditingId(record.id);
-        form.setFieldsValue(record);
+        form.setFieldsValue({
+            ...record,
+            additional_departments: record.additional_departments || []
+        });
         setIsModalOpen(true);
     };
 
     const openCreateModal = () => {
         setEditingId(null);
         form.resetFields();
-        // Set default values for new user
-        form.setFieldsValue({ status: 'active' });
+        form.setFieldsValue({ status: 'active', additional_departments: [] });
         setIsModalOpen(true);
     };
 
@@ -144,16 +203,47 @@ export default function UsersPage() {
             title: 'Role',
             dataIndex: 'role',
             key: 'role',
-            render: (role: string) => {
+            render: (roleVal: string) => {
                 let color = 'blue';
-                if (role === 'admin') color = 'purple';
-                if (role === 'manager') color = 'orange';
-                if (role === 'supervisor') color = 'green';
-                return <Tag color={color}>{role?.toUpperCase() || 'USER'}</Tag>;
+                if (roleVal === 'admin') color = 'purple';
+                if (roleVal === 'manager') color = 'orange';
+                if (roleVal === 'supervisor') color = 'green';
+                return <Tag color={color}>{roleVal?.toUpperCase() || 'USER'}</Tag>;
             }
         },
-        { title: 'Department', dataIndex: 'department', key: 'department', render: (dept: string) => dept || '—' },
-        { title: 'Status', dataIndex: 'status', key: 'status' },
+        {
+            title: 'Primary Department',
+            dataIndex: 'department',
+            key: 'department',
+            render: (dept: string) => dept ? <Tag color="geekblue">{dept}</Tag> : '—'
+        },
+        {
+            title: 'Additional / Loaned Depts',
+            dataIndex: 'additional_departments',
+            key: 'additional_departments',
+            render: (depts: string[]) => {
+                if (!depts || depts.length === 0) return <span className="text-gray-400">—</span>;
+                return (
+                    <div className="flex flex-wrap gap-1">
+                        {depts.map(d => (
+                            <Tag key={d} color="cyan">
+                                {d}
+                            </Tag>
+                        ))}
+                    </div>
+                );
+            }
+        },
+        {
+            title: 'Status',
+            dataIndex: 'status',
+            key: 'status',
+            render: (s: string) => (
+                <Tag color={s === 'active' ? 'success' : 'default'}>
+                    {s?.toUpperCase()}
+                </Tag>
+            )
+        },
         {
             title: 'Action',
             key: 'action',
@@ -182,7 +272,7 @@ export default function UsersPage() {
             <div className="flex justify-between items-center mb-6">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-800">User Management</h1>
-                    <p className="text-gray-500 text-sm">Manage staff & PICs (Editing Profiles)</p>
+                    <p className="text-gray-500 text-sm">Manage staff & PICs, roles, and loaned multi-department access</p>
                 </div>
                 <Button type="primary" onClick={openCreateModal} icon={<PlusOutlined />}>
                     Add New User
@@ -201,7 +291,7 @@ export default function UsersPage() {
             />
 
             <Modal
-                title={editingId ? "Edit User Profile" : "Add New User"}
+                title={editingId ? "Edit User Profile & Loaned Departments" : "Add New User"}
                 open={isModalOpen}
                 onCancel={() => setIsModalOpen(false)}
                 onOk={() => form.submit()}
@@ -245,17 +335,13 @@ export default function UsersPage() {
                                 return (
                                     <Form.Item 
                                         name="department" 
-                                        label="Department" 
-                                        rules={[{ required: true, message: 'Please select a department for the supervisor' }]}
+                                        label="Primary / Home Department" 
+                                        rules={[{ required: true, message: 'Please select a primary department for the supervisor' }]}
                                     >
-                                        <Select placeholder="Select a department">
-                                            <Option value="Outsourcing">Outsourcing</Option>
-                                            <Option value="IT">IT</Option>
-                                            <Option value="Sales">Sales</Option>
-                                            <Option value="Marketing">Marketing</Option>
-                                            <Option value="Recruitment">Recruitment</Option>
-                                            <Option value="Human Resources">Human Resources</Option>
-                                            <Option value="Account">Account</Option>
+                                        <Select placeholder="Select primary department">
+                                            {ALL_DEPARTMENTS.map(d => (
+                                                <Option key={d} value={d}>{d}</Option>
+                                            ))}
                                         </Select>
                                     </Form.Item>
                                 );
@@ -263,16 +349,40 @@ export default function UsersPage() {
                             return (
                                 <Form.Item 
                                     name="department" 
-                                    label="Department (Optional)"
+                                    label="Primary / Home Department (Optional)"
                                 >
-                                    <Select placeholder="Select a department" allowClear>
-                                        <Option value="Outsourcing">Outsourcing</Option>
-                                        <Option value="IT">IT</Option>
-                                        <Option value="Sales">Sales</Option>
-                                        <Option value="Marketing">Marketing</Option>
-                                        <Option value="Recruitment">Recruitment</Option>
-                                        <Option value="Human Resources">Human Resources</Option>
-                                        <Option value="Account">Account</Option>
+                                    <Select placeholder="Select primary department" allowClear>
+                                        {ALL_DEPARTMENTS.map(d => (
+                                            <Option key={d} value={d}>{d}</Option>
+                                        ))}
+                                    </Select>
+                                </Form.Item>
+                            );
+                        }}
+                    </Form.Item>
+
+                    <Form.Item 
+                        noStyle 
+                        shouldUpdate={(prevValues, currentValues) => prevValues.department !== currentValues.department}
+                    >
+                        {({ getFieldValue }) => {
+                            const primaryDept = getFieldValue('department');
+                            const availableAdditionalDepts = ALL_DEPARTMENTS.filter(d => d !== primaryDept);
+
+                            return (
+                                <Form.Item 
+                                    name="additional_departments" 
+                                    label="Additional Departments (Staff Loan / Borrowed)"
+                                    tooltip="Grants department-member access (view/create/update tasks) to additional borrowed departments without changing their primary home department."
+                                >
+                                    <Select 
+                                        mode="multiple" 
+                                        placeholder="Select additional borrowed departments" 
+                                        allowClear
+                                    >
+                                        {availableAdditionalDepts.map(d => (
+                                            <Option key={d} value={d}>{d}</Option>
+                                        ))}
                                     </Select>
                                 </Form.Item>
                             );

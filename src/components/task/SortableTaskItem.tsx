@@ -30,11 +30,11 @@ export default function SortableTaskItem({
   isDone = false,
   currentUserId,
 }: SortableTaskItemProps) {
-  const { department: currentUserDept } = useRole();
+  const { department: currentUserDept, accessibleDepartments } = useRole();
   const isAdminOrManager = role === 'admin' || role === 'manager';
   const canDrag =
     isAdminOrManager ||
-    (role === 'supervisor' && task.department === currentUserDept) ||
+    (role === 'supervisor' && !!task.department && accessibleDepartments.includes(task.department)) ||
     task.assignee_id === currentUserId;
 
   const {

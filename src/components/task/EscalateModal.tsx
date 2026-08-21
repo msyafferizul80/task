@@ -36,28 +36,32 @@ export default function EscalateModal({
     const [escalateEnabled, setEscalateEnabled] = useState(true);
     const [targetType, setTargetType] = useState<'INDIVIDUAL' | 'GROUP'>('INDIVIDUAL');
     const [reviewGroups, setReviewGroups] = useState<ReviewGroup[]>([]);
+    const [userDepartments, setUserDepartments] = useState<{ user_id: string; department: string }[]>([]);
     const [loadingGroups, setLoadingGroups] = useState(false);
     const supabase = createClient();
 
     useEffect(() => {
         if (isOpen) {
-            const fetchGroups = async () => {
+            const fetchGroupsAndDepts = async () => {
                 setLoadingGroups(true);
                 try {
-                    const { data, error } = await supabase
-                        .from('tsk_review_groups')
-                        .select('*')
-                        .order('name');
-                    if (!error && data) {
-                        setReviewGroups(data as ReviewGroup[]);
+                    const [groupsRes, deptsRes] = await Promise.all([
+                        supabase.from('tsk_review_groups').select('*').order('name'),
+                        supabase.from('user_departments').select('user_id, department')
+                    ]);
+                    if (!groupsRes.error && groupsRes.data) {
+                        setReviewGroups(groupsRes.data as ReviewGroup[]);
+                    }
+                    if (!deptsRes.error && deptsRes.data) {
+                        setUserDepartments(deptsRes.data);
                     }
                 } catch (e) {
-                    console.error('Error loading review groups:', e);
+                    console.error('Error loading review groups & departments:', e);
                 } finally {
                     setLoadingGroups(false);
                 }
             };
-            fetchGroups();
+            fetchGroupsAndDepts();
         }
     }, [isOpen, supabase]);
 
@@ -361,11 +365,20 @@ export default function EscalateModal({
                                     showSearch
                                     optionFilterProp="children"
                                 >
-                                    {profiles.filter(p => p.id !== currentUserId).map(p => (
-                                        <Option key={p.id} value={p.id}>
-                                            {p.full_name} {p.department ? `(${p.department})` : ''}
-                                        </Option>
-                                    ))}
+                                    {profiles.filter(p => {
+                                        if (p.id === currentUserId) return false;
+                                        if (!task?.department) return true;
+                                        if (p.role === 'admin' || p.role === 'manager') return true;
+                                        if (p.department === task.department) return true;
+                                        return userDepartments.some(ud => ud.user_id === p.id && ud.department === task.department);
+                                    }).map(p => {
+                                        const isLoaned = task?.department && p.department !== task.department && userDepartments.some(ud => ud.user_id === p.id && ud.department === task.department);
+                                        return (
+                                            <Option key={p.id} value={p.id}>
+                                                {p.full_name} {p.department ? `(${p.department}${isLoaned ? ` · Loaned to ${task.department}` : ''})` : ''}
+                                            </Option>
+                                        );
+                                    })}
                                 </Select>
                             </Form.Item>
                         ) : (

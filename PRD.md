@@ -101,11 +101,14 @@ A centralized notification router that formats and pushes system alerts to Teleg
 * `tsk_department_settings`: Stores department metadata, including specific Telegram Chat IDs.
 * `tsk_customers`: Stores customer profiles and the `is_internal` boolean flag.
 * `tsk_comments`: Stores comment threads on tasks.
-* `lv_profiles`: Auth-synced profiles containing user roles and departments.
+* `tsk_attachments`: Stores file attachments uploaded to tasks and comments.
+* `lv_profiles`: Auth-synced profiles containing user roles and primary departments.
+* `user_departments`: Stores additive borrowed/loaned department access grants per user.
 
-### 5.2 PostgreSQL Triggers
-1. `trg_sync_and_validate_task`: Consolidates `is_internal` syncing, supervisor department-forcing, internal outsourcing validation, and universal assignee department consistency validation. Runs `BEFORE INSERT OR UPDATE` on `tsk_tasks`.
-2. `task_webhook`: POSTs task creation/update payloads to the Telegram notification handler Edge Function. Runs `AFTER INSERT OR UPDATE` on `tsk_tasks`.
+### 5.2 PostgreSQL Triggers & Shared Access Functions
+1. `user_has_department_access(p_user_id, p_department)`: Centralized `SECURITY DEFINER` function (with locked `search_path = public, pg_temp`) returning `true` if the user is Admin/Manager, if `p_department` is their primary home department, or if an active grant exists in `user_departments`.
+2. `trg_sync_and_validate_task`: Consolidates `is_internal` syncing, creator department validation (without auto-forcing), internal outsourcing validation, and universal assignee department consistency validation. Runs `BEFORE INSERT OR UPDATE` on `tsk_tasks`.
+3. `task_webhook`: POSTs task creation/update payloads to the Telegram notification handler Edge Function. Runs `AFTER INSERT OR UPDATE` on `tsk_tasks`.
 
 ---
 
@@ -129,6 +132,7 @@ During review, the senior developer should evaluate the following structural imp
 6. **Auto-Closed Timer Session Flags (Backlog)**:
    * *Problem*: When the Forgotten Timer Daemon auto-closes a session after 12+ hours, the resulting `tsk_time_logs` row has no indicator distinguishing it from genuine work time, polluting duration-based reporting.
    * *Recommendation*: Add an `auto_closed` boolean column (default `false`) to `tsk_time_logs` to be set to `true` by the daemon when it force-closes a session.
-7. **`tsk_comments` RLS Scope for Supervisor (Backlog)**:
-   * *Problem*: The permission matrix and RLS policies cover `tsk_tasks` and `tsk_time_logs` for Supervisor department-scoping, but `tsk_comments` visibility boundary hasn't been explicitly documented or verified.
-   * *Recommendation*: Audit and explicitly implement/verify RLS policies for `tsk_comments` to ensure comments on tasks outside the supervisor's department are not accessible.
+7. **`tsk_comments` & `tsk_attachments` RLS Scope**:
+   * *Status*: **Implemented**. Unified under `user_has_department_access` and task assignee/creator scoping across `tsk_comments` and `tsk_attachments`.
+8. **Multi-Department Staff Assignment (Staff Loan Support)**:
+   * *Status*: **Implemented**. Supported via `user_departments` additive grants table and the shared `user_has_department_access` SQL function across RLS policies, triggers, task creation department selector, and assignee scoping.

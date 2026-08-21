@@ -24,7 +24,7 @@ export async function POST(req: Request) {
         }
 
         // Parse the request body
-        const { email, password, full_name, role, department } = await req.json();
+        const { email, password, full_name, role, department, additional_departments } = await req.json();
 
         if (!email || !password || !full_name || !role) {
             return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -86,6 +86,27 @@ export async function POST(req: Request) {
             console.error('Error updating user profile:', profileUpdateError);
             // We successfully created the auth user but failed to update profile correctly
             return NextResponse.json({ error: 'User created in auth, but failed to setup profile. ' + profileUpdateError.message }, { status: 500 });
+        }
+
+        // Insert additional department grants if provided
+        if (Array.isArray(additional_departments) && additional_departments.length > 0) {
+            const deptsToInsert = additional_departments
+                .filter(dept => dept && dept !== department)
+                .map(dept => ({
+                    user_id: newUser.user.id,
+                    department: dept,
+                    granted_by: user.id
+                }));
+
+            if (deptsToInsert.length > 0) {
+                const { error: deptError } = await supabaseAdmin
+                    .from('user_departments')
+                    .insert(deptsToInsert);
+
+                if (deptError) {
+                    console.error('Error adding user departments:', deptError);
+                }
+            }
         }
 
         return NextResponse.json({ success: true, user: newUser.user });
