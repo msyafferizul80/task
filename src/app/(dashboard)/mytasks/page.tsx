@@ -11,6 +11,7 @@ import ReviewResolutionModal from '@/components/task/ReviewResolutionModal';
 import TaskStatusHistory from '@/components/task/TaskStatusHistory';
 import TaskComments from '@/components/task/TaskComments';
 import { useTimer } from '@/components/task/TimerProvider';
+import { ALL_DEPARTMENTS } from '@/lib/departments';
 import dayjs from 'dayjs';
 
 
@@ -1041,13 +1042,11 @@ export default function MyTasksPage() {
                                                         size="large"
                                                         disabled={(selectedTask?.status === 'DONE' && role !== 'admin' && role !== 'manager') || (role !== 'admin' && role !== 'manager')}
                                                     >
-                                                        {(!isInternal || getFieldValue('department') === 'Outsourcing') && <Option value="Outsourcing">Outsourcing</Option>}
-                                                        <Option value="IT">IT</Option>
-                                                        <Option value="Sales">Sales</Option>
-                                                        <Option value="Marketing">Marketing</Option>
-                                                        <Option value="Recruitment">Recruitment</Option>
-                                                        <Option value="Human Resources">Human Resources</Option>
-                                                        <Option value="Account">Account</Option>
+                                                        {ALL_DEPARTMENTS
+                                                            .filter((department) => department !== 'Outsourcing' || !isInternal || getFieldValue('department') === 'Outsourcing')
+                                                            .map((department) => (
+                                                                <Option key={department} value={department}>{department}</Option>
+                                                            ))}
                                                     </Select>
                                                 </Form.Item>
                                             );

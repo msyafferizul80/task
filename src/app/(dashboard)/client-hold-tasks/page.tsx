@@ -10,6 +10,7 @@ import EscalateModal from '@/components/task/EscalateModal';
 import TaskStatusHistory from '@/components/task/TaskStatusHistory';
 import TaskComments from '@/components/task/TaskComments';
 import { useTimer } from '@/components/task/TimerProvider';
+import { ALL_DEPARTMENTS } from '@/lib/departments';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
@@ -674,7 +675,7 @@ export default function ClientHoldTasksPage() {
                                             const selCustomer = customers.find((c: any) => c.name === getFieldValue('customer_name'));
                                             const isInternal = selCustomer?.is_internal ?? false;
                                             const hasBadCombo = isInternal && getFieldValue('department') === 'Outsourcing';
-                                            const allDepts = ['Outsourcing', 'IT', 'Sales', 'Marketing', 'Recruitment', 'Human Resources', 'Account'];
+                                            const allDepts = ALL_DEPARTMENTS;
                                             const allowedDepts = (role === 'admin' || role === 'manager')
                                                 ? allDepts
                                                 : (accessibleDepartments.length > 0 ? accessibleDepartments : (currentUserDept ? [currentUserDept] : allDepts));

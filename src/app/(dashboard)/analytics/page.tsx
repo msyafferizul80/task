@@ -5,6 +5,7 @@ import { Card, Table, Tag, Typography, Spin, Badge, Tooltip, Modal, Button, Sele
 import { createClient } from '@/utils/supabase/client';
 import { Task, Profile } from '@/lib/types';
 import { useRole } from '@/components/layout/RoleProvider';
+import { ALL_DEPARTMENTS } from '@/lib/departments';
 import {
     AlertTriangle,
     Clock,
@@ -1911,13 +1912,7 @@ export default function AnalyticsPage() {
                                 popupClassName="rounded-xl shadow-lg border border-slate-100"
                                 options={[
                                     { value: 'All', label: 'All Departments' },
-                                    { value: 'Outsourcing', label: 'Outsourcing' },
-                                    { value: 'IT', label: 'IT' },
-                                    { value: 'Sales', label: 'Sales' },
-                                    { value: 'Marketing', label: 'Marketing' },
-                                    { value: 'Recruitment', label: 'Recruitment' },
-                                    { value: 'Human Resources', label: 'Human Resources' },
-                                    { value: 'Account', label: 'Account' },
+                                    ...ALL_DEPARTMENTS.map((department) => ({ value: department, label: department })),
                                 ]}
                             />
                         </div>

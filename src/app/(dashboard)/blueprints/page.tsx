@@ -15,6 +15,7 @@ import {
 } from '@ant-design/icons';
 import { createClient } from '@/utils/supabase/client';
 import { useRole } from '@/components/layout/RoleProvider';
+import { ALL_DEPARTMENTS } from '@/lib/departments';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -622,13 +623,9 @@ export default function BlueprintsPage() {
                     </Form.Item>
                     <Form.Item name="department" label="Jabatan (Department)" rules={[{ required: true, message: 'Sila pilih jabatan' }]}>
                         <Select size="large" placeholder="Pilih Jabatan">
-                            <Option value="Outsourcing">Outsourcing</Option>
-                            <Option value="IT">IT</Option>
-                            <Option value="Sales">Sales</Option>
-                            <Option value="Marketing">Marketing</Option>
-                            <Option value="Recruitment">Recruitment</Option>
-                            <Option value="Human Resources">Human Resources</Option>
-                            <Option value="Account">Account</Option>
+                            {ALL_DEPARTMENTS.map((department) => (
+                                <Option key={department} value={department}>{department}</Option>
+                            ))}
                         </Select>
                     </Form.Item>
                     <div className="grid grid-cols-2 gap-4">

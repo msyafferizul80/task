@@ -5,6 +5,7 @@ import { Card, Select, Input, InputNumber, Table, Tag, Typography, Spin, message
 import { createClient } from '@/utils/supabase/client';
 import { Task, Profile, PriorityType } from '@/lib/types';
 import { useRole } from '@/components/layout/RoleProvider';
+import { ALL_DEPARTMENTS } from '@/lib/departments';
 import { PlusOutlined, EditOutlined, CopyOutlined, CheckOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 
@@ -664,13 +665,11 @@ export default function SubmissionsPage() {
                                 return (
                                     <Form.Item name="department" label="Jabatan (Department)" className="col-span-2 sm:col-span-1" rules={[{ required: true, message: 'Please select a department' }]} initialValue="Outsourcing">
                                         <Select placeholder="Select Department" size="large">
-                                            {!isInternal && <Option value="Outsourcing">Outsourcing</Option>}
-                                            <Option value="IT">IT</Option>
-                                            <Option value="Sales">Sales</Option>
-                                            <Option value="Marketing">Marketing</Option>
-                                            <Option value="Recruitment">Recruitment</Option>
-                                            <Option value="Human Resources">Human Resources</Option>
-                                            <Option value="Account">Account</Option>
+                                            {ALL_DEPARTMENTS
+                                                .filter((department) => department !== 'Outsourcing' || !isInternal)
+                                                .map((department) => (
+                                                    <Option key={department} value={department}>{department}</Option>
+                                                ))}
                                         </Select>
                                     </Form.Item>
                                 );

@@ -6,16 +6,7 @@ const { Option } = Select;
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { createClient } from '@/utils/supabase/client';
 import { useRole } from '@/components/layout/RoleProvider';
-
-const ALL_DEPARTMENTS = [
-    'Outsourcing',
-    'IT',
-    'Sales',
-    'Marketing',
-    'Recruitment',
-    'Human Resources',
-    'Account'
-];
+import { ALL_DEPARTMENTS } from '@/lib/departments';
 
 export default function UsersPage() {
     const supabase = createClient();
