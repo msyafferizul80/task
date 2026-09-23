@@ -193,7 +193,7 @@ export default function CalendarTimelinePage() {
             fetchData();
         } catch (error: any) {
             console.error('Error updating task:', error.message);
-            message.error('Failed to update task');
+            message.error(`Failed to update task: ${error.message}`);
         }
     };
 
@@ -858,6 +858,7 @@ export default function CalendarTimelinePage() {
                     profiles={profiles}
                     currentUserId={currentUserId || ''}
                     currentTaskDescription={pendingUpdateValues?.description || selectedTask.description || ''}
+                    pendingTaskUpdates={pendingUpdateValues}
                     nextStatus={pendingUpdateValues?.status === 'REVIEW' ? 'REVIEW' : 'BACKLOG'}
                     onSuccess={async () => {
                         setIsEscalateModalOpen(false);

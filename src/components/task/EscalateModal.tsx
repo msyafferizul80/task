@@ -16,6 +16,7 @@ interface EscalateModalProps {
     profiles: Profile[];
     currentUserId: string | null;
     currentTaskDescription?: string | null;
+    pendingTaskUpdates?: Record<string, unknown> | null;
     nextStatus?: TaskStatus;
     onSuccess: () => void;
 }
@@ -27,6 +28,7 @@ export default function EscalateModal({
     profiles,
     currentUserId,
     currentTaskDescription,
+    pendingTaskUpdates,
     nextStatus = 'BACKLOG',
     onSuccess
 }: EscalateModalProps) {
@@ -142,6 +144,7 @@ export default function EscalateModal({
             const { error: taskError } = await supabase
                 .from('tsk_tasks')
                 .update({
+                    ...getPendingTaskUpdates(),
                     status: nextStatus,
                     updated_at: new Date().toISOString(),
                     description: currentTaskDescription
@@ -215,6 +218,7 @@ export default function EscalateModal({
             // 2. Update task with mutually exclusive escalation target
             const isGroup = targetType === 'GROUP';
             const updatePayload: any = {
+                ...getPendingTaskUpdates(),
                 status: nextStatus,
                 is_escalated: true,
                 escalated_from_user_id: fromUserId,
@@ -283,6 +287,28 @@ export default function EscalateModal({
         } finally {
             setLoading(false);
         }
+    };
+
+    const getPendingTaskUpdates = () => {
+        if (!pendingTaskUpdates) return {};
+
+        const update: Record<string, unknown> = {};
+        for (const field of ['title', 'priority_type', 'customer_name', 'department', 'estimated_hours']) {
+            if (pendingTaskUpdates[field] !== undefined) update[field] = pendingTaskUpdates[field];
+        }
+        if (pendingTaskUpdates.start_date !== undefined) {
+            update.start_date = toIsoString(pendingTaskUpdates.start_date);
+        }
+        if (pendingTaskUpdates.due_date !== undefined) {
+            update.due_date = toIsoString(pendingTaskUpdates.due_date);
+        }
+        return update;
+    };
+
+    const toIsoString = (value: unknown) => {
+        if (!value || typeof value !== 'object' || !('toISOString' in value)) return null;
+        const toISOString = value.toISOString;
+        return typeof toISOString === 'function' ? toISOString.call(value) : null;
     };
 
     return (
