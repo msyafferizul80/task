@@ -22,6 +22,12 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+.custom-calendar-component.ant-picker-calendar-full .ant-picker-calendar-date-content {
+  height: 10.5rem;
+  min-height: 9.5rem;
+  overflow: hidden;
+}
+
 /* Precision tabular figures for all numeric, time, and date displays */
 .tabular-nums, [data-tabular], .font-mono {
   font-family: var(--font-mono);
@@ -89,4 +95,4 @@ body {
     page-break-inside: avoid;
   }
 }
-
+

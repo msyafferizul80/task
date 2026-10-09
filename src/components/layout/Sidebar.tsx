@@ -19,7 +19,8 @@ import {
     Calendar,
     Inbox,
     UserCheck,
-    Search
+    Search,
+    MessageSquare
 } from 'lucide-react'
 import { createClient } from '@/utils/supabase/client'
 import { useRole } from '@/components/layout/RoleProvider'
@@ -105,7 +106,8 @@ export default function Sidebar() {
     const projectToolsItems: SidebarNavItem[] = [
         { name: 'Task Listing', href: '/tasks', icon: ListTodo },
         { name: 'Calendar & Timeline', href: '/calendar', icon: Calendar },
-        { name: 'Weekly Report', href: '/reports', icon: FileText }
+        { name: 'Weekly Report', href: '/reports', icon: FileText },
+        { name: 'Customer Interactions', href: '/customer-interactions', icon: MessageSquare }
     ];
 
     const managementItems: SidebarNavItem[] = [];
@@ -138,6 +140,7 @@ export default function Sidebar() {
         { name: 'My Tasks', href: '/mytasks', icon: CheckSquare, badge: bottleneckCount > 0 ? bottleneckCount : undefined, badgeColor: 'amber' },
         { name: 'Calendar', href: '/calendar', icon: Calendar },
         { name: 'Reports', href: '/reports', icon: FileText },
+        { name: 'Customer Interactions', href: '/customer-interactions', icon: MessageSquare },
         // Items below will go into the 'More' menu drawer on mobile
         { name: 'Client Hold Tasks', href: '/client-hold-tasks', icon: PauseCircle, badge: clientHoldCount > 0 ? clientHoldCount : undefined, badgeColor: 'fuchsia' },
         { name: 'Task Listing', href: '/tasks', icon: ListTodo },

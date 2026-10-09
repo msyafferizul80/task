@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
-import { Card, Select, Input, Table, Tag, Typography, Spin, message, Modal, Form, Button, DatePicker, Tooltip, InputNumber } from 'antd';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { Card, Select, Input, Table, Tag, Typography, Spin, Pagination, message, Modal, Form, Button, DatePicker, Tooltip, InputNumber } from 'antd';
+import type { TableColumnsType } from 'antd';
 import { createClient } from '@/utils/supabase/client';
 import { Task, Profile } from '@/lib/types';
 import { useRole } from '@/components/layout/RoleProvider';
@@ -125,6 +126,12 @@ export default function TasksPage() {
     const [filterDateRange, setFilterDateRange] = useState<[any, any]>([null, null]);
     const [filterDateField, setFilterDateField] = useState<string>('created_at');
     const [searchText, setSearchText] = useState<string>('');
+    const [debouncedSearchText, setDebouncedSearchText] = useState('');
+    const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize, setPageSize] = useState(15);
+    const [totalTasks, setTotalTasks] = useState(0);
+    const [sortField, setSortField] = useState('due_date');
+    const [sortAscending, setSortAscending] = useState(true);
 
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -138,8 +145,16 @@ export default function TasksPage() {
     const supabase = createClient();
     const { role, department: currentUserDept, accessibleDepartments } = useRole();
     const [userDepartments, setUserDepartments] = useState<{ user_id: string; department: string }[]>([]);
+    const fetchSequence = useRef(0);
 
-    const fetchData = useCallback(async () => {
+    useEffect(() => {
+        const timeout = setTimeout(() => setDebouncedSearchText(searchText), 300);
+        return () => clearTimeout(timeout);
+    }, [searchText]);
+
+    const fetchData = useCallback(async (page = currentPage) => {
+        const requestSequence = ++fetchSequence.current;
+        setLoading(true);
         try {
             const { data: { user } } = await supabase.auth.getUser();
             const userId = user?.id || null;
@@ -165,41 +180,85 @@ export default function TasksPage() {
                     id,
                     full_name
                 )
-            `).order('created_at', { ascending: false });
+            `, { count: 'exact' });
 
             // If user is supervisor, fetch all tasks in accessible departments. If employee, fetch their own tasks.
             if (role === 'supervisor') {
-                if (accessibleDepartments.length > 0) {
-                    query = query.in('department', accessibleDepartments);
-                } else if (currentUserDept) {
-                    query = query.eq('department', currentUserDept);
-                }
-            } else if (role !== 'admin' && role !== 'manager' && userId) {
+                const departments = accessibleDepartments.length > 0
+                    ? accessibleDepartments
+                    : currentUserDept ? [currentUserDept] : [];
+                const departmentFilter = departments
+                    .map((department) => `"${department.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`)
+                    .join(',');
+                query = query.or(
+                    `department.is.null${departmentFilter ? `,department.in.(${departmentFilter})` : ''}`
+                );
+            } else if (role !== 'admin' && role !== 'manager' && role !== 'super_admin' && userId) {
                 query = query.or(`assignee_id.eq.${userId},escalated_to_user_id.eq.${userId}`);
             }
 
-            const [tasksRes, profilesRes, customersRes, userDeptsRes] = await Promise.all([
-                query,
+            if (debouncedSearchText.trim()) {
+                const escapedSearch = debouncedSearchText.trim()
+                    .replace(/[\r\n]/g, ' ')
+                    .replace(/\\/g, '\\\\')
+                    .replace(/"/g, '\\"');
+                const pattern = `"%${escapedSearch}%"`;
+                query = query.or(`title.ilike.${pattern},description.ilike.${pattern}`);
+            }
+            if (filterCustomer) query = query.eq('customer_name', filterCustomer);
+            if (filterStatus) query = query.eq('status', filterStatus);
+            if (filterPriority) query = query.eq('priority_type', filterPriority);
+            if (filterPIC) query = query.eq('assignee_id', filterPIC);
+            if (filterDateRange[0] && filterDateRange[1]) {
+                query = query
+                    .gte(filterDateField, filterDateRange[0].startOf('day').toISOString())
+                    .lte(filterDateField, filterDateRange[1].endOf('day').toISOString());
+            }
+
+            const [{ data: taskRows, count, error: tasksError }, profilesRes, customersRes, userDeptsRes] = await Promise.all([
+                query
+                    .order(sortField, { ascending: sortAscending, nullsFirst: false })
+                    .order('id', { ascending: true })
+                    .range((page - 1) * pageSize, page * pageSize - 1),
                 supabase.from('lv_profiles').select('id, full_name, department, role').eq('status', 'active').order('full_name'),
                 supabase.from('tsk_customers').select('id, name, is_internal').eq('status', 'active').order('name'),
                 supabase.from('user_departments').select('user_id, department')
             ]);
 
-            if (tasksRes.error) throw tasksRes.error;
+            if (requestSequence !== fetchSequence.current) return;
+            if (tasksError) throw tasksError;
             if (profilesRes.error) throw profilesRes.error;
             if (customersRes.error && customersRes.error.code !== '42P01') throw customersRes.error;
 
-            setTasks(tasksRes.data as Task[] || []);
+            setTasks((taskRows || []) as Task[]);
+            setTotalTasks(count || 0);
             setProfiles(profilesRes.data || []);
             setCustomers(customersRes.data || []);
             setUserDepartments(userDeptsRes.data || []);
         } catch (error: any) {
+            if (requestSequence !== fetchSequence.current) return;
             console.error('Error fetching data:', error.message);
             message.error('Failed to fetch data');
         } finally {
-            setLoading(false);
+            if (requestSequence === fetchSequence.current) setLoading(false);
         }
-    }, [role, currentUserDept, accessibleDepartments, supabase]);
+    }, [
+        role,
+        currentUserDept,
+        accessibleDepartments,
+        supabase,
+        currentPage,
+        pageSize,
+        debouncedSearchText,
+        filterCustomer,
+        filterStatus,
+        filterPriority,
+        filterPIC,
+        filterDateField,
+        filterDateRange,
+        sortField,
+        sortAscending
+    ]);
 
     useEffect(() => {
         fetchData();
@@ -393,41 +452,13 @@ export default function TasksPage() {
         }
     };
 
-    const filteredTasks = tasks.filter(t => {
-        const matchesSearch = t.title.toLowerCase().includes(searchText.toLowerCase()) ||
-            (t.description && t.description.toLowerCase().includes(searchText.toLowerCase()));
-        const matchesCustomer = filterCustomer ? t.customer_name === filterCustomer : true;
-        const matchesStatus = filterStatus ? t.status === filterStatus : true;
-        const matchesPIC = filterPIC ? t.assignee_id === filterPIC : true;
-
-        let matchesDate = true;
-        if (filterDateRange[0] && filterDateRange[1]) {
-            const fieldValue = (t as any)[filterDateField];
-            if (fieldValue) {
-                const d = new Date(fieldValue);
-                const start = filterDateRange[0].startOf('day').toDate();
-                const end = filterDateRange[1].endOf('day').toDate();
-                matchesDate = d >= start && d <= end;
-            } else {
-                matchesDate = false;
-            }
-        }
-
-        return matchesSearch && matchesCustomer && matchesStatus && matchesPIC && matchesDate;
-    });
-
-    const sortedTasks = [...filteredTasks].sort((a, b) => {
-        if (!a.due_date) return 1;
-        if (!b.due_date) return -1;
-        return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
-    });
-
-    const columns = [
+    const columns: TableColumnsType<Task> = [
         {
             title: 'Task Title',
             dataIndex: 'title',
             key: 'title',
-            sorter: (a: Task, b: Task) => a.title.localeCompare(b.title),
+            sorter: true,
+            sortOrder: sortField === 'title' ? (sortAscending ? 'ascend' : 'descend') : null,
             render: (text: string, record: Task) => (
                 <div className="font-semibold text-indigo-900">
                     <div className="flex items-center gap-2">
@@ -447,7 +478,8 @@ export default function TasksPage() {
             dataIndex: 'description',
             key: 'description',
             width: '30%',
-            sorter: (a: Task, b: Task) => (a.description || '').localeCompare(b.description || ''),
+            sorter: true,
+            sortOrder: sortField === 'description' ? (sortAscending ? 'ascend' : 'descend') : null,
             render: (text: string) => (
                 <div className="text-gray-600 whitespace-pre-wrap text-sm">
                     {text || <span className="text-gray-400 italic">Tiada nota...</span>}
@@ -458,18 +490,14 @@ export default function TasksPage() {
             title: 'Customer',
             dataIndex: 'customer_name',
             key: 'customer_name',
-            sorter: (a: Task, b: Task) => (a.customer_name || '').localeCompare(b.customer_name || ''),
+            sorter: true,
+            sortOrder: sortField === 'customer_name' ? (sortAscending ? 'ascend' : 'descend') : null,
             render: (text: string) => <Text strong className="text-slate-700">{text || '-'}</Text>
         },
         {
             title: 'PIC / Assignee',
             dataIndex: 'assignee',
             key: 'assignee',
-            sorter: (a: Task, b: Task) => {
-                const nameA = a.assignee?.full_name || '';
-                const nameB = b.assignee?.full_name || '';
-                return nameA.localeCompare(nameB);
-            },
             render: (assignee: Profile | undefined) => (
                 assignee ? (
                     <div className="flex items-center gap-2">
@@ -487,18 +515,14 @@ export default function TasksPage() {
             title: 'Status',
             dataIndex: 'status',
             key: 'status',
-            sorter: (a: Task, b: Task) => a.status.localeCompare(b.status),
+            sorter: true,
+            sortOrder: sortField === 'status' ? (sortAscending ? 'ascend' : 'descend') : null,
             render: (status: string) => getStatusTag(status)
         },
         {
             title: 'Created By',
             dataIndex: 'creator',
             key: 'creator',
-            sorter: (a: Task, b: Task) => {
-                const nameA = a.creator?.full_name || '';
-                const nameB = b.creator?.full_name || '';
-                return nameA.localeCompare(nameB);
-            },
             render: (creator: Profile | undefined) => (
                 creator ? (
                     <div className="flex items-center gap-2">
@@ -518,7 +542,8 @@ export default function TasksPage() {
             key: 'created_at',
             width: '10%',
             className: 'text-right',
-            sorter: (a: Task, b: Task) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime(),
+            sorter: true,
+            sortOrder: sortField === 'created_at' ? (sortAscending ? 'ascend' : 'descend') : null,
             render: (date: string | null) => (
                 <span className="font-mono tabular-nums text-xs text-slate-600">
                     {date ? new Date(date).toLocaleDateString() : '-'}
@@ -531,7 +556,8 @@ export default function TasksPage() {
             key: 'due_date',
             width: '10%',
             className: 'text-right',
-            sorter: (a: Task, b: Task) => new Date(a.due_date || 0).getTime() - new Date(b.due_date || 0).getTime(),
+            sorter: true,
+            sortOrder: sortField === 'due_date' ? (sortAscending ? 'ascend' : 'descend') : null,
             render: (date: string | null) => (
                 <span className="font-mono tabular-nums text-xs text-slate-600">
                     {date ? new Date(date).toLocaleDateString() : '-'}
@@ -597,7 +623,7 @@ export default function TasksPage() {
 
     const canEditTaskFields = role === 'admin' || role === 'manager' || (role === 'supervisor' && !!selectedTask?.department && accessibleDepartments.includes(selectedTask.department));
 
-    if (loading) return <div className="flex justify-center items-center h-[calc(100vh-100px)]"><Spin size="large" /></div>;
+    if (loading && tasks.length === 0) return <div className="flex justify-center items-center h-[calc(100vh-100px)]"><Spin size="large" /></div>;
 
     return (
         <div className="flex flex-col gap-6 font-sans">
@@ -614,7 +640,10 @@ export default function TasksPage() {
                             placeholder="Search tasks..."
                             prefix={<SearchOutlined className="text-slate-400" />}
                             value={searchText}
-                            onChange={e => setSearchText(e.target.value)}
+                            onChange={e => {
+                                setSearchText(e.target.value);
+                                setCurrentPage(1);
+                            }}
                             size="large"
                             allowClear
                         />
@@ -624,7 +653,10 @@ export default function TasksPage() {
                         <Select
                             placeholder="All Statuses"
                             value={filterStatus || undefined}
-                            onChange={val => setFilterStatus(val || '')}
+                            onChange={val => {
+                                setFilterStatus(val || '');
+                                setCurrentPage(1);
+                            }}
                             allowClear
                             size="large"
                             className="w-full"
@@ -641,7 +673,10 @@ export default function TasksPage() {
                         <Select
                             placeholder="All Customers"
                             value={filterCustomer || undefined}
-                            onChange={val => setFilterCustomer(val || '')}
+                            onChange={val => {
+                                setFilterCustomer(val || '');
+                                setCurrentPage(1);
+                            }}
                             allowClear
                             showSearch
                             size="large"
@@ -657,7 +692,10 @@ export default function TasksPage() {
                         <Select
                             placeholder="All Assignees"
                             value={filterPIC || undefined}
-                            onChange={val => setFilterPIC(val || '')}
+                            onChange={val => {
+                                setFilterPIC(val || '');
+                                setCurrentPage(1);
+                            }}
                             allowClear
                             showSearch
                             size="large"
@@ -673,7 +711,10 @@ export default function TasksPage() {
                         <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Tapis Mengikut Tarikh</label>
                         <Select
                             value={filterDateField}
-                            onChange={val => setFilterDateField(val)}
+                            onChange={val => {
+                                setFilterDateField(val);
+                                setCurrentPage(1);
+                            }}
                             size="large"
                             className="w-full"
                         >
@@ -687,7 +728,10 @@ export default function TasksPage() {
                             size="large"
                             className="w-full"
                             value={filterDateRange as any}
-                            onChange={dates => setFilterDateRange(dates ? [dates[0], dates[1]] : [null, null])}
+                            onChange={dates => {
+                                setFilterDateRange(dates ? [dates[0], dates[1]] : [null, null]);
+                                setCurrentPage(1);
+                            }}
                             allowClear
                             format="DD/MM/YYYY"
                             placeholder={['Mula', 'Akhir']}
@@ -701,20 +745,15 @@ export default function TasksPage() {
                         Menunjukkan
                     </span>
                     <span className="inline-flex items-center px-3 py-0.5 rounded-full text-sm font-bold bg-indigo-100 text-indigo-700">
-                        {sortedTasks.length} rekod
+                        {totalTasks} rekod
                     </span>
-                    {sortedTasks.length !== tasks.length && (
-                        <span className="text-xs text-slate-400">
-                            daripada {tasks.length} jumlah
-                        </span>
-                    )}
                 </div>
 
                 {/* Mobile Card View — hidden on md+ */}
                 <div className="md:hidden flex flex-col gap-3 mb-4">
-                    {sortedTasks.length === 0 ? (
+                    {tasks.length === 0 ? (
                         <div className="text-center text-gray-400 py-10 italic">Tiada tugasan dijumpai.</div>
-                    ) : sortedTasks.map(task => (
+                    ) : tasks.map(task => (
                         <div
                             key={task.id}
                             className="bg-white border border-slate-100 rounded-xl p-4 shadow-sm flex flex-col gap-2"
@@ -787,15 +826,57 @@ export default function TasksPage() {
                             </div>
                         </div>
                     ))}
+                    <Pagination
+                        className="self-center"
+                        current={currentPage}
+                        pageSize={pageSize}
+                        total={totalTasks}
+                        showSizeChanger
+                        onChange={(page, size) => {
+                            if (size !== pageSize) {
+                                setPageSize(size);
+                                setCurrentPage(1);
+                            } else {
+                                setCurrentPage(page);
+                            }
+                        }}
+                    />
                 </div>
 
                 {/* Desktop Table View — hidden on mobile */}
                 <div className="hidden md:block">
                 <Table
                     columns={columns}
-                    dataSource={sortedTasks}
+                    dataSource={tasks}
                     rowKey="id"
-                    pagination={{ pageSize: 15 }}
+                    loading={loading}
+                    pagination={{
+                        current: currentPage,
+                        pageSize,
+                        total: totalTasks,
+                        showSizeChanger: true
+                    }}
+                    onChange={(pagination, _filters, sorter) => {
+                        const activeSorter = Array.isArray(sorter) ? sorter[0] : sorter;
+                        const field = activeSorter.field;
+                        const sortableFields = ['title', 'description', 'customer_name', 'status', 'created_at', 'due_date'];
+
+                        if (typeof field === 'string' && sortableFields.includes(field) && activeSorter.order) {
+                            setSortField(field);
+                            setSortAscending(activeSorter.order === 'ascend');
+                        } else if (!activeSorter.order) {
+                            setSortField('due_date');
+                            setSortAscending(true);
+                        }
+
+                        const nextSize = pagination.pageSize || pageSize;
+                        if (nextSize !== pageSize) {
+                            setPageSize(nextSize);
+                            setCurrentPage(1);
+                        } else if (pagination.current) {
+                            setCurrentPage(pagination.current);
+                        }
+                    }}
                     className="border border-slate-100 rounded-lg overflow-hidden"
                 />
                 </div>

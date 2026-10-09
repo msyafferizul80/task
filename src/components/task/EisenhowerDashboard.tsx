@@ -25,6 +25,7 @@ import TaskStatusHistory from './TaskStatusHistory';
 import TaskComments from './TaskComments';
 import { useTimer } from '@/components/task/TimerProvider';
 import { ALL_DEPARTMENTS } from '@/lib/departments';
+import { fetchTaskPage } from '@/lib/fetch-all-pages';
 
 import dayjs from 'dayjs';  
 
@@ -57,9 +58,14 @@ export default function EisenhowerDashboard() {
 
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
     const [userDepartments, setUserDepartments] = useState<{ user_id: string; department: string }[]>([]);
+    const [taskCount, setTaskCount] = useState(0);
+    const [taskPage, setTaskPage] = useState(1);
+    const [loadingMoreTasks, setLoadingMoreTasks] = useState(false);
+    const taskPageSize = 100;
 
-    const fetchTasksAndProfiles = useCallback(async () => {
+    const fetchTasksAndProfiles = useCallback(async (page = 1, append = false) => {
         try {
+            if (append) setLoadingMoreTasks(true);
             const { data: { user } } = await supabase.auth.getUser();
             const userId = user?.id || null;
             setCurrentUserId(userId);
@@ -82,31 +88,43 @@ export default function EisenhowerDashboard() {
                     id,
                     full_name
                 )
-            `).order('created_at', { ascending: false });
+            `, { count: 'exact' }).order('created_at', { ascending: false }).order('id', { ascending: true });
 
             // If user is supervisor, fetch all tasks in their accessible departments. If employee, fetch their own tasks.
             if (role === 'supervisor') {
-                if (accessibleDepartments.length > 0) {
-                    query = query.in('department', accessibleDepartments);
-                } else if (currentUserDept) {
-                    query = query.eq('department', currentUserDept);
-                }
-            } else if (role !== 'admin' && role !== 'manager' && userId) {
+                const departments = accessibleDepartments.length > 0
+                    ? accessibleDepartments
+                    : currentUserDept ? [currentUserDept] : [];
+                const departmentFilter = departments
+                    .map((department) => `"${department.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`)
+                    .join(',');
+                query = query.or(
+                    `department.is.null${departmentFilter ? `,department.in.(${departmentFilter})` : ''}`
+                );
+            } else if (role !== 'admin' && role !== 'manager' && role !== 'super_admin' && userId) {
                 query = query.eq('assignee_id', userId);
             }
+            if (filterCustomer) query = query.eq('customer_name', filterCustomer);
+            if (filterPIC) query = query.eq('assignee_id', filterPIC);
 
-            const [tasksRes, profilesRes, customersRes, userDeptsRes] = await Promise.all([
-                query,
+            const [taskPageResult, profilesRes, customersRes, userDeptsRes] = await Promise.all([
+                fetchTaskPage(query, page, taskPageSize),
                 supabase.from('lv_profiles').select('id, full_name, department, role').eq('status', 'active').order('full_name'),
                 supabase.from('tsk_customers').select('id, name, is_internal').eq('status', 'active').order('name'),
                 supabase.from('user_departments').select('user_id, department')
             ]);
 
-            if (tasksRes.error) throw tasksRes.error;
             if (profilesRes.error) throw profilesRes.error;
             if (customersRes.error && customersRes.error.code !== '42P01') throw customersRes.error;
 
-            setTasks(tasksRes.data as Task[] || []);
+            setTasks((current) => {
+                if (!append) return taskPageResult.rows as Task[];
+                const tasksById = new Map(current.map((task) => [task.id, task]));
+                taskPageResult.rows.forEach((task) => tasksById.set(task.id, task as Task));
+                return Array.from(tasksById.values());
+            });
+            setTaskCount(taskPageResult.total);
+            setTaskPage(page);
             setProfiles(profilesRes.data || []);
             setCustomers(customersRes.data || []);
             setUserDepartments(userDeptsRes.data || []);
@@ -115,8 +133,15 @@ export default function EisenhowerDashboard() {
             message.error('Failed to fetch data');
         } finally {
             setLoading(false);
+            setLoadingMoreTasks(false);
         }
-    }, [role, currentUserDept, accessibleDepartments]);
+    }, [role, currentUserDept, accessibleDepartments, supabase, filterCustomer, filterPIC]);
+
+    const loadMoreTasks = () => {
+        if (!loadingMoreTasks && tasks.length < taskCount) {
+            fetchTasksAndProfiles(taskPage + 1, true);
+        }
+    };
 
     useEffect(() => {
         fetchTasksAndProfiles();
@@ -504,7 +529,10 @@ export default function EisenhowerDashboard() {
                     <Select
                         placeholder="Filter by Customer..."
                         value={filterCustomer || undefined}
-                        onChange={val => setFilterCustomer(val || '')}
+                        onChange={val => {
+                            setTaskPage(1);
+                            setFilterCustomer(val || '');
+                        }}
                         className="w-full sm:w-64"
                         size="large"
                         allowClear
@@ -518,7 +546,10 @@ export default function EisenhowerDashboard() {
                     <Select
                         placeholder="Filter by Assignee / PIC..."
                         value={filterPIC || undefined}
-                        onChange={val => setFilterPIC(val)}
+                        onChange={val => {
+                            setTaskPage(1);
+                            setFilterPIC(val);
+                        }}
                         className="w-full sm:w-64"
                         size="large"
                         allowClear
@@ -532,6 +563,7 @@ export default function EisenhowerDashboard() {
                     {(role === 'admin' || role === 'manager') && (
                         <Button
                             onClick={() => {
+                                setTaskPage(1);
                                 setFilterCustomer('');
                                 setFilterPIC('');
                             }}
@@ -548,6 +580,13 @@ export default function EisenhowerDashboard() {
             <div className="bg-white p-4 rounded-2xl shadow-2xs border border-slate-200/80">
                 <KanbanBoard tasks={filteredTasks} role={role} profiles={profiles} currentUserId={currentUserId} />
             </div>
+                {tasks.length < taskCount && (
+                    <div className="flex justify-center">
+                        <Button loading={loadingMoreTasks} onClick={loadMoreTasks}>
+                            Load more tasks ({tasks.length} of {taskCount})
+                        </Button>
+                    </div>
+                )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-8">
                 {/* DO FIRST */}

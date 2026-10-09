@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { Card, Select, Input, Tag, Typography, Spin, message, Modal, Form, Button, DatePicker, Tooltip, Calendar, Avatar, Tabs, InputNumber } from 'antd';
 import { SearchOutlined, CheckCircleOutlined, SyncOutlined, ClockCircleOutlined, ExclamationCircleOutlined, EditOutlined, DeleteOutlined, ExclamationCircleFilled, PauseCircleOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons';
 import { createClient } from '@/utils/supabase/client';
@@ -11,6 +11,7 @@ import TaskStatusHistory from '@/components/task/TaskStatusHistory';
 import TaskComments from '@/components/task/TaskComments';
 import { useTimer } from '@/components/task/TimerProvider';
 import { ALL_DEPARTMENTS } from '@/lib/departments';
+import { fetchAllPages } from '@/lib/fetch-all-pages';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
@@ -36,6 +37,7 @@ export default function CalendarTimelinePage() {
     const [editForm] = Form.useForm();
     const [isEscalateModalOpen, setIsEscalateModalOpen] = useState(false);
     const [pendingUpdateValues, setPendingUpdateValues] = useState<any>(null);
+    const [selectedCalendarDate, setSelectedCalendarDate] = useState<dayjs.Dayjs | null>(null);
 
     // Timeline Scale and Navigation
     const [currentDate, setCurrentDate] = useState(dayjs());
@@ -64,31 +66,41 @@ export default function CalendarTimelinePage() {
                     id,
                     full_name
                 )
-            `).order('created_at', { ascending: false });
+            `).order('created_at', { ascending: false }).order('id', { ascending: true });
+
+            const visibleStart = currentDate.startOf('month').startOf('week').toISOString();
+            const visibleEnd = currentDate.endOf('month').endOf('week').toISOString();
+            const noDueDateStart = dayjs(visibleStart).subtract(1, 'day').toISOString();
+            query = query
+                .or(`start_date.lte.${visibleEnd},and(start_date.is.null,created_at.lte.${visibleEnd})`)
+                .or(`due_date.gte.${visibleStart},and(due_date.is.null,created_at.gte.${noDueDateStart})`);
 
             // If user is supervisor, fetch all tasks in accessible departments. If employee, fetch their own tasks.
             if (role === 'supervisor') {
-                if (accessibleDepartments.length > 0) {
-                    query = query.in('department', accessibleDepartments);
-                } else if (currentUserDept) {
-                    query = query.eq('department', currentUserDept);
-                }
-            } else if (role !== 'admin' && role !== 'manager' && userId) {
+                const departments = accessibleDepartments.length > 0
+                    ? accessibleDepartments
+                    : currentUserDept ? [currentUserDept] : [];
+                const departmentFilter = departments
+                    .map((department) => `"${department.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`)
+                    .join(',');
+                query = query.or(
+                    `department.is.null${departmentFilter ? `,department.in.(${departmentFilter})` : ''}`
+                );
+            } else if (role !== 'admin' && role !== 'manager' && role !== 'super_admin' && userId) {
                 query = query.eq('assignee_id', userId);
             }
 
-            const [tasksRes, profilesRes, customersRes, userDeptsRes] = await Promise.all([
-                query,
+            const [allTasks, profilesRes, customersRes, userDeptsRes] = await Promise.all([
+                fetchAllPages(query),
                 supabase.from('lv_profiles').select('id, full_name, avatar_url, department, role').eq('status', 'active').order('full_name'),
                 supabase.from('tsk_customers').select('id, name, is_internal').eq('status', 'active').order('name'),
                 supabase.from('user_departments').select('user_id, department')
             ]);
 
-            if (tasksRes.error) throw tasksRes.error;
             if (profilesRes.error) throw profilesRes.error;
             if (customersRes.error && customersRes.error.code !== '42P01') throw customersRes.error;
 
-            setTasks(tasksRes.data as Task[] || []);
+            setTasks(allTasks as Task[]);
             setProfiles(profilesRes.data || []);
             setCustomers(customersRes.data || []);
             setUserDepartments(userDeptsRes.data || []);
@@ -98,7 +110,7 @@ export default function CalendarTimelinePage() {
         } finally {
             setLoading(false);
         }
-    }, [role, currentUserDept, accessibleDepartments]);
+    }, [role, currentUserDept, accessibleDepartments, currentDate]);
 
     useEffect(() => {
         fetchData();
@@ -256,6 +268,18 @@ export default function CalendarTimelinePage() {
         return matchesSearch && matchesCustomer && matchesPIC && matchesStatus && matchesPriority;
     });
 
+    const tasksByDueDate = useMemo(() => {
+        const grouped = new Map<string, Task[]>();
+        filteredTasks.forEach((task) => {
+            if (!task.due_date) return;
+            const date = dayjs(task.due_date).format('YYYY-MM-DD');
+            const dateTasks = grouped.get(date) || [];
+            dateTasks.push(task);
+            grouped.set(date, dateTasks);
+        });
+        return grouped;
+    }, [filteredTasks]);
+
     const getStatusTag = (status: string) => {
         switch (status) {
             case 'DONE': return <Tag icon={<CheckCircleOutlined />} color="success">Done</Tag>;
@@ -291,26 +315,41 @@ export default function CalendarTimelinePage() {
     // Calendar Render Cell
     const dateCellRender = (value: dayjs.Dayjs) => {
         const formattedDate = value.format('YYYY-MM-DD');
-        const dayTasks = filteredTasks.filter(t => t.due_date && dayjs(t.due_date).format('YYYY-MM-DD') === formattedDate);
+        const dayTasks = tasksByDueDate.get(formattedDate) || [];
+        const visibleTasks = dayTasks.slice(0, 2);
 
         return (
-            <div className="flex flex-col gap-1 overflow-y-auto max-h-[85px] scrollbar-thin">
-                {dayTasks.map(task => (
-                    <div
+            <div className="flex flex-col gap-1.5 px-1 pb-1">
+                {visibleTasks.map(task => (
+                    <button
+                        type="button"
                         key={task.id}
                         onClick={(e) => {
                             e.stopPropagation();
                             handleEditTask(task);
                         }}
-                        className="text-[10px] truncate px-1.5 py-0.5 rounded border font-semibold cursor-pointer hover:scale-102 transition-transform shadow-sm bg-white border-slate-200"
+                        title={task.title}
+                        className="w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-left text-xs font-medium leading-snug text-slate-700 shadow-sm transition-colors hover:border-indigo-300 hover:bg-indigo-50"
                         style={{ borderLeftWidth: '3px', borderLeftColor: getPriorityColor(task.priority_type) === 'red' ? '#ef4444' : getPriorityColor(task.priority_type) === 'blue' ? '#3b82f6' : getPriorityColor(task.priority_type) === 'orange' ? '#f59e0b' : '#94a3b8' }}
                     >
-                        <span className="opacity-75 font-bold mr-1">
+                        <span className="mr-1 font-bold opacity-75">
                             {task.status === 'DONE' ? '✓' : '•'}
                         </span>
-                        {task.title}
-                    </div>
+                        <span className="line-clamp-2 whitespace-normal break-words">{task.title}</span>
+                    </button>
                 ))}
+                {dayTasks.length > visibleTasks.length && (
+                    <button
+                        type="button"
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            setSelectedCalendarDate(value);
+                        }}
+                        className="self-start rounded px-1.5 py-1 text-xs font-semibold text-indigo-600 hover:bg-indigo-50"
+                    >
+                        View {dayTasks.length - visibleTasks.length} more
+                    </button>
+                )}
             </div>
         );
     };
@@ -661,6 +700,40 @@ export default function CalendarTimelinePage() {
                     }
                 ]}
             />
+
+            <Modal
+                title={selectedCalendarDate ? `Tasks due ${selectedCalendarDate.format('D MMMM YYYY')}` : 'Tasks'}
+                open={!!selectedCalendarDate}
+                onCancel={() => setSelectedCalendarDate(null)}
+                footer={null}
+                width={640}
+            >
+                <div className="max-h-[65vh] space-y-2 overflow-y-auto py-2">
+                    {(selectedCalendarDate
+                        ? tasksByDueDate.get(selectedCalendarDate.format('YYYY-MM-DD')) || []
+                        : []
+                    ).map((task) => (
+                        <button
+                            type="button"
+                            key={task.id}
+                            onClick={() => {
+                                setSelectedCalendarDate(null);
+                                handleEditTask(task);
+                            }}
+                            className="flex w-full items-start justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3 text-left transition-colors hover:border-indigo-300 hover:bg-indigo-50"
+                        >
+                            <span className="min-w-0">
+                                <span className="block break-words font-semibold text-slate-800">{task.title}</span>
+                                <span className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                                    {task.customer_name && <span>{task.customer_name}</span>}
+                                    {task.assignee?.full_name && <span>• {task.assignee.full_name}</span>}
+                                </span>
+                            </span>
+                            {getStatusTag(task.status)}
+                        </button>
+                    ))}
+                </div>
+            </Modal>
 
             {/* Edit Task Modal */}
             <Modal

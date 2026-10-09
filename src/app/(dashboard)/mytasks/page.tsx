@@ -12,6 +12,7 @@ import TaskStatusHistory from '@/components/task/TaskStatusHistory';
 import TaskComments from '@/components/task/TaskComments';
 import { useTimer } from '@/components/task/TimerProvider';
 import { ALL_DEPARTMENTS } from '@/lib/departments';
+import { fetchTaskPage } from '@/lib/fetch-all-pages';
 import dayjs from 'dayjs';
 
 
@@ -121,6 +122,14 @@ export default function MyTasksPage() {
     const [customers, setCustomers] = useState<any[]>([]);
     const [profiles, setProfiles] = useState<Profile[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadingMoreTasks, setLoadingMoreTasks] = useState(false);
+    const [loadingMoreEscalated, setLoadingMoreEscalated] = useState(false);
+    const [taskPage, setTaskPage] = useState(1);
+    const [taskCount, setTaskCount] = useState(0);
+    const [groupTaskCount, setGroupTaskCount] = useState(0);
+    const [escalatedOutPage, setEscalatedOutPage] = useState(1);
+    const [escalatedOutCount, setEscalatedOutCount] = useState(0);
+    const pageSize = 100;
 
     const [filterCustomer, setFilterCustomer] = useState<string>('');
     const [filterStatus, setFilterStatus] = useState<string>('');
@@ -139,8 +148,15 @@ export default function MyTasksPage() {
     const supabase = createClient();
     const { role } = useRole();
 
-    const fetchData = useCallback(async () => {
+    const fetchData = useCallback(async (
+        page = 1,
+        append = false,
+        outPage = 1,
+        appendOut = false
+    ) => {
         try {
+            if (append) setLoadingMoreTasks(true);
+            if (appendOut) setLoadingMoreEscalated(true);
             const { data: { user } } = await supabase.auth.getUser();
             const userId = user?.id || null;
             setCurrentUserId(userId);
@@ -164,7 +180,7 @@ export default function MyTasksPage() {
                     id,
                     full_name
                 )
-            `).order('created_at', { ascending: false });
+            `, { count: 'exact' }).order('created_at', { ascending: false }).order('id', { ascending: true });
 
             // Fetch tasks assigned or individually escalated to the user
             if (userId) {
@@ -172,27 +188,27 @@ export default function MyTasksPage() {
             }
 
             // Fetch user profile, review group memberships, and escalated-out tasks in parallel
-            const [tasksRes, profilesRes, customersRes, myProfileRes, groupMembershipsRes, escalatedOutRes] = await Promise.all([
-                myTasksQuery,
+            const [myTaskPage, profilesRes, customersRes, myProfileRes, groupMembershipsRes, escalatedOutPageResult] = await Promise.all([
+                fetchTaskPage(myTasksQuery, page, pageSize),
                 supabase.from('lv_profiles').select('id, full_name').eq('status', 'active').order('full_name'),
                 supabase.from('tsk_customers').select('id, name, is_internal').eq('status', 'active').order('name'),
                 userId ? supabase.from('lv_profiles').select('id, department, role').eq('id', userId).single() : Promise.resolve({ data: null, error: null }),
                 userId ? supabase.from('tsk_review_group_members').select('group_id').eq('user_id', userId) : Promise.resolve({ data: [], error: null }),
-                userId ? supabase.from('tsk_tasks').select(`
+                userId ? fetchTaskPage(supabase.from('tsk_tasks').select(`
                     *,
                     assignee:lv_profiles!tsk_tasks_assignee_id_fkey(id, full_name, avatar_url),
                     creator:lv_profiles!tsk_tasks_created_by_fkey(id, full_name),
                     escalated_group:tsk_review_groups!tsk_tasks_escalated_to_group_id_fkey(id, name),
                     escalated_to_user:lv_profiles!tsk_tasks_escalated_to_user_id_fkey(id, full_name),
                     reviewed_by_user:lv_profiles!tsk_tasks_reviewed_by_fkey(id, full_name)
-                `).eq('escalated_from_user_id', userId).eq('status', 'REVIEW').order('updated_at', { ascending: false }) : Promise.resolve({ data: [], error: null })
+                `, { count: 'exact' }).eq('escalated_from_user_id', userId).eq('status', 'REVIEW').order('updated_at', { ascending: false }).order('id', { ascending: true }), outPage, pageSize) : Promise.resolve({ rows: [], total: 0 })
             ]);
 
-            if (tasksRes.error) throw tasksRes.error;
             if (profilesRes.error) throw profilesRes.error;
             if (customersRes.error && customersRes.error.code !== '42P01') throw customersRes.error;
 
-            let loadedTasks: Task[] = (tasksRes.data as Task[]) || [];
+            let loadedTasks: Task[] = myTaskPage.rows as Task[];
+            let loadedGroupTaskCount = 0;
 
             // If user belongs to review groups, also fetch tasks escalated to those review groups (Option A department-scoped)
             const userGroupIds = (groupMembershipsRes.data || []).map((m: any) => m.group_id);
@@ -216,25 +232,41 @@ export default function MyTasksPage() {
                         id,
                         full_name
                     )
-                `).eq('status', 'REVIEW').in('escalated_to_group_id', userGroupIds);
+                `, { count: 'exact' }).eq('status', 'REVIEW').in('escalated_to_group_id', userGroupIds).order('created_at', { ascending: false }).order('id', { ascending: true });
 
                 const myProfile = myProfileRes.data;
                 // Option A: department scope check for non-admin/non-manager
-                if (myProfile?.role !== 'admin' && myProfile?.role !== 'manager' && myProfile?.department) {
+                if (myProfile?.role !== 'admin' && myProfile?.role !== 'manager' && myProfile?.role !== 'super_admin' && myProfile?.department) {
                     groupTasksQuery = groupTasksQuery.eq('department', myProfile.department);
                 }
 
-                const { data: groupTasks, error: groupTasksError } = await groupTasksQuery;
-                if (!groupTasksError && groupTasks && groupTasks.length > 0) {
+                const groupTasksPage = await fetchTaskPage(groupTasksQuery, page, pageSize);
+                loadedGroupTaskCount = groupTasksPage.total;
+                if (groupTasksPage.rows.length > 0) {
                     const taskMap = new Map<string, Task>();
                     loadedTasks.forEach(t => taskMap.set(t.id, t));
-                    (groupTasks as Task[]).forEach(t => taskMap.set(t.id, t));
+                    (groupTasksPage.rows as Task[]).forEach(t => taskMap.set(t.id, t));
                     loadedTasks = Array.from(taskMap.values());
                 }
             }
 
-            setTasks(loadedTasks);
-            setEscalatedOutTasks((escalatedOutRes.data as Task[]) || []);
+            setTasks((current) => {
+                if (!append) return loadedTasks;
+                const tasksById = new Map(current.map((task) => [task.id, task]));
+                loadedTasks.forEach((task) => tasksById.set(task.id, task));
+                return Array.from(tasksById.values());
+            });
+            setTaskCount(myTaskPage.total);
+            setGroupTaskCount(loadedGroupTaskCount);
+            setTaskPage(page);
+            setEscalatedOutTasks((current) => {
+                if (!appendOut) return escalatedOutPageResult.rows as Task[];
+                const tasksById = new Map(current.map((task) => [task.id, task]));
+                (escalatedOutPageResult.rows as Task[]).forEach((task) => tasksById.set(task.id, task));
+                return Array.from(tasksById.values());
+            });
+            setEscalatedOutPage(outPage);
+            setEscalatedOutCount(escalatedOutPageResult.total);
             setProfiles(profilesRes.data || []);
             setCustomers(customersRes.data || []);
         } catch (error: any) {
@@ -242,8 +274,22 @@ export default function MyTasksPage() {
             message.error('Gagal memuatkan data');
         } finally {
             setLoading(false);
+            setLoadingMoreTasks(false);
+            setLoadingMoreEscalated(false);
         }
     }, [role, supabase]);
+
+    const loadMoreTasks = () => {
+        if (!loadingMoreTasks && (taskPage * pageSize < taskCount || taskPage * pageSize < groupTaskCount)) {
+            fetchData(taskPage + 1, true, escalatedOutPage, true);
+        }
+    };
+
+    const loadMoreEscalatedOutTasks = () => {
+        if (!loadingMoreEscalated && escalatedOutPage * pageSize < escalatedOutCount) {
+            fetchData(taskPage, true, escalatedOutPage + 1, true);
+        }
+    };
 
     useEffect(() => {
         fetchData();
@@ -940,6 +986,13 @@ export default function MyTasksPage() {
                                 className="border border-slate-200/80 rounded-xl overflow-hidden"
                             />
                         </div>
+                        {(taskPage * pageSize < taskCount || taskPage * pageSize < groupTaskCount) && (
+                            <div className="mt-4 flex justify-center">
+                                <Button loading={loadingMoreTasks} onClick={loadMoreTasks}>
+                                    Load more tasks
+                                </Button>
+                            </div>
+                        )}
                     </>
                 )}
 
@@ -986,6 +1039,13 @@ export default function MyTasksPage() {
                                 className="border border-slate-200/80 rounded-xl overflow-hidden"
                             />
                         </div>
+                        {escalatedOutPage * pageSize < escalatedOutCount && (
+                            <div className="mt-4 flex justify-center">
+                                <Button loading={loadingMoreEscalated} onClick={loadMoreEscalatedOutTasks}>
+                                    Load more tasks
+                                </Button>
+                            </div>
+                        )}
                     </>
                 )}
             </Card>

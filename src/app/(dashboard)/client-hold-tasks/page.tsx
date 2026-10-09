@@ -11,6 +11,7 @@ import TaskStatusHistory from '@/components/task/TaskStatusHistory';
 import TaskComments from '@/components/task/TaskComments';
 import { useTimer } from '@/components/task/TimerProvider';
 import { ALL_DEPARTMENTS } from '@/lib/departments';
+import { fetchTaskPage } from '@/lib/fetch-all-pages';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
@@ -40,9 +41,20 @@ export default function ClientHoldTasksPage() {
     const supabase = createClient();
     const { role, department: currentUserDept, accessibleDepartments } = useRole();
     const [userDepartments, setUserDepartments] = useState<{ user_id: string; department: string }[]>([]);
+    const [taskCount, setTaskCount] = useState(0);
+    const [taskPage, setTaskPage] = useState(1);
+    const [loadingMoreTasks, setLoadingMoreTasks] = useState(false);
+    const [debouncedSearchText, setDebouncedSearchText] = useState('');
+    const pageSize = 100;
 
-    const fetchData = useCallback(async () => {
+    useEffect(() => {
+        const timeout = setTimeout(() => setDebouncedSearchText(searchText), 300);
+        return () => clearTimeout(timeout);
+    }, [searchText]);
+
+    const fetchData = useCallback(async (page = 1, append = false) => {
         try {
+            if (append) setLoadingMoreTasks(true);
             const { data: { user } } = await supabase.auth.getUser();
             const userId = user?.id || null;
             setCurrentUserId(userId);
@@ -61,31 +73,52 @@ export default function ClientHoldTasksPage() {
                     id,
                     full_name
                 )
-            `).order('created_at', { ascending: false }).eq('status', 'CLIENT_HOLD');
+            `, { count: 'exact' }).order('created_at', { ascending: false }).order('id', { ascending: true }).eq('status', 'CLIENT_HOLD');
 
             // If user is supervisor, fetch all tasks in accessible departments. If employee, fetch their own tasks.
             if (role === 'supervisor') {
-                if (accessibleDepartments.length > 0) {
-                    query = query.in('department', accessibleDepartments);
-                } else if (currentUserDept) {
-                    query = query.eq('department', currentUserDept);
-                }
-            } else if (role !== 'admin' && role !== 'manager' && userId) {
+                const departments = accessibleDepartments.length > 0
+                    ? accessibleDepartments
+                    : currentUserDept ? [currentUserDept] : [];
+                const departmentFilter = departments
+                    .map((department) => `"${department.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`)
+                    .join(',');
+                query = query.or(
+                    `department.is.null${departmentFilter ? `,department.in.(${departmentFilter})` : ''}`
+                );
+            } else if (role !== 'admin' && role !== 'manager' && role !== 'super_admin' && userId) {
                 query = query.eq('assignee_id', userId);
             }
 
-            const [tasksRes, profilesRes, customersRes, userDeptsRes] = await Promise.all([
-                query,
+            if (debouncedSearchText.trim()) {
+                const escapedSearch = debouncedSearchText.trim()
+                    .replace(/[\r\n]/g, ' ')
+                    .replace(/\\/g, '\\\\')
+                    .replace(/"/g, '\\"');
+                const pattern = `"%${escapedSearch}%"`;
+                query = query.or(`title.ilike.${pattern},description.ilike.${pattern}`);
+            }
+            if (filterCustomer) query = query.eq('customer_name', filterCustomer);
+            if (filterPIC) query = query.eq('assignee_id', filterPIC);
+
+            const [taskPageResult, profilesRes, customersRes, userDeptsRes] = await Promise.all([
+                fetchTaskPage(query, page, pageSize),
                 supabase.from('lv_profiles').select('id, full_name, department, role').eq('status', 'active').order('full_name'),
                 supabase.from('tsk_customers').select('id, name, is_internal').eq('status', 'active').order('name'),
                 supabase.from('user_departments').select('user_id, department')
             ]);
 
-            if (tasksRes.error) throw tasksRes.error;
             if (profilesRes.error) throw profilesRes.error;
             if (customersRes.error && customersRes.error.code !== '42P01') throw customersRes.error;
 
-            setTasks(tasksRes.data as Task[] || []);
+            setTasks((current) => {
+                if (!append) return taskPageResult.rows as Task[];
+                const tasksById = new Map(current.map((task) => [task.id, task]));
+                taskPageResult.rows.forEach((task) => tasksById.set(task.id, task as Task));
+                return Array.from(tasksById.values());
+            });
+            setTaskCount(taskPageResult.total);
+            setTaskPage(page);
             setProfiles(profilesRes.data || []);
             setCustomers(customersRes.data || []);
             setUserDepartments(userDeptsRes.data || []);
@@ -94,8 +127,15 @@ export default function ClientHoldTasksPage() {
             message.error('Failed to fetch data');
         } finally {
             setLoading(false);
+            setLoadingMoreTasks(false);
         }
-    }, [role, currentUserDept, accessibleDepartments]);
+    }, [role, currentUserDept, accessibleDepartments, debouncedSearchText, filterCustomer, filterPIC, supabase]);
+
+    const loadMoreTasks = () => {
+        if (!loadingMoreTasks && tasks.length < taskCount) {
+            fetchData(taskPage + 1, true);
+        }
+    };
 
     useEffect(() => {
         fetchData();
@@ -630,6 +670,13 @@ export default function ClientHoldTasksPage() {
                     className="border border-slate-100 rounded-lg overflow-hidden"
                 />
                 </div>
+                {tasks.length < taskCount && (
+                    <div className="mt-4 flex justify-center">
+                        <Button loading={loadingMoreTasks} onClick={loadMoreTasks}>
+                            Load more tasks ({tasks.length} of {taskCount})
+                        </Button>
+                    </div>
+                )}
             </Card>
 
             <Modal
