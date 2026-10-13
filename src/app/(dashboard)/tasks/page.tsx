@@ -152,7 +152,7 @@ export default function TasksPage() {
         return () => clearTimeout(timeout);
     }, [searchText]);
 
-    const fetchData = useCallback(async (page = currentPage) => {
+    const fetchData = useCallback(async (page = currentPage, refreshLookups = true) => {
         const requestSequence = ++fetchSequence.current;
         setLoading(true);
         try {
@@ -220,21 +220,30 @@ export default function TasksPage() {
                     .order(sortField, { ascending: sortAscending, nullsFirst: false })
                     .order('id', { ascending: true })
                     .range((page - 1) * pageSize, page * pageSize - 1),
-                supabase.from('lv_profiles').select('id, full_name, department, role').eq('status', 'active').order('full_name'),
-                supabase.from('tsk_customers').select('id, name, is_internal').eq('status', 'active').order('name'),
-                supabase.from('user_departments').select('user_id, department')
+                refreshLookups
+                    ? supabase.from('lv_profiles').select('id, full_name, department, role').eq('status', 'active').order('full_name')
+                    : Promise.resolve(null),
+                refreshLookups
+                    ? supabase.from('tsk_customers').select('id, name, is_internal').eq('status', 'active').order('name')
+                    : Promise.resolve(null),
+                refreshLookups
+                    ? supabase.from('user_departments').select('user_id, department')
+                    : Promise.resolve(null)
             ]);
 
             if (requestSequence !== fetchSequence.current) return;
             if (tasksError) throw tasksError;
-            if (profilesRes.error) throw profilesRes.error;
-            if (customersRes.error && customersRes.error.code !== '42P01') throw customersRes.error;
+            if (profilesRes?.error) throw profilesRes.error;
+            if (customersRes?.error && customersRes.error.code !== '42P01') throw customersRes.error;
+            if (userDeptsRes?.error) throw userDeptsRes.error;
 
             setTasks((taskRows || []) as Task[]);
             setTotalTasks(count || 0);
-            setProfiles(profilesRes.data || []);
-            setCustomers(customersRes.data || []);
-            setUserDepartments(userDeptsRes.data || []);
+            if (refreshLookups) {
+                setProfiles(profilesRes?.data || []);
+                setCustomers(customersRes?.data || []);
+                setUserDepartments(userDeptsRes?.data || []);
+            }
         } catch (error: any) {
             if (requestSequence !== fetchSequence.current) return;
             console.error('Error fetching data:', error.message);
@@ -263,14 +272,17 @@ export default function TasksPage() {
     useEffect(() => {
         fetchData();
 
+        let refreshTimeout: ReturnType<typeof setTimeout> | undefined;
         const subscription = supabase
             .channel('tasklisting-realtime')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'tsk_tasks' }, () => {
-                fetchData();
+                if (refreshTimeout) clearTimeout(refreshTimeout);
+                refreshTimeout = setTimeout(() => fetchData(currentPage, false), 300);
             })
             .subscribe();
 
         return () => {
+            if (refreshTimeout) clearTimeout(refreshTimeout);
             supabase.removeChannel(subscription);
         };
     }, [fetchData]);

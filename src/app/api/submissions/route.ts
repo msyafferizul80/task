@@ -1,5 +1,16 @@
 import { NextResponse } from 'next/server';
 import { createClient as createServerClient } from '@/utils/supabase/server';
+import { fetchAllPages } from '@/lib/fetch-all-pages';
+
+function isMissingArchivedColumn(error: unknown): boolean {
+    return error !== null
+        && typeof error === 'object'
+        && 'code' in error
+        && error.code === '42703'
+        && 'message' in error
+        && typeof error.message === 'string'
+        && error.message.includes('archived');
+}
 
 export async function GET(req: Request) {
     try {
@@ -23,25 +34,31 @@ export async function GET(req: Request) {
         const { searchParams } = new URL(req.url);
         const wantArchived = searchParams.get('archived') === 'true';
 
-        // First get ALL submissions without filtering
-        const { data: allSubmissions, error: allError } = await supabase
+        let query = supabase
             .from('tsk_submissions')
             .select('*')
-            .order('created_at', { ascending: false });
+            .order('created_at', { ascending: false })
+            .order('id', { ascending: true });
 
-        if (allError) throw allError;
+        query = wantArchived
+            ? query.eq('archived', true)
+            : query.or('archived.eq.false,archived.is.null');
 
-        // Filter on the server instead of using Supabase filters to avoid issues
-        const filtered = (allSubmissions || []).filter(sub => {
-            const subArchived = !!sub.archived; // Convert to boolean
-            return wantArchived ? subArchived : !subArchived;
-        });
+        let submissions;
+        try {
+            submissions = await fetchAllPages(query);
+        } catch (error) {
+            if (!isMissingArchivedColumn(error)) throw error;
+            if (wantArchived) return NextResponse.json([]);
 
-        console.log('Want archived:', wantArchived);
-        console.log('Filtered count:', filtered.length);
-        console.log('All submissions:', allSubmissions);
-
-        return NextResponse.json(filtered);
+            const legacyQuery = supabase
+                .from('tsk_submissions')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .order('id', { ascending: true });
+            submissions = await fetchAllPages(legacyQuery);
+        }
+        return NextResponse.json(submissions);
     } catch (error: any) {
         console.error('Error fetching submissions:', error);
         return NextResponse.json({ 

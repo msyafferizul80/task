@@ -126,7 +126,6 @@ export default function MyTasksPage() {
     const [loadingMoreEscalated, setLoadingMoreEscalated] = useState(false);
     const [taskPage, setTaskPage] = useState(1);
     const [taskCount, setTaskCount] = useState(0);
-    const [groupTaskCount, setGroupTaskCount] = useState(0);
     const [escalatedOutPage, setEscalatedOutPage] = useState(1);
     const [escalatedOutCount, setEscalatedOutCount] = useState(0);
     const pageSize = 100;
@@ -154,7 +153,8 @@ export default function MyTasksPage() {
         page = 1,
         append = false,
         outPage = 1,
-        appendOut = false
+        appendOut = false,
+        refreshLookups = true
     ) => {
         try {
             if (append) setLoadingMoreTasks(true);
@@ -184,17 +184,39 @@ export default function MyTasksPage() {
                 )
             `, { count: 'exact' }).order('created_at', { ascending: false }).order('id', { ascending: true });
 
-            // Fetch tasks assigned or individually escalated to the user
+            // Fetch review group memberships before building the unified task query.
+            const [profilesRes, customersRes, groupMembershipsRes] = await Promise.all([
+                refreshLookups
+                    ? supabase.from('lv_profiles').select('id, full_name').eq('status', 'active').order('full_name')
+                    : Promise.resolve(null),
+                refreshLookups
+                    ? supabase.from('tsk_customers').select('id, name, is_internal').eq('status', 'active').order('name')
+                    : Promise.resolve(null),
+                userId ? supabase.from('tsk_review_group_members').select('group_id').eq('user_id', userId) : Promise.resolve({ data: [], error: null })
+            ]);
+
+            if (profilesRes?.error) throw profilesRes.error;
+            if (customersRes?.error && customersRes.error.code !== '42P01') throw customersRes.error;
+            if (groupMembershipsRes.error) throw groupMembershipsRes.error;
+
+            const userGroupIds = (groupMembershipsRes.data || []).map((m: any) => m.group_id);
+            setReviewGroupIds(userGroupIds);
             if (userId) {
-                myTasksQuery = myTasksQuery.or(`assignee_id.eq.${userId},escalated_to_user_id.eq.${userId}`);
+                const taskFilters = [
+                    `assignee_id.eq.${userId}`,
+                    `escalated_to_user_id.eq.${userId}`
+                ];
+                if (userGroupIds.length > 0) {
+                    taskFilters.push(
+                        `and(status.in.(BACKLOG,REVIEW),escalated_to_group_id.in.(${userGroupIds.join(',')}))`
+                    );
+                }
+                myTasksQuery = myTasksQuery.or(taskFilters.join(','));
             }
 
-            // Fetch review group memberships and escalated-out tasks in parallel
-            const [myTaskPage, profilesRes, customersRes, groupMembershipsRes, escalatedOutPageResult] = await Promise.all([
+            // Fetch the union once so counts and page boundaries match the deduplicated task list.
+            const [myTaskPage, escalatedOutPageResult] = await Promise.all([
                 fetchTaskPage(myTasksQuery, page, pageSize),
-                supabase.from('lv_profiles').select('id, full_name').eq('status', 'active').order('full_name'),
-                supabase.from('tsk_customers').select('id, name, is_internal').eq('status', 'active').order('name'),
-                userId ? supabase.from('tsk_review_group_members').select('group_id').eq('user_id', userId) : Promise.resolve({ data: [], error: null }),
                 userId ? fetchTaskPage(supabase.from('tsk_tasks').select(`
                     *,
                     assignee:lv_profiles!tsk_tasks_assignee_id_fkey(id, full_name, avatar_url),
@@ -204,48 +226,7 @@ export default function MyTasksPage() {
                     reviewed_by_user:lv_profiles!tsk_tasks_reviewed_by_fkey(id, full_name)
                 `, { count: 'exact' }).eq('escalated_from_user_id', userId).in('status', ['BACKLOG', 'REVIEW']).order('updated_at', { ascending: false }).order('id', { ascending: true }), outPage, pageSize) : Promise.resolve({ rows: [], total: 0 })
             ]);
-
-            if (profilesRes.error) throw profilesRes.error;
-            if (customersRes.error && customersRes.error.code !== '42P01') throw customersRes.error;
-            if (groupMembershipsRes.error) throw groupMembershipsRes.error;
-
-            let loadedTasks: Task[] = myTaskPage.rows as Task[];
-            let loadedGroupTaskCount = 0;
-
-            // RLS checks department access; don't narrow this query to only the user's primary department.
-            const userGroupIds = (groupMembershipsRes.data || []).map((m: any) => m.group_id);
-            setReviewGroupIds(userGroupIds);
-            if (userGroupIds.length > 0) {
-                const groupTasksQuery = supabase.from('tsk_tasks').select(`
-                    *,
-                    assignee:lv_profiles!tsk_tasks_assignee_id_fkey (
-                        id,
-                        full_name,
-                        avatar_url
-                    ),
-                    creator:lv_profiles!tsk_tasks_created_by_fkey (
-                        id,
-                        full_name
-                    ),
-                    escalated_group:tsk_review_groups!tsk_tasks_escalated_to_group_id_fkey (
-                        id,
-                        name
-                    ),
-                    reviewed_by_user:lv_profiles!tsk_tasks_reviewed_by_fkey (
-                        id,
-                        full_name
-                    )
-                `, { count: 'exact' }).in('status', ['BACKLOG', 'REVIEW']).in('escalated_to_group_id', userGroupIds).order('created_at', { ascending: false }).order('id', { ascending: true });
-
-                const groupTasksPage = await fetchTaskPage(groupTasksQuery, page, pageSize);
-                loadedGroupTaskCount = groupTasksPage.total;
-                if (groupTasksPage.rows.length > 0) {
-                    const taskMap = new Map<string, Task>();
-                    loadedTasks.forEach(t => taskMap.set(t.id, t));
-                    (groupTasksPage.rows as Task[]).forEach(t => taskMap.set(t.id, t));
-                    loadedTasks = Array.from(taskMap.values());
-                }
-            }
+            const loadedTasks = myTaskPage.rows as Task[];
 
             setTasks((current) => {
                 if (!append) return loadedTasks;
@@ -254,7 +235,6 @@ export default function MyTasksPage() {
                 return Array.from(tasksById.values());
             });
             setTaskCount(myTaskPage.total);
-            setGroupTaskCount(loadedGroupTaskCount);
             setTaskPage(page);
             setEscalatedOutTasks((current) => {
                 if (!appendOut) return escalatedOutPageResult.rows as Task[];
@@ -264,8 +244,10 @@ export default function MyTasksPage() {
             });
             setEscalatedOutPage(outPage);
             setEscalatedOutCount(escalatedOutPageResult.total);
-            setProfiles(profilesRes.data || []);
-            setCustomers(customersRes.data || []);
+            if (refreshLookups) {
+                setProfiles(profilesRes?.data || []);
+                setCustomers(customersRes?.data || []);
+            }
         } catch (error: any) {
             console.error('Error fetching data:', error.message);
             message.error('Gagal memuatkan data');
@@ -277,7 +259,7 @@ export default function MyTasksPage() {
     }, [role, supabase]);
 
     const loadMoreTasks = () => {
-        if (!loadingMoreTasks && (taskPage * pageSize < taskCount || taskPage * pageSize < groupTaskCount)) {
+        if (!loadingMoreTasks && taskPage * pageSize < taskCount) {
             fetchData(taskPage + 1, true, escalatedOutPage, true);
         }
     };
@@ -291,14 +273,17 @@ export default function MyTasksPage() {
     useEffect(() => {
         fetchData();
 
+        let refreshTimeout: ReturnType<typeof setTimeout> | undefined;
         const subscription = supabase
             .channel('tasklisting-realtime')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'tsk_tasks' }, () => {
-                fetchData();
+                if (refreshTimeout) clearTimeout(refreshTimeout);
+                refreshTimeout = setTimeout(() => fetchData(1, false, 1, false, false), 300);
             })
             .subscribe();
 
         return () => {
+            if (refreshTimeout) clearTimeout(refreshTimeout);
             supabase.removeChannel(subscription);
         };
     }, [fetchData]);
@@ -1015,7 +1000,7 @@ export default function MyTasksPage() {
                                 className="border border-slate-200/80 rounded-xl overflow-hidden"
                             />
                         </div>
-                        {(taskPage * pageSize < taskCount || taskPage * pageSize < groupTaskCount) && (
+                        {taskPage * pageSize < taskCount && (
                             <div className="mt-4 flex justify-center">
                                 <Button loading={loadingMoreTasks} onClick={loadMoreTasks}>
                                     Load more tasks

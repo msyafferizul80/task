@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { Card, Select, Input, Table, Tag, Typography, Spin, message, Modal, Form, Button, Tooltip, DatePicker, InputNumber } from 'antd';
+import { Card, Select, Input, Table, Tag, Typography, Skeleton, message, Modal, Form, Button, Tooltip, DatePicker, InputNumber } from 'antd';
 import { createClient } from '@/utils/supabase/client';
 import { Task, Profile } from '@/lib/types';
 import { useRole } from '@/components/layout/RoleProvider';
@@ -45,7 +45,7 @@ export default function ClientHoldTasksPage() {
     const [taskPage, setTaskPage] = useState(1);
     const [loadingMoreTasks, setLoadingMoreTasks] = useState(false);
     const [debouncedSearchText, setDebouncedSearchText] = useState('');
-    const pageSize = 100;
+    const pageSize = 30;
 
     useEffect(() => {
         const timeout = setTimeout(() => setDebouncedSearchText(searchText), 300);
@@ -516,8 +516,6 @@ export default function ClientHoldTasksPage() {
 
     const canEditTaskFields = role === 'admin' || role === 'manager' || (role === 'supervisor' && !!selectedTask?.department && accessibleDepartments.includes(selectedTask.department));
 
-    if (loading) return <div className="flex justify-center items-center h-[calc(100vh-100px)]"><Spin size="large" /></div>;
-
     return (
         <div className="flex flex-col gap-6 font-sans">
             <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-2xs border border-slate-200/80">
@@ -526,6 +524,7 @@ export default function ClientHoldTasksPage() {
             </div>
 
             <Card variant="borderless" className="shadow-2xs rounded-2xl border border-slate-200/80 bg-white">
+                {loading && tasks.length === 0 ? <Skeleton active paragraph={{ rows: 8 }} /> : <>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6 bg-slate-50 p-4 rounded-xl border border-slate-100">
                     <div className="sm:col-span-2">
                         <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">Search Title / Notes</label>
@@ -677,6 +676,7 @@ export default function ClientHoldTasksPage() {
                         </Button>
                     </div>
                 )}
+                </>}
             </Card>
 
             <Modal

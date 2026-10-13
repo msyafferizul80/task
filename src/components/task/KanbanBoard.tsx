@@ -246,7 +246,11 @@ export default function KanbanBoard({ tasks, role, profiles, currentUserId }: Ka
 
             if (error) {
                 message.error(error.message || 'Failed to move task');
-                setBoardTasks(tasks);
+                setBoardTasks(currentTasks => currentTasks.map(task => (
+                    task.id === taskId && task.status === newStatus
+                        ? { ...task, status: activeTask.status, is_escalated: activeTask.is_escalated }
+                        : task
+                )));
             } else {
                 if (newStatus === 'DONE' && totalTimeMessage) {
                     message.success(`Task updated to Done! Total time spent: ${totalTimeMessage}`, 8);

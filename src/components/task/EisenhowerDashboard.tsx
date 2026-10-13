@@ -67,7 +67,12 @@ export default function EisenhowerDashboard() {
     const fetchSequence = useRef(0);
     const hasInitializedPICFilter = useRef(false);
 
-    const fetchTasksAndProfiles = useCallback(async (page = 1, append = false) => {
+    const fetchTasksAndProfiles = useCallback(async (
+        page = 1,
+        append = false,
+        knownTaskCount = 0,
+        knownGroupTaskCount = 0
+    ) => {
         const requestSequence = ++fetchSequence.current;
         try {
             if (append) setLoadingMoreTasks(true);
@@ -113,8 +118,11 @@ export default function EisenhowerDashboard() {
             if (filterCustomer) query = query.eq('customer_name', filterCustomer);
             if (filterPIC) query = query.eq('assignee_id', filterPIC);
 
+            const pageOffset = (page - 1) * taskPageSize;
             const [taskPageResult, profilesRes, customersRes, userDeptsRes, groupMembershipsRes] = await Promise.all([
-                fetchTaskPage(query, page, taskPageSize),
+                !append || pageOffset < knownTaskCount
+                    ? fetchTaskPage(query, page, taskPageSize)
+                    : Promise.resolve({ rows: [], total: knownTaskCount }),
                 supabase.from('lv_profiles').select('id, full_name, department, role').eq('status', 'active').order('full_name'),
                 supabase.from('tsk_customers').select('id, name, is_internal').eq('status', 'active').order('name'),
                 supabase.from('user_departments').select('user_id, department'),
@@ -155,9 +163,13 @@ export default function EisenhowerDashboard() {
 
                 if (filterCustomer) groupTasksQuery = groupTasksQuery.eq('customer_name', filterCustomer);
 
-                const groupTasksPage = await fetchTaskPage(groupTasksQuery, page, taskPageSize);
+                const groupTasksPage = !append || pageOffset < knownGroupTaskCount
+                    ? await fetchTaskPage(groupTasksQuery, page, taskPageSize)
+                    : { rows: [], total: knownGroupTaskCount };
                 groupTaskRows = groupTasksPage.rows as Task[];
                 loadedGroupTaskCount = groupTasksPage.total;
+            } else if (append) {
+                loadedGroupTaskCount = knownGroupTaskCount;
             }
 
             if (requestSequence !== fetchSequence.current) return;
@@ -193,7 +205,7 @@ export default function EisenhowerDashboard() {
 
     const loadMoreTasks = () => {
         if (!loadingMoreTasks && (taskPage * taskPageSize < taskCount || taskPage * taskPageSize < groupTaskCount)) {
-            fetchTasksAndProfiles(taskPage + 1, true);
+            fetchTasksAndProfiles(taskPage + 1, true, taskCount, groupTaskCount);
         }
     };
 

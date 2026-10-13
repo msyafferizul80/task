@@ -14,6 +14,8 @@ pnpm dev
 bun dev
 ```
 
+The development script uses Next.js Webpack mode to avoid intermittent Turbopack client-chunk load failures. When switching an existing dev server from Turbopack, stop it and clear the generated `.next` directory once before restarting with `npm run dev` (PowerShell: `Remove-Item -Recurse -Force .next`).
+
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
