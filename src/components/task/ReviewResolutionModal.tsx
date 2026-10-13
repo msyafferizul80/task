@@ -38,53 +38,57 @@ export default function ReviewResolutionModal({
     const handleApprove = async () => {
         setLoading(true);
         try {
-            // Atomic conditional update: only succeeds if task is still in REVIEW status
-            const { data, error } = await supabase
-                .from('tsk_tasks')
-                .update({
-                    status: 'DONE',
-                    assignee_id: originatorId,
-                    is_escalated: false,
-                    escalated_to_user_id: null,
-                    escalated_to_group_id: null,
-                    reviewed_by: currentUserId,
-                    updated_at: new Date().toISOString()
-                })
-                .eq('id', task.id)
-                .eq('status', 'REVIEW')
-                .select('id, status, reviewed_by');
-
-            if (error) throw error;
+            let resolutionSucceeded: boolean;
+            if (task.escalated_to_group_id) {
+                const { data, error } = await supabase.rpc('resolve_review_group_task', {
+                    p_task_id: task.id,
+                    p_approved: true,
+                    p_reason: null
+                });
+                if (error) throw error;
+                resolutionSucceeded = data;
+            } else {
+                const { data, error } = await supabase
+                    .from('tsk_tasks')
+                    .update({
+                        status: 'DONE',
+                        assignee_id: originatorId,
+                        is_escalated: false,
+                        escalated_to_user_id: null,
+                        escalated_to_group_id: null,
+                        reviewed_by: currentUserId,
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', task.id)
+                    .eq('status', 'REVIEW')
+                    .select('id');
+                if (error) throw error;
+                resolutionSucceeded = Boolean(data?.length);
+            }
 
             // Concurrency check: if 0 rows returned, another reviewer already acted
-            if (!data || data.length === 0) {
-                const { data: latestTask } = await supabase
-                    .from('tsk_tasks')
-                    .select('reviewed_by, reviewer:lv_profiles!tsk_tasks_reviewed_by_fkey(full_name)')
-                    .eq('id', task.id)
-                    .single();
-
-                const reviewerName = (latestTask?.reviewer as any)?.full_name || 'ahli lain';
-                message.warning(`Tugasan ini sudah diselesaikan oleh ${reviewerName}`);
+            if (!resolutionSucceeded) {
+                message.warning('Tugasan ini sudah diselesaikan atau tidak lagi tersedia untuk semakan.');
                 onSuccess();
                 onClose();
                 return;
             }
 
-            // Insert audit history
-            await supabase.from('tsk_task_history').insert({
-                task_id: task.id,
-                status_before: 'REVIEW',
-                new_status: 'DONE',
-                changed_by: currentUserId
-            });
+            if (!task.escalated_to_group_id) {
+                // Group resolutions write these records atomically in the database function.
+                await supabase.from('tsk_task_history').insert({
+                    task_id: task.id,
+                    status_before: 'REVIEW',
+                    new_status: 'DONE',
+                    changed_by: currentUserId
+                });
 
-            // Insert system approval comment
-            await supabase.from('tsk_comments').insert({
-                task_id: task.id,
-                user_id: currentUserId,
-                content: '✅ **Task Approved**: Tugasan telah diluluskan dan diselesaikan.'
-            });
+                await supabase.from('tsk_comments').insert({
+                    task_id: task.id,
+                    user_id: currentUserId,
+                    content: '✅ **Task Approved**: Tugasan telah diluluskan dan diselesaikan.'
+                });
+            }
 
             message.success('Tugasan berjaya diluluskan (Done)!');
             onSuccess();
@@ -105,53 +109,56 @@ export default function ReviewResolutionModal({
         try {
             const { reason } = values;
 
-            // Atomic conditional update: only succeeds if task is still in REVIEW status
-            const { data, error } = await supabase
-                .from('tsk_tasks')
-                .update({
-                    status: 'IN_PROGRESS',
-                    assignee_id: originatorId,
-                    is_escalated: false,
-                    escalated_to_user_id: null,
-                    escalated_to_group_id: null,
-                    reviewed_by: currentUserId,
-                    updated_at: new Date().toISOString()
-                })
-                .eq('id', task.id)
-                .eq('status', 'REVIEW')
-                .select('id, status, reviewed_by');
-
-            if (error) throw error;
+            let resolutionSucceeded: boolean;
+            if (task.escalated_to_group_id) {
+                const { data, error } = await supabase.rpc('resolve_review_group_task', {
+                    p_task_id: task.id,
+                    p_approved: false,
+                    p_reason: reason
+                });
+                if (error) throw error;
+                resolutionSucceeded = data;
+            } else {
+                const { data, error } = await supabase
+                    .from('tsk_tasks')
+                    .update({
+                        status: 'IN_PROGRESS',
+                        assignee_id: originatorId,
+                        is_escalated: false,
+                        escalated_to_user_id: null,
+                        escalated_to_group_id: null,
+                        reviewed_by: currentUserId,
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', task.id)
+                    .eq('status', 'REVIEW')
+                    .select('id');
+                if (error) throw error;
+                resolutionSucceeded = Boolean(data?.length);
+            }
 
             // Concurrency check: if 0 rows returned, another reviewer already acted
-            if (!data || data.length === 0) {
-                const { data: latestTask } = await supabase
-                    .from('tsk_tasks')
-                    .select('reviewed_by, reviewer:lv_profiles!tsk_tasks_reviewed_by_fkey(full_name)')
-                    .eq('id', task.id)
-                    .single();
-
-                const reviewerName = (latestTask?.reviewer as any)?.full_name || 'ahli lain';
-                message.warning(`Tugasan ini sudah diselesaikan oleh ${reviewerName}`);
+            if (!resolutionSucceeded) {
+                message.warning('Tugasan ini sudah diselesaikan atau tidak lagi tersedia untuk semakan.');
                 onSuccess();
                 onClose();
                 return;
             }
 
-            // Insert audit history
-            await supabase.from('tsk_task_history').insert({
-                task_id: task.id,
-                status_before: 'REVIEW',
-                new_status: 'IN_PROGRESS',
-                changed_by: currentUserId
-            });
+            if (!task.escalated_to_group_id) {
+                await supabase.from('tsk_task_history').insert({
+                    task_id: task.id,
+                    status_before: 'REVIEW',
+                    new_status: 'IN_PROGRESS',
+                    changed_by: currentUserId
+                });
 
-            // Insert mandatory rejection feedback comment
-            await supabase.from('tsk_comments').insert({
-                task_id: task.id,
-                user_id: currentUserId,
-                content: `❌ **Semakan Ditolak (Perlu Pembetulan)**:\n${reason}`
-            });
+                await supabase.from('tsk_comments').insert({
+                    task_id: task.id,
+                    user_id: currentUserId,
+                    content: `❌ **Semakan Ditolak (Perlu Pembetulan)**:\n${reason}`
+                });
+            }
 
             message.info('Tugasan ditolak dan dikembalikan ke In Progress dengan maklum balas.');
             rejectionForm.resetFields();

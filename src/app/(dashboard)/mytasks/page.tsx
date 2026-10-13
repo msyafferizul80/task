@@ -144,6 +144,8 @@ export default function MyTasksPage() {
     const [isReviewResolutionModalOpen, setIsReviewResolutionModalOpen] = useState(false);
     const [reviewingTask, setReviewingTask] = useState<Task | null>(null);
     const [pendingUpdateValues, setPendingUpdateValues] = useState<any>(null);
+    const [reviewGroupIds, setReviewGroupIds] = useState<string[]>([]);
+    const [startingGroupReview, setStartingGroupReview] = useState(false);
 
     const supabase = createClient();
     const { role } = useRole();
@@ -187,12 +189,11 @@ export default function MyTasksPage() {
                 myTasksQuery = myTasksQuery.or(`assignee_id.eq.${userId},escalated_to_user_id.eq.${userId}`);
             }
 
-            // Fetch user profile, review group memberships, and escalated-out tasks in parallel
-            const [myTaskPage, profilesRes, customersRes, myProfileRes, groupMembershipsRes, escalatedOutPageResult] = await Promise.all([
+            // Fetch review group memberships and escalated-out tasks in parallel
+            const [myTaskPage, profilesRes, customersRes, groupMembershipsRes, escalatedOutPageResult] = await Promise.all([
                 fetchTaskPage(myTasksQuery, page, pageSize),
                 supabase.from('lv_profiles').select('id, full_name').eq('status', 'active').order('full_name'),
                 supabase.from('tsk_customers').select('id, name, is_internal').eq('status', 'active').order('name'),
-                userId ? supabase.from('lv_profiles').select('id, department, role').eq('id', userId).single() : Promise.resolve({ data: null, error: null }),
                 userId ? supabase.from('tsk_review_group_members').select('group_id').eq('user_id', userId) : Promise.resolve({ data: [], error: null }),
                 userId ? fetchTaskPage(supabase.from('tsk_tasks').select(`
                     *,
@@ -201,19 +202,21 @@ export default function MyTasksPage() {
                     escalated_group:tsk_review_groups!tsk_tasks_escalated_to_group_id_fkey(id, name),
                     escalated_to_user:lv_profiles!tsk_tasks_escalated_to_user_id_fkey(id, full_name),
                     reviewed_by_user:lv_profiles!tsk_tasks_reviewed_by_fkey(id, full_name)
-                `, { count: 'exact' }).eq('escalated_from_user_id', userId).eq('status', 'REVIEW').order('updated_at', { ascending: false }).order('id', { ascending: true }), outPage, pageSize) : Promise.resolve({ rows: [], total: 0 })
+                `, { count: 'exact' }).eq('escalated_from_user_id', userId).in('status', ['BACKLOG', 'REVIEW']).order('updated_at', { ascending: false }).order('id', { ascending: true }), outPage, pageSize) : Promise.resolve({ rows: [], total: 0 })
             ]);
 
             if (profilesRes.error) throw profilesRes.error;
             if (customersRes.error && customersRes.error.code !== '42P01') throw customersRes.error;
+            if (groupMembershipsRes.error) throw groupMembershipsRes.error;
 
             let loadedTasks: Task[] = myTaskPage.rows as Task[];
             let loadedGroupTaskCount = 0;
 
-            // If user belongs to review groups, also fetch tasks escalated to those review groups (Option A department-scoped)
+            // RLS checks department access; don't narrow this query to only the user's primary department.
             const userGroupIds = (groupMembershipsRes.data || []).map((m: any) => m.group_id);
+            setReviewGroupIds(userGroupIds);
             if (userGroupIds.length > 0) {
-                let groupTasksQuery = supabase.from('tsk_tasks').select(`
+                const groupTasksQuery = supabase.from('tsk_tasks').select(`
                     *,
                     assignee:lv_profiles!tsk_tasks_assignee_id_fkey (
                         id,
@@ -232,13 +235,7 @@ export default function MyTasksPage() {
                         id,
                         full_name
                     )
-                `, { count: 'exact' }).eq('status', 'REVIEW').in('escalated_to_group_id', userGroupIds).order('created_at', { ascending: false }).order('id', { ascending: true });
-
-                const myProfile = myProfileRes.data;
-                // Option A: department scope check for non-admin/non-manager
-                if (myProfile?.role !== 'admin' && myProfile?.role !== 'manager' && myProfile?.role !== 'super_admin' && myProfile?.department) {
-                    groupTasksQuery = groupTasksQuery.eq('department', myProfile.department);
-                }
+                `, { count: 'exact' }).in('status', ['BACKLOG', 'REVIEW']).in('escalated_to_group_id', userGroupIds).order('created_at', { ascending: false }).order('id', { ascending: true });
 
                 const groupTasksPage = await fetchTaskPage(groupTasksQuery, page, pageSize);
                 loadedGroupTaskCount = groupTasksPage.total;
@@ -465,6 +462,31 @@ export default function MyTasksPage() {
         });
     };
 
+    const handleStartGroupReview = async () => {
+        if (!selectedTask) return;
+
+        setStartingGroupReview(true);
+        try {
+            const { data, error } = await supabase.rpc('start_review_group_task', {
+                p_task_id: selectedTask.id
+            });
+            if (error) throw error;
+            if (!data) {
+                message.warning('This task is no longer available in the group backlog.');
+            } else {
+                message.success('Task moved to Review for the group.');
+            }
+            setIsEditModalOpen(false);
+            setSelectedTask(null);
+            await fetchData();
+        } catch (error: any) {
+            console.error('Error starting group review:', error.message);
+            message.error(`Failed to move task to Review: ${error.message}`);
+        } finally {
+            setStartingGroupReview(false);
+        }
+    };
+
     // Synchronize form fields whenever selectedTask changes or the modal opens.
     // This ensures the form reflects the latest data even if the same task is edited repeatedly.
     useEffect(() => {
@@ -566,6 +588,11 @@ export default function MyTasksPage() {
                     {text}
                     <div className="mt-1 flex flex-wrap gap-1 items-center">
                         {getPriorityColor(record.priority_type)}
+                        {record.escalated_group && record.status === 'BACKLOG' && (
+                            <Tag color="blue" icon={<TeamOutlined />} className="text-[11px] font-medium">
+                                Group Backlog: {record.escalated_group.name}
+                            </Tag>
+                        )}
                         {record.status === 'REVIEW' && record.escalated_group && (
                             <Tag color="purple" icon={<TeamOutlined />} className="text-[11px] font-medium">
                                 Kumpulan Semakan: {record.escalated_group.name}
@@ -772,9 +799,11 @@ export default function MyTasksPage() {
             key: 'status',
             width: 1,
             onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
-            render: () => (
-                <Tag color="orange" icon={<ClockCircleOutlined />} className="text-[11px] font-semibold py-0.5">
-                    Under Review (Read-only)
+            render: (_: unknown, record: Task) => (
+                <Tag color={record.status === 'REVIEW' ? 'orange' : 'blue'} icon={<ClockCircleOutlined />} className="text-[11px] font-semibold py-0.5">
+                    {record.status === 'REVIEW'
+                        ? 'Under Review (Read-only)'
+                        : record.escalated_group ? 'Backlog — Awaiting Group Review' : 'Backlog — Awaiting Review'}
                 </Tag>
             )
         },
@@ -816,7 +845,7 @@ export default function MyTasksPage() {
                     <span className={`text-[10px] font-mono tabular-nums font-bold px-2 py-0.5 rounded-full ${
                         activeTab === 'ACTIVE' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
                     }`}>
-                        {tasks.length}
+                        {tasks.filter(task => task.status !== 'DONE').length} / {tasks.length}
                     </span>
                 </button>
                 <button
@@ -1001,13 +1030,13 @@ export default function MyTasksPage() {
                     <>
                         <div className="mb-3 px-3 py-2 bg-purple-50 border border-purple-100 rounded-xl text-xs text-purple-800 flex items-center gap-2">
                             <AuditOutlined className="text-purple-600" />
-                            <span>Tasks listed here were escalated by you for review and approval. Status is displayed as read-only.</span>
+                            <span>Tasks listed here were assigned by you to a reviewer or group. Backlog tasks remain here until they are sent for review.</span>
                         </div>
 
                         {/* Mobile Card View for Escalated Out */}
                         <div className="md:hidden flex flex-col gap-3 mb-4">
                             {escalatedOutFilteredTasks.length === 0 ? (
-                                <div className="text-center text-slate-400 py-10 italic text-xs">No tasks currently under review.</div>
+                                <div className="text-center text-slate-400 py-10 italic text-xs">No tasks have been sent for review.</div>
                             ) : escalatedOutFilteredTasks.map(task => (
                                 <div key={task.id} className="bg-white border border-purple-100 rounded-xl p-4 shadow-2xs flex flex-col gap-2">
                                     <div className="font-semibold text-slate-900 text-xs">{task.title}</div>
@@ -1015,6 +1044,11 @@ export default function MyTasksPage() {
                                         {getPriorityColor(task.priority_type)}
                                         <Tag color="purple" icon={<AuditOutlined />} className="text-[10px]">
                                             {task.escalated_group ? task.escalated_group.name : 'Awaiting Individual Review'}
+                                        </Tag>
+                                        <Tag color={task.status === 'REVIEW' ? 'orange' : 'blue'} className="text-[10px]">
+                                            {task.status === 'REVIEW'
+                                                ? 'Under Review'
+                                                : task.escalated_group ? 'Backlog — Awaiting Group Review' : 'Backlog — Awaiting Review'}
                                         </Tag>
                                     </div>
                                     {task.customer_name && (
@@ -1206,6 +1240,22 @@ export default function MyTasksPage() {
                                                     Semak Tugasan (Approve / Reject)
                                                 </Button>
                                             )}
+
+                                            {selectedTask.status === 'BACKLOG'
+                                                && selectedTask.escalated_to_group_id
+                                                && reviewGroupIds.includes(selectedTask.escalated_to_group_id)
+                                                && (
+                                                    <Button
+                                                        type="primary"
+                                                        size="large"
+                                                        className="bg-blue-600 hover:bg-blue-700 border-none shadow-md mr-3"
+                                                        icon={<AuditOutlined />}
+                                                        loading={startingGroupReview}
+                                                        onClick={handleStartGroupReview}
+                                                    >
+                                                        Send to Review
+                                                    </Button>
+                                                )}
 
                                             {selectedTask.status !== 'DONE' && (role === 'admin' || role === 'manager' || selectedTask.assignee_id === currentUserId) && (
                                                 <Button

@@ -172,6 +172,8 @@ export default function EscalateModal({
         try {
             const { to_user_id, to_group_id, reason } = values;
             const fromUserId = task.assignee_id || currentUserId;
+            const isGroup = targetType === 'GROUP';
+            const escalationStatus = nextStatus === 'REVIEW' ? 'BACKLOG' : nextStatus;
 
             // 1. Calculate duration from last history entry
             const { data: lastHistory } = await supabase
@@ -196,13 +198,13 @@ export default function EscalateModal({
                 durationHours = durationMinutes / 60;
             }
 
-            if (task.status !== nextStatus) {
+            if (task.status !== escalationStatus) {
                 const { error: historyError } = await supabase
                     .from('tsk_task_history')
                     .insert({
                         task_id: task.id,
                         status_before: task.status,
-                        new_status: nextStatus,
+                        new_status: escalationStatus,
                         changed_by: currentUserId,
                         status_before_entered_at: statusBeforeEnteredAt,
                         duration_seconds: durationSeconds,
@@ -214,12 +216,10 @@ export default function EscalateModal({
                     console.error('Error inserting task history:', historyError);
                 }
             }
-
             // 2. Update task with mutually exclusive escalation target
-            const isGroup = targetType === 'GROUP';
             const updatePayload: any = {
                 ...getPendingTaskUpdates(),
-                status: nextStatus,
+                status: escalationStatus,
                 is_escalated: true,
                 escalated_from_user_id: fromUserId,
                 escalated_to_user_id: isGroup ? null : to_user_id,
@@ -331,7 +331,7 @@ export default function EscalateModal({
         >
             {nextStatus === 'REVIEW' ? (
                 <div className="mb-6 text-xs text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-200/80">
-                    Submit task <strong>{task?.title}</strong> to a reviewer or Review Group. Status will become <strong>Review</strong> once submitted.
+                    Choose whether to assign <strong>{task?.title}</strong> to a reviewer or leave it in your personal review queue. Assigning it moves the task to <strong>Backlog</strong>; personal review keeps it in <strong>Review</strong>.
                 </div>
             ) : (
                 <div className="mb-6 text-xs text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-200/80">
@@ -342,13 +342,13 @@ export default function EscalateModal({
             {nextStatus === 'REVIEW' && (
                 <div className="mb-4 flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                        <Tooltip title="When ON: Escalate the task to another staff member or Review Group. When OFF: Just mark as Review without escalating.">
+                        <Tooltip title="When ON: Assign the task to another staff member or Review Group and move it to Backlog. When OFF: Keep it in Review for your personal review.">
                             <span className="text-xs text-slate-700 cursor-help flex items-center gap-1 font-medium">
-                                Escalate task
+                                Assign to reviewer or group
                                 <span className="text-slate-400 text-[10px] font-bold bg-slate-100 rounded-full w-3.5 h-3.5 flex items-center justify-center cursor-help">?</span>
                             </span>
                         </Tooltip>
-                        <Tooltip title={escalateEnabled ? "Escalate to staff or Review Group" : "Mark as Review only"}>
+                        <Tooltip title={escalateEnabled ? "Assign to staff or Review Group; status becomes Backlog" : "Keep status as Review without assigning another reviewer"}>
                             <Switch
                                 checked={escalateEnabled}
                                 onChange={setEscalateEnabled}

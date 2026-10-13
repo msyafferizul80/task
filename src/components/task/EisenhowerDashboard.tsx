@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Card, Button, Input, Modal, Form, Select, DatePicker, message, Spin, Typography, Tabs, InputNumber } from 'antd';
 import {
   PlusOutlined,
@@ -53,24 +53,30 @@ export default function EisenhowerDashboard() {
 
     const [form] = Form.useForm();
     const [editForm] = Form.useForm();
-    const { role, department: currentUserDept, accessibleDepartments, hasDepartmentAccess } = useRole();
+    const { role, department: currentUserDept, accessibleDepartments, hasDepartmentAccess, loading: roleLoading } = useRole();
     const supabase = createClient();
 
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+    const [reviewGroupIds, setReviewGroupIds] = useState<string[]>([]);
     const [userDepartments, setUserDepartments] = useState<{ user_id: string; department: string }[]>([]);
     const [taskCount, setTaskCount] = useState(0);
+    const [groupTaskCount, setGroupTaskCount] = useState(0);
     const [taskPage, setTaskPage] = useState(1);
     const [loadingMoreTasks, setLoadingMoreTasks] = useState(false);
     const taskPageSize = 100;
+    const fetchSequence = useRef(0);
+    const hasInitializedPICFilter = useRef(false);
 
     const fetchTasksAndProfiles = useCallback(async (page = 1, append = false) => {
+        const requestSequence = ++fetchSequence.current;
         try {
             if (append) setLoadingMoreTasks(true);
             const { data: { user } } = await supabase.auth.getUser();
             const userId = user?.id || null;
             setCurrentUserId(userId);
-            if (userId) {
-                setFilterPIC(userId);
+            if (!hasInitializedPICFilter.current) {
+                hasInitializedPICFilter.current = true;
+                if (userId) setFilterPIC(userId);
             }
 
             let query = supabase.from('tsk_tasks').select(`
@@ -107,43 +113,93 @@ export default function EisenhowerDashboard() {
             if (filterCustomer) query = query.eq('customer_name', filterCustomer);
             if (filterPIC) query = query.eq('assignee_id', filterPIC);
 
-            const [taskPageResult, profilesRes, customersRes, userDeptsRes] = await Promise.all([
+            const [taskPageResult, profilesRes, customersRes, userDeptsRes, groupMembershipsRes] = await Promise.all([
                 fetchTaskPage(query, page, taskPageSize),
                 supabase.from('lv_profiles').select('id, full_name, department, role').eq('status', 'active').order('full_name'),
                 supabase.from('tsk_customers').select('id, name, is_internal').eq('status', 'active').order('name'),
-                supabase.from('user_departments').select('user_id, department')
+                supabase.from('user_departments').select('user_id, department'),
+                userId
+                    ? supabase.from('tsk_review_group_members').select('group_id').eq('user_id', userId)
+                    : Promise.resolve({ data: [], error: null })
             ]);
 
             if (profilesRes.error) throw profilesRes.error;
             if (customersRes.error && customersRes.error.code !== '42P01') throw customersRes.error;
+            if (groupMembershipsRes.error) throw groupMembershipsRes.error;
+
+            const userGroupIds = (groupMembershipsRes.data || []).map((membership) => membership.group_id);
+            setReviewGroupIds(userGroupIds);
+            let groupTaskRows: Task[] = [];
+            let loadedGroupTaskCount = 0;
+            if (userGroupIds.length > 0) {
+                let groupTasksQuery = supabase.from('tsk_tasks').select(`
+                    *,
+                    assignee:lv_profiles!tsk_tasks_assignee_id_fkey (
+                        id,
+                        full_name,
+                        avatar_url
+                    ),
+                    escalated_group:tsk_review_groups!tsk_tasks_escalated_to_group_id_fkey (
+                        id,
+                        name
+                    ),
+                    reviewed_by_user:lv_profiles!tsk_tasks_reviewed_by_fkey (
+                        id,
+                        full_name
+                    )
+                `, { count: 'exact' })
+                    .in('status', ['BACKLOG', 'REVIEW'])
+                    .in('escalated_to_group_id', userGroupIds)
+                    .order('created_at', { ascending: false })
+                    .order('id', { ascending: true });
+
+                if (filterCustomer) groupTasksQuery = groupTasksQuery.eq('customer_name', filterCustomer);
+
+                const groupTasksPage = await fetchTaskPage(groupTasksQuery, page, taskPageSize);
+                groupTaskRows = groupTasksPage.rows as Task[];
+                loadedGroupTaskCount = groupTasksPage.total;
+            }
+
+            if (requestSequence !== fetchSequence.current) return;
 
             setTasks((current) => {
-                if (!append) return taskPageResult.rows as Task[];
+                if (!append) {
+                    const tasksById = new Map<string, Task>();
+                    [...taskPageResult.rows as Task[], ...groupTaskRows].forEach((task) => tasksById.set(task.id, task));
+                    return Array.from(tasksById.values());
+                }
                 const tasksById = new Map(current.map((task) => [task.id, task]));
                 taskPageResult.rows.forEach((task) => tasksById.set(task.id, task as Task));
+                groupTaskRows.forEach((task) => tasksById.set(task.id, task));
                 return Array.from(tasksById.values());
             });
             setTaskCount(taskPageResult.total);
+            setGroupTaskCount(loadedGroupTaskCount);
             setTaskPage(page);
             setProfiles(profilesRes.data || []);
             setCustomers(customersRes.data || []);
             setUserDepartments(userDeptsRes.data || []);
         } catch (error: any) {
+            if (requestSequence !== fetchSequence.current) return;
             console.error('Error fetching data:', error.message);
             message.error('Failed to fetch data');
         } finally {
-            setLoading(false);
-            setLoadingMoreTasks(false);
+            if (requestSequence === fetchSequence.current) {
+                setLoading(false);
+                setLoadingMoreTasks(false);
+            }
         }
     }, [role, currentUserDept, accessibleDepartments, supabase, filterCustomer, filterPIC]);
 
     const loadMoreTasks = () => {
-        if (!loadingMoreTasks && tasks.length < taskCount) {
+        if (!loadingMoreTasks && (taskPage * taskPageSize < taskCount || taskPage * taskPageSize < groupTaskCount)) {
             fetchTasksAndProfiles(taskPage + 1, true);
         }
     };
 
     useEffect(() => {
+        if (roleLoading) return;
+
         fetchTasksAndProfiles();
 
         const subscription = supabase
@@ -156,7 +212,7 @@ export default function EisenhowerDashboard() {
         return () => {
             supabase.removeChannel(subscription);
         };
-    }, [fetchTasksAndProfiles]);
+    }, [fetchTasksAndProfiles, roleLoading]);
 
     const handleCreateTask = async (values: any) => {
         try {
@@ -443,7 +499,8 @@ export default function EisenhowerDashboard() {
     // Apply Filters
     const filteredTasks = tasks.filter(t => {
         const matchesCustomer = t.customer_name?.toLowerCase().includes(filterCustomer.toLowerCase()) ?? true;
-        const matchesPIC = filterPIC ? t.assignee_id === filterPIC : true;
+        const isGroupTaskForCurrentUser = !!t.escalated_to_group_id && reviewGroupIds.includes(t.escalated_to_group_id);
+        const matchesPIC = filterPIC ? t.assignee_id === filterPIC || isGroupTaskForCurrentUser : true;
         return (filterCustomer ? matchesCustomer : true) && matchesPIC;
     });
     // Exclude DONE tasks from the main Priority Grid. REVIEW tasks will still show.
@@ -475,6 +532,11 @@ export default function EisenhowerDashboard() {
                     {task.is_escalated && (
                         <span className="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1 shadow-2xs">
                             <FlagOutlined className="text-[9px]" /> Eskalasi
+                        </span>
+                    )}
+                    {task.escalated_to_group_id && reviewGroupIds.includes(task.escalated_to_group_id) && (
+                        <span className="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-md bg-violet-50 text-violet-700 border border-violet-200 flex items-center gap-1">
+                            <TeamOutlined className="text-[9px]" /> {task.status === 'REVIEW' ? 'Group Review' : 'Group Backlog'}
                         </span>
                     )}
                     {(task as any).is_recurring && (
@@ -580,10 +642,10 @@ export default function EisenhowerDashboard() {
             <div className="bg-white p-4 rounded-2xl shadow-2xs border border-slate-200/80">
                 <KanbanBoard tasks={filteredTasks} role={role} profiles={profiles} currentUserId={currentUserId} />
             </div>
-                {tasks.length < taskCount && (
+                {(taskPage * taskPageSize < taskCount || taskPage * taskPageSize < groupTaskCount) && (
                     <div className="flex justify-center">
                         <Button loading={loadingMoreTasks} onClick={loadMoreTasks}>
-                            Load more tasks ({tasks.length} of {taskCount})
+                            Load more tasks
                         </Button>
                     </div>
                 )}
