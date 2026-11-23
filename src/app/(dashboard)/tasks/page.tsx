@@ -633,13 +633,15 @@ export default function TasksPage() {
         });
     }, [profiles, userDepartments, role, accessibleDepartments]);
 
-    const canEditTaskFields = role === 'admin' || role === 'manager' || (role === 'supervisor' && !!selectedTask?.department && accessibleDepartments.includes(selectedTask.department));
+    const canEditTaskFields = role === 'admin' || role === 'manager' ||
+        (role === 'supervisor' && !!selectedTask?.department && accessibleDepartments.includes(selectedTask.department)) ||
+        (!!selectedTask && (selectedTask.created_by === currentUserId || selectedTask.assignee_id === currentUserId));
     const canDeleteSelectedTask = !!selectedTask && (
         role === 'admin' ||
         role === 'manager' ||
         (
             (role === 'employee' || role === 'supervisor') &&
-            (selectedTask.status !== 'DONE' || selectedTask.assignee_id === currentUserId) &&
+            (selectedTask.created_by === currentUserId || selectedTask.assignee_id === currentUserId) &&
             (role !== 'supervisor' || (!!selectedTask.department && accessibleDepartments.includes(selectedTask.department)))
         )
     );

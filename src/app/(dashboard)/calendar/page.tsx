@@ -583,7 +583,9 @@ export default function CalendarTimelinePage() {
         });
     }, [profiles, userDepartments, role, accessibleDepartments]);
 
-    const canEditTaskFields = role === 'admin' || role === 'manager' || (role === 'supervisor' && !!selectedTask?.department && accessibleDepartments.includes(selectedTask.department));
+    const canEditTaskFields = role === 'admin' || role === 'manager' ||
+        (role === 'supervisor' && !!selectedTask?.department && accessibleDepartments.includes(selectedTask.department)) ||
+        (!!selectedTask && (selectedTask.created_by === currentUserId || selectedTask.assignee_id === currentUserId));
 
     if (loading) return <div className="flex justify-center items-center h-[calc(100vh-100px)]"><Spin size="large" /></div>;
 
@@ -871,7 +873,7 @@ export default function CalendarTimelinePage() {
                                 <Form.Item className="mb-0 mt-6 pt-4 border-t">
                                     <div className="flex items-center justify-between w-full">
                                         <div>
-                                            {(role === 'admin' || role === 'manager' || (role === 'employee' && (selectedTask.status !== 'DONE' || selectedTask.assignee_id === currentUserId))) && (
+                                            {(role === 'admin' || role === 'manager' || selectedTask.created_by === currentUserId || selectedTask.assignee_id === currentUserId) && (
                                                 <Button danger type="text" onClick={handleDeleteTask} size="large" icon={<DeleteOutlined />} disabled={false}>
                                                     Delete
                                                 </Button>

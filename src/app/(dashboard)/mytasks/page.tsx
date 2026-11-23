@@ -1165,7 +1165,12 @@ export default function MyTasksPage() {
                                 </div>
 
                                 <Form.Item name="description" label="Description">
-                                    <Input.TextArea rows={4} placeholder="Detailed task requirements..." className="resize-y" disabled={selectedTask?.status === 'DONE' && role !== 'admin' && role !== 'manager'} />
+                                    <Input.TextArea
+                                        rows={4}
+                                        placeholder="Detailed task requirements..."
+                                        className="resize-y"
+                                        disabled={(selectedTask?.status === 'DONE' && role !== 'admin' && role !== 'manager')}
+                                    />
                                 </Form.Item>
 
                                 {selectedTask.created_at && (
@@ -1199,7 +1204,7 @@ export default function MyTasksPage() {
                                 <Form.Item className="mb-0 mt-6 pt-4 border-t">
                                     <div className="flex items-center justify-between w-full">
                                         <div>
-                                            {((role === 'admin' || role === 'manager') || (selectedTask.status !== 'DONE' || selectedTask.assignee_id === currentUserId)) && (
+                                            {(role === 'admin' || role === 'manager' || selectedTask.created_by === currentUserId || selectedTask.assignee_id === currentUserId) && (
                                                 <Button danger type="text" onClick={handleDeleteTask} size="large" icon={<DeleteOutlined />} disabled={false}>
                                                     Delete
                                                 </Button>
