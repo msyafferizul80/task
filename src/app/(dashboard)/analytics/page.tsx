@@ -604,7 +604,7 @@ function TimeBarChart({
     data,
     total,
 }: {
-    data: { name: string; duration: number }[];
+    data: { name: string; duration: number; tasks?: number }[];
     total: number;
 }) {
     const max = Math.max(...data.map((d) => d.duration), 1);
@@ -615,7 +615,7 @@ function TimeBarChart({
 
     return (
         <div className="flex flex-col gap-3 py-2 max-h-[260px] overflow-y-auto pr-1">
-            {data.map(({ name, duration }, idx) => {
+            {data.map(({ name, duration, tasks }, idx) => {
                 const pct = max > 0 ? Math.round((duration / max) * 100) : 0;
                 const totalPct = total > 0 ? Math.round((duration / total) * 100) : 0;
                 const color = PIE_PALETTE[idx % PIE_PALETTE.length];
@@ -625,6 +625,11 @@ function TimeBarChart({
                             <span className="truncate max-w-[200px]" title={name}>{name}</span>
                             <div className="flex items-center gap-2">
                                 <span className="font-bold" style={{ color }}>{formatDuration(duration)}</span>
+                                {tasks !== undefined && (
+                                    <span className="text-[10px] font-bold text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded-md">
+                                        {tasks} {tasks === 1 ? 'task' : 'tasks'}
+                                    </span>
+                                )}
                                 <span className="text-[10px] text-slate-400 font-medium">({totalPct}%)</span>
                             </div>
                         </div>
@@ -634,6 +639,101 @@ function TimeBarChart({
                                 style={{ width: `${pct}%`, background: color }}
                             />
                         </div>
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
+// ─── Relationship and Trend Charts ──────────────────────────────────────────
+
+function RelationshipDistributionChart({
+    data,
+    primaryLabel,
+    secondaryLabel,
+    hidePrimary = false,
+    hideSecondaryLabel = false,
+}: {
+    data: { primary: string; secondary: string; hours: number; tasks: number }[];
+    primaryLabel: string;
+    secondaryLabel: string;
+    hidePrimary?: boolean;
+    hideSecondaryLabel?: boolean;
+}) {
+    const maxHours = Math.max(...data.map(d => d.hours), 1);
+
+    if (data.length === 0) {
+        return <div className="flex items-center justify-center h-[220px] text-slate-400 text-sm">No relationship data recorded.</div>;
+    }
+
+    return (
+        <div className="max-h-[280px] overflow-y-auto pr-1 flex flex-col gap-2">
+            {data.map((item, idx) => {
+                const pct = (item.hours / maxHours) * 100;
+                const color = PIE_PALETTE[idx % PIE_PALETTE.length];
+                return (
+                    <div key={`${item.primary}-${item.secondary}`} className="rounded-xl border border-slate-100 p-3 hover:border-indigo-100 transition-colors">
+                        <div className="flex items-start justify-between gap-3 mb-2">
+                            <div className="min-w-0">
+                                {!hidePrimary && (
+                                    <div className="text-xs font-bold text-slate-700 truncate" title={item.primary}>{item.primary}</div>
+                                )}
+                                {hideSecondaryLabel ? (
+                                    <div className="text-xs font-bold text-slate-700 truncate" title={item.secondary}>{item.secondary}</div>
+                                ) : (
+                                    <div className="text-[10px] text-slate-400 truncate mt-0.5">
+                                        {secondaryLabel}: <span className="font-semibold text-slate-500">{item.secondary}</span>
+                                    </div>
+                                )}
+                            </div>
+                            <div className="flex shrink-0 items-center gap-2 text-right">
+                                <div className="flex items-baseline gap-1">
+                                    <span className="text-xs font-black" style={{ color }}>{(item.hours / 3600).toFixed(1)}h</span>
+                                    <span className="text-[9px] text-slate-400">hours</span>
+                                </div>
+                                <div className="flex items-baseline gap-1 border-l border-slate-100 pl-2">
+                                    <span className="text-xs font-black text-violet-600">{item.tasks}</span>
+                                    <span className="text-[9px] text-slate-400">tasks</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                            <div
+                                className="h-full rounded-full"
+                                style={{ width: `${Math.max(pct, 3)}%`, backgroundColor: color }}
+                            />
+                        </div>
+                    </div>
+                );
+            })}
+            <span className="sr-only">{primaryLabel}</span>
+        </div>
+    );
+}
+
+function TaskTrendChart({ data }: {
+    data: { period: string; tasks: number; hours: number }[];
+}) {
+    if (data.length === 0) {
+        return <div className="flex items-center justify-center h-[220px] text-slate-400 text-sm">No task trend data recorded.</div>;
+    }
+    const maxTasks = Math.max(...data.map(d => d.tasks), 1);
+
+    return (
+        <div className="flex items-end gap-3 h-[220px] overflow-x-auto px-2 pt-4 pb-7 w-full">
+            {data.map((item, idx) => {
+                const height = Math.max((item.tasks / maxTasks) * 160, item.tasks > 0 ? 8 : 0);
+                return (
+                    <div key={item.period} className="min-w-[64px] h-full flex-1 flex flex-col items-center justify-end group relative">
+                        <Tooltip title={`${item.tasks} tasks • ${(item.hours / 3600).toFixed(1)} hours`}>
+                            <div
+                                className="w-full max-w-[72px] rounded-t-lg bg-indigo-600 transition-all group-hover:bg-violet-600 shadow-sm"
+                                style={{ height }}
+                            />
+                        </Tooltip>
+                        <div className="absolute -bottom-6 text-[10px] font-semibold text-slate-500 whitespace-nowrap">{item.period}</div>
+                        <div className="absolute -top-5 text-xs font-black text-slate-700">{item.tasks}</div>
                     </div>
                 );
             })}
@@ -663,6 +763,9 @@ export default function AnalyticsPage() {
     const [filterTimerCustomer, setFilterTimerCustomer] = useState<string>('All');
     const [timerSearchText, setTimerSearchText] = useState<string>('');
     const [timerDateRange, setTimerDateRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null]>([null, null]);
+    const [employeeDistributionFilter, setEmployeeDistributionFilter] = useState<string>('');
+    const [clientDistributionFilter, setClientDistributionFilter] = useState<string>('All');
+    const [trendPeriod, setTrendPeriod] = useState<'day' | 'week' | 'month'>('week');
 
     // Total task by PIC chart filters
     const [totalPicPeriod, setTotalPicPeriod] = useState<TimePeriod>('month');
@@ -1088,14 +1191,17 @@ export default function AnalyticsPage() {
 
     // Exclude internal customer from customer duration & top customer metrics
     const timerClientDurations = useMemo(() => {
-        const durMap: Record<string, number> = {};
+        const dataMap = new Map<string, { duration: number; tasks: Set<string> }>();
         filteredLogs.forEach(log => {
             const client = log.task?.customer_name || 'No Customer';
             if (internalCustomerNames.has(client)) return; // Exclude internal customers
-            durMap[client] = (durMap[client] || 0) + (log.duration || 0);
+            const existing = dataMap.get(client) || { duration: 0, tasks: new Set<string>() };
+            existing.duration += log.duration || 0;
+            existing.tasks.add(log.task_id);
+            dataMap.set(client, existing);
         });
-        return Object.entries(durMap)
-            .map(([name, duration]) => ({ name, duration }))
+        return Array.from(dataMap.entries())
+            .map(([name, value]) => ({ name, duration: value.duration, tasks: value.tasks.size }))
             .sort((a, b) => b.duration - a.duration);
     }, [filteredLogs, internalCustomerNames]);
 
@@ -1151,6 +1257,84 @@ export default function AnalyticsPage() {
             .sort((a, b) => b.duration - a.duration)
             .slice(0, 10);
     }, [filteredLogs]);
+
+    const employeeClientDistribution = useMemo(() => {
+        const map = new Map<string, { primary: string; secondary: string; hours: number; tasks: Set<string> }>();
+        filteredLogs.forEach(log => {
+            const employee = log.user?.full_name || 'Unknown';
+            const client = log.task?.customer_name || 'No Customer';
+            if (internalCustomerNames.has(client)) return;
+            const key = `${employee}\u0000${client}`;
+            const existing = map.get(key) || { primary: employee, secondary: client, hours: 0, tasks: new Set<string>() };
+            existing.hours += log.duration || 0;
+            existing.tasks.add(log.task_id);
+            map.set(key, existing);
+        });
+        return Array.from(map.values())
+            .map(item => ({ ...item, tasks: item.tasks.size }))
+            .sort((a, b) => b.hours - a.hours);
+    }, [filteredLogs, internalCustomerNames]);
+
+    const employeeDistributionNames = useMemo(() => {
+        return Array.from(new Set(employeeClientDistribution.map(item => item.primary))).sort();
+    }, [employeeClientDistribution]);
+
+    useEffect(() => {
+        if (employeeDistributionNames.length === 0) {
+            setEmployeeDistributionFilter('');
+        } else if (!employeeDistributionNames.includes(employeeDistributionFilter)) {
+            setEmployeeDistributionFilter(employeeDistributionNames[0]);
+        }
+    }, [employeeDistributionNames, employeeDistributionFilter]);
+
+    const clientEmployeeDistribution = useMemo(() => {
+        const map = new Map<string, { primary: string; secondary: string; hours: number; tasks: Set<string> }>();
+        filteredLogs.forEach(log => {
+            const employee = log.user?.full_name || 'Unknown';
+            const client = log.task?.customer_name || 'No Customer';
+            if (internalCustomerNames.has(client)) return;
+            const key = `${client}\u0000${employee}`;
+            const existing = map.get(key) || { primary: client, secondary: employee, hours: 0, tasks: new Set<string>() };
+            existing.hours += log.duration || 0;
+            existing.tasks.add(log.task_id);
+            map.set(key, existing);
+        });
+        return Array.from(map.values())
+            .map(item => ({ ...item, tasks: item.tasks.size }))
+            .sort((a, b) => b.hours - a.hours);
+    }, [filteredLogs, internalCustomerNames]);
+
+    const clientDistributionNames = useMemo(() => {
+        return Array.from(new Set(clientEmployeeDistribution.map(item => item.primary))).sort();
+    }, [clientEmployeeDistribution]);
+
+    const taskTrendData = useMemo(() => {
+        const map = new Map<string, { period: string; sortKey: number; tasks: Set<string>; hours: number }>();
+        filteredLogs.forEach(log => {
+            if (!log.start_time) return;
+            const date = dayjs(log.start_time);
+            let period: string;
+            let sortDate = date.startOf('day');
+            if (trendPeriod === 'month') {
+                period = date.format('MMM YYYY');
+                sortDate = date.startOf('month');
+            } else if (trendPeriod === 'week') {
+                sortDate = date.startOf('week');
+                period = sortDate.format('DD MMM');
+            } else {
+                period = date.format('DD MMM');
+            }
+            const key = sortDate.valueOf().toString();
+            const existing = map.get(key) || { period, sortKey: sortDate.valueOf(), tasks: new Set<string>(), hours: 0 };
+            existing.tasks.add(log.task_id);
+            existing.hours += log.duration || 0;
+            map.set(key, existing);
+        });
+        return Array.from(map.values())
+            .sort((a, b) => a.sortKey - b.sortKey)
+            .map(item => ({ period: item.period, tasks: item.tasks.size, hours: item.hours }))
+            .slice(-12);
+    }, [filteredLogs, trendPeriod]);
 
     const uniqueCustomerNames = useMemo(() => {
         const names = new Set(tasks.map(t => t.customer_name).filter(Boolean));
@@ -2436,7 +2620,7 @@ export default function AnalyticsPage() {
                                             setTimerDateRange([dates[0], dates[1]]);
                                         }
                                     }}
-                                    className="w-[260px] rounded-lg"
+                                    className="h-[40px] w-[260px] rounded-lg"
                                     placeholder={['Start Date', 'End Date']}
                                     allowClear
                                 />
@@ -2500,7 +2684,7 @@ export default function AnalyticsPage() {
                             title={
                                 <div className="flex items-center gap-2 py-1">
                                     <Users className="w-4 h-4 text-violet-600" />
-                                    <span className="font-bold text-slate-700">Customer Time Allocation (Hours)</span>
+                                    <span className="font-bold text-slate-700">Customer Time Allocation (Hours & Total Tasks)</span>
                                 </div>
                             }
                         >
@@ -2514,6 +2698,82 @@ export default function AnalyticsPage() {
                                     total={totalSecondsTracked}
                                 />
                             )}
+                        </Card>
+                    </div>
+
+                    {/* ── Relationship & Task Trend Analytics ── */}
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                        <Card
+                            className="rounded-2xl shadow-sm border border-slate-100 xl:col-span-2"
+                            variant="borderless"
+                            title={
+                                <div className="flex items-center justify-between gap-3 py-1 w-full flex-wrap">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                        <Users className="w-4 h-4 text-indigo-600 shrink-0" />
+                                        <span className="font-bold text-slate-700">
+                                            Employee–Client Distribution{employeeDistributionFilter ? ` (${employeeDistributionFilter})` : ''}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <Select
+                                            size="small"
+                                            value={employeeDistributionFilter}
+                                            onChange={setEmployeeDistributionFilter}
+                                            className="w-[170px]"
+                                            placeholder="Select employee"
+                                            options={employeeDistributionNames.map(name => ({ value: name, label: name }))}
+                                        />
+                                        <Select
+                                            size="small"
+                                            value={clientDistributionFilter}
+                                            onChange={setClientDistributionFilter}
+                                            className="w-[170px]"
+                                            options={[
+                                                { value: 'All', label: 'All Clients' },
+                                                ...clientDistributionNames.map(name => ({ value: name, label: name }))
+                                            ]}
+                                        />
+                                    </div>
+                                </div>
+                            }
+                        >
+                            <RelationshipDistributionChart
+                                data={employeeDistributionFilter
+                                    ? employeeClientDistribution.filter(item =>
+                                        item.primary === employeeDistributionFilter &&
+                                        (clientDistributionFilter === 'All' || item.secondary === clientDistributionFilter)
+                                    )
+                                    : []}
+                                primaryLabel="Employee"
+                                secondaryLabel="Client"
+                                hidePrimary
+                                hideSecondaryLabel
+                            />
+                        </Card>
+
+                        <Card
+                            className="rounded-2xl shadow-sm border border-slate-100 xl:col-span-2"
+                            variant="borderless"
+                            title={
+                                <div className="flex items-center justify-between gap-3 py-1 w-full">
+                                    <div className="flex items-center gap-2">
+                                        <TrendingUp className="w-4 h-4 text-indigo-600" />
+                                        <span className="font-bold text-slate-700">Task Trend Over Time</span>
+                                    </div>
+                                    <Segmented
+                                        size="small"
+                                        value={trendPeriod}
+                                        onChange={(value) => setTrendPeriod(value as 'day' | 'week' | 'month')}
+                                        options={[
+                                            { label: 'Daily', value: 'day' },
+                                            { label: 'Weekly', value: 'week' },
+                                            { label: 'Monthly', value: 'month' },
+                                        ]}
+                                    />
+                                </div>
+                            }
+                        >
+                            <TaskTrendChart data={taskTrendData} />
                         </Card>
                     </div>
 
