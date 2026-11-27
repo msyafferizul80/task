@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { Card, Button, Input, Modal, Form, Select, DatePicker, message, Spin, Typography, Tabs, InputNumber } from 'antd';
+import { Card, Button, Input, Modal, Form, Select, DatePicker, message, Spin, Typography, Tabs, InputNumber, Checkbox } from 'antd';
 import {
   PlusOutlined,
   DeleteOutlined,
@@ -21,8 +21,7 @@ import { useRole } from '@/components/layout/RoleProvider';
 import EscalateModal from './EscalateModal';
 import ReviewResolutionModal from './ReviewResolutionModal';
 import TaskHistoryTab from './TaskHistoryTab';
-import TaskStatusHistory from './TaskStatusHistory';
-import TaskComments from './TaskComments';
+import TaskDetailLayout from './TaskDetailLayout';
 import { useTimer } from '@/components/task/TimerProvider';
 import { ALL_DEPARTMENTS } from '@/lib/departments';
 import { fetchTaskPage } from '@/lib/fetch-all-pages';
@@ -40,6 +39,7 @@ export default function EisenhowerDashboard() {
     const [customers, setCustomers] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isCreatingTask, setIsCreatingTask] = useState(false);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [isEscalateModalOpen, setIsEscalateModalOpen] = useState(false);
     const [isReviewResolutionModalOpen, setIsReviewResolutionModalOpen] = useState(false);
@@ -227,10 +227,15 @@ export default function EisenhowerDashboard() {
     }, [fetchTasksAndProfiles, roleLoading]);
 
     const handleCreateTask = async (values: any) => {
+        setIsCreatingTask(true);
         try {
             message.loading({ content: 'Mencipta tugasan...', key: 'createTask' });
             
-            const { title, description, priority_type, start_date, due_date, customer_name, assignee_id, department, estimated_hours } = values;
+            const { title, description, priority_type, start_date, due_date, customer_names, assignee_id, department, estimated_hours } = values;
+            const selectedCustomers = [...new Set<string>(customer_names || [])];
+            if (selectedCustomers.length === 0) {
+                throw new Error('Select at least one client before creating tasks.');
+            }
             let finalTitle = title;
             let aiChecklist: string[] = [];
 
@@ -258,28 +263,33 @@ export default function EisenhowerDashboard() {
                 }
             }
 
-            const { data: newTaskData, error } = await supabase.from('tsk_tasks').insert([{
+            const taskRows = selectedCustomers.map((customer_name) => ({
                 title: finalTitle,
                 description,
                 priority_type,
                 customer_name,
                 assignee_id,
-                start_date: start_date?.toISOString(),
-                due_date: due_date?.toISOString(),
+                start_date: start_date?.toISOString() || null,
+                due_date: due_date?.toISOString() || null,
                 estimated_hours: estimated_hours || null,
                 status: 'IN_PROGRESS',
                 created_by: currentUserId,
                 // is_internal is auto-set by trigger
                 department: department || (accessibleDepartments.length === 1 ? accessibleDepartments[0] : (currentUserDept || 'Outsourcing')),
-            }]).select('id, created_at').single();
+            }));
+            const { data: newTasks, error } = await supabase
+                .from('tsk_tasks')
+                .insert(taskRows)
+                .select('id');
 
             if (error) throw error;
+            if (!newTasks?.length) throw new Error('No tasks were returned after creation.');
 
-            // Insert initial history record for new task
+            let auxiliarySaveFailed = false;
             const { error: historyError } = await supabase
                 .from('tsk_task_history')
-                .insert({
-                    task_id: newTaskData.id,
+                .insert(newTasks.map((task) => ({
+                    task_id: task.id,
                     status_before: null,
                     new_status: 'IN_PROGRESS',
                     changed_by: currentUserId,
@@ -287,28 +297,39 @@ export default function EisenhowerDashboard() {
                     duration_seconds: null,
                     duration_minutes: null,
                     duration_hours: null
-                });
+                })));
 
             if (historyError) {
                 console.error('Error inserting initial task history:', historyError);
+                auxiliarySaveFailed = true;
             }
 
-            if (aiChecklist.length > 0 && newTaskData) {
-                const insertData = aiChecklist.map((item: string) => ({
-                    task_id: newTaskData.id,
+            if (aiChecklist.length > 0) {
+                const insertData = newTasks.flatMap((task) => aiChecklist.map((item) => ({
+                    task_id: task.id,
                     item_text: item,
                     is_completed: false
-                }));
-                await supabase.from('tsk_task_checklist').insert(insertData);
+                })));
+                const { error: checklistError } = await supabase.from('tsk_task_checklist').insert(insertData);
+                if (checklistError) {
+                    console.error('Error inserting task checklists:', checklistError);
+                    auxiliarySaveFailed = true;
+                }
             }
 
-            message.success({ content: 'Tugasan berjaya dicipta', key: 'createTask', duration: 2 });
+            if (auxiliarySaveFailed) {
+                message.warning({ content: `Created ${newTasks.length} tasks, but some task history or checklist data could not be saved.`, key: 'createTask', duration: 5 });
+            } else {
+                message.success({ content: `Created ${newTasks.length} task${newTasks.length === 1 ? '' : 's'} successfully`, key: 'createTask', duration: 2 });
+            }
             setIsModalOpen(false);
             form.resetFields();
             fetchTasksAndProfiles();
         } catch (error: any) {
             console.error('Error creating task:', error.message);
             message.error({ content: 'Gagal mencipta tugasan', key: 'createTask', duration: 2 });
+        } finally {
+            setIsCreatingTask(false);
         }
     };
 
@@ -721,32 +742,101 @@ export default function EisenhowerDashboard() {
             </div>
 
             <Modal
-                title={<div className="font-bold text-lg mb-4 text-indigo-900 border-b pb-2">Create New Task</div>}
+                title={
+                    <div className="space-y-0.5">
+                        <div className="text-lg font-bold text-indigo-900">Create New Task</div>
+                        <div className="text-xs font-normal text-slate-500">Set up the task once, then assign it to one or more clients.</div>
+                    </div>
+                }
                 open={isModalOpen}
-                onCancel={() => setIsModalOpen(false)}
-                footer={null}
-                width={600}
-                style={{ maxWidth: '95vw' }}
+                onCancel={() => {
+                    if (!isCreatingTask) setIsModalOpen(false);
+                }}
+                closable={!isCreatingTask}
+                footer={
+                    <div className="flex justify-end gap-3 pt-1">
+                        <Button size="large" disabled={isCreatingTask} onClick={() => setIsModalOpen(false)}>
+                            Cancel
+                        </Button>
+                        <Button
+                            type="primary"
+                            htmlType="submit"
+                            form="create-task-form"
+                            size="large"
+                            icon={<PlusOutlined />}
+                            loading={isCreatingTask}
+                            className="bg-indigo-600 shadow-md"
+                        >
+                            Create Task
+                        </Button>
+                    </div>
+                }
+                width={720}
+                style={{ maxWidth: 'calc(100vw - 24px)', top: 20 }}
+                styles={{ body: { maxHeight: 'calc(100vh - 190px)', overflowY: 'auto', paddingRight: 6 } }}
             >
-                <Form form={form} layout="vertical" onFinish={handleCreateTask}>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <Form.Item name="customer_name" label="Customer Name" className="col-span-2 sm:col-span-1" rules={[{ required: true, message: 'Customer name is required' }]}>
-                            <Select placeholder="Select Customer" size="large" showSearch optionFilterProp="children"
-                                onChange={() => {
-                                    // Reset department when customer changes so Outsourcing isn't kept for internal customers
-                                    if (role !== 'supervisor') form.setFieldsValue({ department: undefined });
-                                }}
-                            >
-                                {customers.map(c => (
-                                    <Option key={c.id} value={c.name}>{c.name}</Option>
-                                ))}
-                            </Select>
+                <Form id="create-task-form" form={form} layout="vertical" onFinish={handleCreateTask}>
+                    <div className="grid grid-cols-1 gap-x-5 gap-y-1 sm:grid-cols-3">
+                        <Form.Item name="title" label="Task Title" className="sm:col-span-3" rules={[{ required: true, message: 'Please enter a title' }]}>
+                            <Input placeholder="e.g. Prepare monthly report" size="large" />
                         </Form.Item>
 
-                        <Form.Item noStyle shouldUpdate={(prev, cur) => prev.customer_name !== cur.customer_name}>
+                        <Form.Item noStyle shouldUpdate={(prev, cur) => prev.customer_names !== cur.customer_names}>
                             {({ getFieldValue }) => {
-                                const selCustomer = customers.find((c: any) => c.name === getFieldValue('customer_name'));
-                                const isInternal = selCustomer?.is_internal ?? false;
+                                const selectedCustomers: string[] = getFieldValue('customer_names') || [];
+                                const allCustomersSelected = customers.length > 0 && customers.every((customer) => selectedCustomers.includes(customer.name));
+
+                                return (
+                                    <div className="sm:col-span-3 rounded-xl border border-indigo-100 bg-indigo-50/50 p-4">
+                                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                                            <div>
+                                                <div className="font-semibold text-slate-800">Company / Clients</div>
+                                                <div className="text-xs text-slate-500">A separate task will be created for each selected client.</div>
+                                            </div>
+                                            <Checkbox
+                                                checked={allCustomersSelected}
+                                                disabled={customers.length === 0}
+                                                onChange={(event) => {
+                                                    const customerNames = event.target.checked ? customers.map((customer) => customer.name) : [];
+                                                    form.setFieldsValue({
+                                                        customer_names: customerNames,
+                                                        department: undefined,
+                                                        assignee_id: undefined,
+                                                    });
+                                                }}
+                                            >
+                                                Select all ({customers.length})
+                                            </Checkbox>
+                                        </div>
+                                        <Form.Item
+                                            name="customer_names"
+                                            className="mb-0"
+                                            rules={[{ required: true, type: 'array', min: 1, message: 'Select at least one client' }]}
+                                        >
+                                            <Select
+                                                mode="multiple"
+                                                placeholder="Search and select clients"
+                                                size="large"
+                                                showSearch
+                                                optionFilterProp="children"
+                                                maxTagCount={2}
+                                                maxTagPlaceholder={(omittedValues) => `+${omittedValues.length} more`}
+                                                onChange={() => form.setFieldsValue({ department: undefined, assignee_id: undefined })}
+                                            >
+                                                {customers.map(c => (
+                                                    <Option key={c.id} value={c.name}>{c.name}</Option>
+                                                ))}
+                                            </Select>
+                                        </Form.Item>
+                                    </div>
+                                );
+                            }}
+                        </Form.Item>
+
+                        <Form.Item noStyle shouldUpdate={(prev, cur) => prev.customer_names !== cur.customer_names}>
+                            {({ getFieldValue }) => {
+                                const selectedCustomers: string[] = getFieldValue('customer_names') || [];
+                                const isInternal = customers.some((customer) => selectedCustomers.includes(customer.name) && customer.is_internal);
                                 const allDepts = ALL_DEPARTMENTS;
                                 const allowedDepts = (role === 'admin' || role === 'manager')
                                     ? allDepts
@@ -758,7 +848,7 @@ export default function EisenhowerDashboard() {
                                     <Form.Item
                                         name="department"
                                         label="Jabatan (Department)"
-                                        className="col-span-2 sm:col-span-1"
+                                        className="sm:col-span-1"
                                         rules={[{ required: true, message: 'Please select a department' }]}
                                         initialValue={defaultDept}
                                     >
@@ -777,10 +867,6 @@ export default function EisenhowerDashboard() {
                                     </Form.Item>
                                 );
                             }}
-                        </Form.Item>
-
-                        <Form.Item name="title" label="Task Title" className="col-span-2" rules={[{ required: true, message: 'Please enter a title' }]}>
-                            <Input placeholder="Enter task title" size="large" />
                         </Form.Item>
 
                         <Form.Item noStyle shouldUpdate={(prev, cur) => prev.department !== cur.department}>
@@ -809,11 +895,11 @@ export default function EisenhowerDashboard() {
                         </Form.Item>
                     </div>
 
-                    <Form.Item name="description" label="Description">
-                        <Input.TextArea rows={4} placeholder="Detailed task requirements..." className="resize-none" />
+                    <Form.Item name="description" label="Description" className="mt-1">
+                        <Input.TextArea rows={3} placeholder="Add task details or requirements..." className="resize-y" />
                     </Form.Item>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="mb-1 grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-3">
                         <Form.Item name="start_date" label="Start Date">
                             <DatePicker className="w-full" size="large" showTime disabledDate={(current) => current && current < dayjs().startOf('day')} />
                         </Form.Item>
@@ -823,14 +909,9 @@ export default function EisenhowerDashboard() {
                         </Form.Item>
 
                         <Form.Item name="estimated_hours" label="Est. Hours">
-                            <InputNumber className="w-full" size="large" min={0} step={0.5} placeholder="e.g. 4.5" />
+                            <InputNumber className="w-full" style={{ width: '100%' }} size="large" min={0} step={0.5} placeholder="e.g. 4.5" />
                         </Form.Item>
                     </div>
-
-                    <Form.Item className="flex justify-end mb-0 mt-6 pt-4 border-t">
-                        <Button onClick={() => setIsModalOpen(false)} className="mr-3" size="large">Cancel</Button>
-                        <Button type="primary" htmlType="submit" size="large" className="bg-indigo-600 shadow-md">Create Task</Button>
-                    </Form.Item>
                 </Form>
             </Modal>
 
@@ -847,8 +928,15 @@ export default function EisenhowerDashboard() {
                 width={1600}
                 style={{ maxWidth: '97vw', top: 20 }}
             >
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div className="lg:border-r lg:pr-6">
+                {selectedTask && (
+                    <TaskDetailLayout
+                        taskId={selectedTask.id}
+                        currentStatus={selectedTask.status}
+                        taskCreatedAt={selectedTask.created_at}
+                        currentUserId={currentUserId ?? ''}
+                        role={role}
+                    >
+                    <div className="min-w-0">
                         <Tabs defaultActiveKey="1" items={[
                             {
                                 key: '1',
@@ -1041,25 +1129,8 @@ export default function EisenhowerDashboard() {
                             }
                         ]} />
                     </div>
-                    <div className="lg:pl-0">
-                        {selectedTask && (
-                            <TaskStatusHistory 
-                                taskId={selectedTask.id} 
-                                currentStatus={selectedTask.status}
-                                taskCreatedAt={selectedTask.created_at}
-                            />
-                        )}
-                    </div>
-                    <div className="lg:border-l lg:pl-6 relative">
-                        {selectedTask && (
-                            <TaskComments
-                                taskId={selectedTask.id}
-                                currentUserId={currentUserId ?? ''}
-                                role={role}
-                            />
-                        )}
-                    </div>
-                </div>
+                    </TaskDetailLayout>
+                )}
             </Modal>
 
             <EscalateModal 

@@ -8,8 +8,7 @@ import { useRole } from '@/components/layout/RoleProvider';
 import { SearchOutlined, CheckCircleOutlined, SyncOutlined, ClockCircleOutlined, ExclamationCircleOutlined, EditOutlined, DeleteOutlined, ExclamationCircleFilled, FireOutlined, PauseCircleOutlined, PlayCircleOutlined, AuditOutlined, TeamOutlined } from '@ant-design/icons';
 import EscalateModal from '@/components/task/EscalateModal';
 import ReviewResolutionModal from '@/components/task/ReviewResolutionModal';
-import TaskStatusHistory from '@/components/task/TaskStatusHistory';
-import TaskComments from '@/components/task/TaskComments';
+import TaskDetailLayout from '@/components/task/TaskDetailLayout';
 import { useTimer } from '@/components/task/TimerProvider';
 import { ALL_DEPARTMENTS } from '@/lib/departments';
 import { fetchTaskPage } from '@/lib/fetch-all-pages';
@@ -1083,8 +1082,14 @@ export default function MyTasksPage() {
                 style={{ maxWidth: '97vw', top: 20 }}
             >
                 {selectedTask && (
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        <div className="lg:border-r lg:pr-6">
+                    <TaskDetailLayout
+                        taskId={selectedTask.id}
+                        currentStatus={selectedTask.status}
+                        taskCreatedAt={selectedTask.created_at}
+                        currentUserId={currentUserId ?? ''}
+                        role={role}
+                    >
+                        <div className="min-w-0">
                             <Form
                                 key={selectedTask.id}
                                 form={editForm}
@@ -1266,21 +1271,7 @@ export default function MyTasksPage() {
                                 </Form.Item>
                             </Form>
                         </div>
-                        <div className="lg:pl-0">
-                            <TaskStatusHistory 
-                                taskId={selectedTask.id} 
-                                currentStatus={selectedTask.status}
-                                taskCreatedAt={selectedTask.created_at}
-                            />
-                        </div>
-                        <div className="lg:border-l lg:pl-6 relative">
-                            <TaskComments
-                                taskId={selectedTask.id}
-                                currentUserId={currentUserId ?? ''}
-                                role={role}
-                            />
-                        </div>
-                    </div>
+                    </TaskDetailLayout>
                 )}
             </Modal>
 
